@@ -249,6 +249,7 @@ export default function SettingsChannelAffinity(props) {
       include_using_group: r.include_using_group ?? true,
       include_model_name: !!r.include_model_name,
       include_rule_name: r.include_rule_name ?? true,
+      inject_affinity_user_id: !!r.inject_affinity_user_id,
       param_override_template_json: r.param_override_template
         ? stringifyPretty(r.param_override_template)
         : '',
@@ -729,6 +730,9 @@ export default function SettingsChannelAffinity(props) {
         include_rule_name: !!values.include_rule_name,
         ...(values.skip_retry_on_failure
           ? { skip_retry_on_failure: true }
+          : {}),
+        ...(values.inject_affinity_user_id
+          ? { inject_affinity_user_id: true }
           : {}),
         ...(userAgentInclude.length > 0
           ? { user_agent_include: userAgentInclude }
@@ -1285,6 +1289,20 @@ export default function SettingsChannelAffinity(props) {
                   />
                   <Text type='tertiary' size='small'>
                     {t('开启后，规则名称会参与 cache key（不同规则隔离）。')}
+                  </Text>
+                </Col>
+              </Row>
+
+              <Row gutter={16}>
+                <Col xs={24} sm={12}>
+                  <Form.Switch
+                    field='inject_affinity_user_id'
+                    label={t('注入亲和性 UserId')}
+                  />
+                  <Text type='tertiary' size='small'>
+                    {t(
+                      '开启后，会将本地亲和性 Key 的 Hash 作为 metadata.user_id 注入到发往上游 Anthropic 端点的请求中，使上游也能保持渠道亲和性。',
+                    )}
                   </Text>
                 </Col>
               </Row>

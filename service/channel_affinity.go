@@ -41,19 +41,21 @@ var (
 )
 
 type channelAffinityMeta struct {
-	CacheKey       string
-	TTLSeconds     int
-	RuleName       string
-	SkipRetry      bool
-	ParamTemplate  map[string]interface{}
-	KeySourceType  string
-	KeySourceKey   string
-	KeySourcePath  string
-	KeyHint        string
-	KeyFingerprint string
-	UsingGroup     string
-	ModelName      string
-	RequestPath    string
+	CacheKey             string
+	TTLSeconds           int
+	RuleName             string
+	SkipRetry            bool
+	ParamTemplate        map[string]interface{}
+	KeySourceType        string
+	KeySourceKey         string
+	KeySourcePath        string
+	KeyHint              string
+	KeyFingerprint       string
+	UsingGroup           string
+	ModelName            string
+	RequestPath          string
+	InjectAffinityUserId bool
+	AffinityUserIdHash   string // full SHA1 hash of cache key suffix, used for metadata.user_id injection
 }
 
 type ChannelAffinityStatsContext struct {
@@ -405,6 +407,23 @@ func GetChannelAffinityStatsContext(c *gin.Context) (ChannelAffinityStatsContext
 	}, true
 }
 
+// GetAffinityUserIdForInjection returns the hash to inject as metadata.user_id
+// when the matched affinity rule has InjectAffinityUserId enabled.
+// Returns ("", false) if injection is not applicable.
+func GetAffinityUserIdForInjection(c *gin.Context) (string, bool) {
+	if c == nil {
+		return "", false
+	}
+	meta, ok := getChannelAffinityMeta(c)
+	if !ok {
+		return "", false
+	}
+	if !meta.InjectAffinityUserId || meta.AffinityUserIdHash == "" {
+		return "", false
+	}
+	return meta.AffinityUserIdHash, true
+}
+
 func affinityFingerprint(s string) string {
 	if s == "" {
 		return ""
@@ -588,20 +607,28 @@ func GetPreferredChannelByAffinity(c *gin.Context, modelName string, usingGroup 
 		}
 		cacheKeySuffix := buildChannelAffinityCacheKeySuffix(rule, modelName, usingGroup, affinityValue)
 		cacheKeyFull := channelAffinityCacheNamespace + ":" + cacheKeySuffix
+
+		var affinityUserIdHash string
+		if rule.InjectAffinityUserId {
+			affinityUserIdHash = common.Sha1([]byte(cacheKeySuffix))
+		}
+
 		setChannelAffinityContext(c, channelAffinityMeta{
-			CacheKey:       cacheKeyFull,
-			TTLSeconds:     ttlSeconds,
-			RuleName:       rule.Name,
-			SkipRetry:      rule.SkipRetryOnFailure,
-			ParamTemplate:  cloneStringAnyMap(rule.ParamOverrideTemplate),
-			KeySourceType:  strings.TrimSpace(usedSource.Type),
-			KeySourceKey:   strings.TrimSpace(usedSource.Key),
-			KeySourcePath:  strings.TrimSpace(usedSource.Path),
-			KeyHint:        buildChannelAffinityKeyHint(affinityValue),
-			KeyFingerprint: affinityFingerprint(affinityValue),
-			UsingGroup:     usingGroup,
-			ModelName:      modelName,
-			RequestPath:    path,
+			CacheKey:             cacheKeyFull,
+			TTLSeconds:           ttlSeconds,
+			RuleName:             rule.Name,
+			SkipRetry:            rule.SkipRetryOnFailure,
+			ParamTemplate:        cloneStringAnyMap(rule.ParamOverrideTemplate),
+			KeySourceType:        strings.TrimSpace(usedSource.Type),
+			KeySourceKey:         strings.TrimSpace(usedSource.Key),
+			KeySourcePath:        strings.TrimSpace(usedSource.Path),
+			KeyHint:              buildChannelAffinityKeyHint(affinityValue),
+			KeyFingerprint:       affinityFingerprint(affinityValue),
+			UsingGroup:           usingGroup,
+			ModelName:            modelName,
+			RequestPath:          path,
+			InjectAffinityUserId: rule.InjectAffinityUserId,
+			AffinityUserIdHash:   affinityUserIdHash,
 		})
 
 		cache := getChannelAffinityCache()
