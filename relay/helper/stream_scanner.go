@@ -111,7 +111,7 @@ func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon
 	scanner.Split(bufio.ScanLines)
 	SetEventStreamHeaders(c)
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(c.Request.Context())
 	defer cancel()
 
 	ctx = context.WithValue(ctx, "stop_chan", stopChan)
@@ -171,9 +171,6 @@ func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon
 					return
 				case <-stopChan:
 					return
-				case <-c.Request.Context().Done():
-					// 监听客户端断开连接
-					return
 				case <-pingTimeout.C:
 					logger.LogError(c, "ping goroutine max duration reached")
 					return
@@ -228,9 +225,9 @@ func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon
 			case <-stopChan:
 				return
 			case <-ctx.Done():
-				return
-			case <-c.Request.Context().Done():
-				info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonClientGone, c.Request.Context().Err())
+				if err := c.Request.Context().Err(); err != nil {
+					info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonClientGone, err)
+				}
 				return
 			default:
 			}
@@ -287,8 +284,10 @@ func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon
 		info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonTimeout, nil)
 	case <-stopChan:
 		// EndReason already set by the goroutine that triggered stopChan
-	case <-c.Request.Context().Done():
-		info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonClientGone, c.Request.Context().Err())
+	case <-ctx.Done():
+		if err := c.Request.Context().Err(); err != nil {
+			info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonClientGone, err)
+		}
 	}
 
 	if info.StreamStatus.IsNormalEnd() && !info.StreamStatus.HasErrors() {
