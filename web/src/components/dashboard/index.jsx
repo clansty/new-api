@@ -86,6 +86,15 @@ const Dashboard = () => {
   );
 
   // ========== 数据处理 ==========
+  const loadUserData = async () => {
+    if (dashboardData.isAdminUser) {
+      const userData = await dashboardData.loadUserQuotaData();
+      if (userData && userData.length > 0) {
+        dashboardCharts.updateUserChartData(userData);
+      }
+    }
+  };
+
   const initChart = async () => {
     dashboardData.loadTokenStats();
     dashboardData.loadChannelStats();
@@ -94,6 +103,7 @@ const Dashboard = () => {
         dashboardCharts.updateChartData(data);
       }
     });
+    await loadUserData();
     await dashboardData.loadUptimeData();
   };
 
@@ -102,10 +112,12 @@ const Dashboard = () => {
     if (data && data.length > 0) {
       dashboardCharts.updateChartData(data);
     }
+    await loadUserData();
   };
 
   const handleSearchConfirm = async () => {
     await dashboardData.handleSearchConfirm(dashboardCharts.updateChartData);
+    await loadUserData();
   };
 
   // ========== 数据准备 ==========
@@ -211,6 +223,8 @@ const Dashboard = () => {
             spec_token_pie={dashboardCharts.spec_token_pie}
             spec_channel_bar={dashboardCharts.spec_channel_bar}
             spec_channel_pie={dashboardCharts.spec_channel_pie}
+            spec_user_rank={dashboardCharts.spec_user_rank}
+            spec_user_trend={dashboardCharts.spec_user_trend}
             CARD_PROPS={CARD_PROPS}
             CHART_CONFIG={CHART_CONFIG}
             FLEX_CENTER_GAP2={FLEX_CENTER_GAP2}
