@@ -152,6 +152,20 @@ func OaiResponsesToChatStreamHandler(c *gin.Context, info *relaycommon.RelayInfo
 		if sentStart {
 			return true
 		}
+		if info.RelayFormat == types.RelayFormatClaude {
+			msg := &dto.ClaudeMediaMessage{
+				Id:    responseId,
+				Model: model,
+				Usage: &dto.ClaudeUsage{InputTokens: info.GetEstimatePromptTokens()},
+			}
+			_ = helper.ClaudeData(c, dto.ClaudeResponse{
+				Type:    "message_start",
+				Message: msg,
+			})
+			info.SendResponseCount++
+			sentStart = true
+			return true
+		}
 		if !sendChatChunk(helper.GenerateStartEmptyResponse(responseId, createAt, model, nil)) {
 			return false
 		}

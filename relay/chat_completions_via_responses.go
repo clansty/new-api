@@ -19,6 +19,23 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+func isClaudeDirectResponsesChannel(channelType int) bool {
+	switch channelType {
+	case constant.ChannelTypeOpenAI,
+		constant.ChannelTypeAzure,
+		constant.ChannelTypeOpenAIMax,
+		constant.ChannelTypeOhMyGPT,
+		constant.ChannelTypeCustom,
+		constant.ChannelTypeAIProxy,
+		constant.ChannelTypeOpenRouter,
+		constant.ChannelTypeXai,
+		constant.ChannelTypeCodex:
+		return true
+	default:
+		return false
+	}
+}
+
 func applySystemPromptIfNeeded(c *gin.Context, info *relaycommon.RelayInfo, request *dto.GeneralOpenAIRequest) {
 	if info == nil || request == nil {
 		return
@@ -139,6 +156,97 @@ func chatCompletionsViaResponses(c *gin.Context, info *relaycommon.RelayInfo, ad
 	statusCodeMappingStr := c.GetString("status_code_mapping")
 
 	httpResp = resp.(*http.Response)
+	info.IsStream = info.IsStream || strings.HasPrefix(httpResp.Header.Get("Content-Type"), "text/event-stream")
+	if httpResp.StatusCode != http.StatusOK {
+		newApiErr := service.RelayErrorHandler(c.Request.Context(), httpResp, false)
+		service.ResetStatusCode(newApiErr, statusCodeMappingStr)
+		return nil, newApiErr
+	}
+
+	if info.IsStream {
+		usage, newApiErr := openaichannel.OaiResponsesToChatStreamHandler(c, info, httpResp)
+		if newApiErr != nil {
+			service.ResetStatusCode(newApiErr, statusCodeMappingStr)
+			return nil, newApiErr
+		}
+		return usage, nil
+	}
+
+	usage, newApiErr := openaichannel.OaiResponsesToChatHandler(c, info, httpResp)
+	if newApiErr != nil {
+		service.ResetStatusCode(newApiErr, statusCodeMappingStr)
+		return nil, newApiErr
+	}
+	return usage, nil
+}
+
+func claudeViaResponses(c *gin.Context, info *relaycommon.RelayInfo, adaptor channel.Adaptor, request *dto.ClaudeRequest) (*dto.Usage, *types.NewAPIError) {
+	claudeJSON, err := common.Marshal(request)
+	if err != nil {
+		return nil, types.NewError(err, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
+	}
+
+	claudeJSON, err = relaycommon.RemoveDisabledFields(claudeJSON, info.ChannelOtherSettings, info.ChannelSetting.PassThroughBodyEnabled)
+	if err != nil {
+		return nil, types.NewError(err, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
+	}
+
+	if len(info.ParamOverride) > 0 {
+		claudeJSON, err = relaycommon.ApplyParamOverrideWithRelayInfo(claudeJSON, info)
+		if err != nil {
+			return nil, newAPIErrorFromParamOverride(err)
+		}
+	}
+
+	var overriddenClaudeReq dto.ClaudeRequest
+	if err := common.Unmarshal(claudeJSON, &overriddenClaudeReq); err != nil {
+		return nil, types.NewError(err, types.ErrorCodeChannelParamOverrideInvalid, types.ErrOptionWithSkipRetry())
+	}
+
+	responsesReq, err := service.ClaudeRequestToResponsesRequest(&overriddenClaudeReq)
+	if err != nil {
+		return nil, types.NewErrorWithStatusCode(err, types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
+	}
+	info.AppendRequestConversion(types.RelayFormatOpenAIResponses)
+
+	savedRelayMode := info.RelayMode
+	savedRequestURLPath := info.RequestURLPath
+	defer func() {
+		info.RelayMode = savedRelayMode
+		info.RequestURLPath = savedRequestURLPath
+	}()
+
+	info.RelayMode = relayconstant.RelayModeResponses
+	info.RequestURLPath = "/v1/responses"
+
+	convertedRequest, err := adaptor.ConvertOpenAIResponsesRequest(c, info, *responsesReq)
+	if err != nil {
+		return nil, types.NewError(err, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
+	}
+	relaycommon.AppendRequestConversionFromRequest(info, convertedRequest)
+
+	jsonData, err := common.Marshal(convertedRequest)
+	if err != nil {
+		return nil, types.NewError(err, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
+	}
+
+	jsonData, err = relaycommon.RemoveDisabledFields(jsonData, info.ChannelOtherSettings, info.ChannelSetting.PassThroughBodyEnabled)
+	if err != nil {
+		return nil, types.NewError(err, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
+	}
+
+	var requestBody io.Reader = bytes.NewBuffer(jsonData)
+
+	resp, err := adaptor.DoRequest(c, info, requestBody)
+	if err != nil {
+		return nil, types.NewOpenAIError(err, types.ErrorCodeDoRequestFailed, http.StatusInternalServerError)
+	}
+	if resp == nil {
+		return nil, types.NewOpenAIError(nil, types.ErrorCodeBadResponse, http.StatusInternalServerError)
+	}
+
+	statusCodeMappingStr := c.GetString("status_code_mapping")
+	httpResp := resp.(*http.Response)
 	info.IsStream = info.IsStream || strings.HasPrefix(httpResp.Header.Get("Content-Type"), "text/event-stream")
 	if httpResp.StatusCode != http.StatusOK {
 		newApiErr := service.RelayErrorHandler(c.Request.Context(), httpResp, false)
