@@ -36,7 +36,9 @@ export const useRedemptionsData = () => {
   const [loading, setLoading] = useState(true);
   const [searching, setSearching] = useState(false);
   const [activePage, setActivePage] = useState(1);
-  const [pageSize, setPageSize] = useState(ITEMS_PER_PAGE);
+  const [pageSize, setPageSize] = useState(
+    () => parseInt(localStorage.getItem('page-size')) || ITEMS_PER_PAGE,
+  );
   const [tokenCount, setTokenCount] = useState(0);
   const [selectedKeys, setSelectedKeys] = useState([]);
 
@@ -184,6 +186,7 @@ export const useRedemptionsData = () => {
 
   // Handle page size change
   const handlePageSizeChange = (size) => {
+    localStorage.setItem('page-size', size + '');
     setPageSize(size);
     setActivePage(1);
     const { searchKeyword } = getFormValues();

@@ -63,7 +63,9 @@ export const useDashboardData = (userState, userDispatch, statusState) => {
 
   // ========== 令牌数据状态 ==========
   const [tokenStatsData, setTokenStatsData] = useState([]);
-  const [showAllTokens, setShowAllTokens] = useState(false);
+  const [showAllTokens, setShowAllTokens] = useState(
+    () => localStorage.getItem('dashboard_show_all_tokens') === 'true',
+  );
 
   // ========== 渠道数据状态 ==========
   const [channelStatsData, setChannelStatsData] = useState([]);
@@ -153,6 +155,7 @@ export const useDashboardData = (userState, userDispatch, statusState) => {
     }
     if (name === 'show_all_tokens') {
       setShowAllTokens(value);
+      localStorage.setItem('dashboard_show_all_tokens', value.toString());
       return;
     }
     setInputs((inputs) => ({ ...inputs, [name]: value }));

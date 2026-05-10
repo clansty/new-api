@@ -31,7 +31,9 @@ export const useModelsData = () => {
   const [models, setModels] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activePage, setActivePage] = useState(1);
-  const [pageSize, setPageSize] = useState(ITEMS_PER_PAGE);
+  const [pageSize, setPageSize] = useState(
+    () => parseInt(localStorage.getItem('page-size')) || ITEMS_PER_PAGE,
+  );
   const [searching, setSearching] = useState(false);
   const [modelCount, setModelCount] = useState(0);
 
@@ -340,6 +342,7 @@ export const useModelsData = () => {
 
   // Handle page size change
   const handlePageSizeChange = async (size) => {
+    localStorage.setItem('page-size', size + '');
     setPageSize(size);
     setActivePage(1);
     await loadModels(1, size, activeVendorKey);

@@ -20,6 +20,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { API, showError, showSuccess } from '../../helpers';
+import { ITEMS_PER_PAGE } from '../../constants';
 import { useTableCompactMode } from '../common/useTableCompactMode';
 
 export const useSubscriptionsData = () => {
@@ -32,7 +33,9 @@ export const useSubscriptionsData = () => {
 
   // Pagination (client-side for now)
   const [activePage, setActivePage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const [pageSize, setPageSize] = useState(
+    () => parseInt(localStorage.getItem('page-size')) || ITEMS_PER_PAGE,
+  );
 
   // Drawer states
   const [showEdit, setShowEdit] = useState(false);
@@ -71,6 +74,7 @@ export const useSubscriptionsData = () => {
   };
 
   const handlePageSizeChange = (size) => {
+    localStorage.setItem('page-size', size + '');
     setPageSize(size);
     setActivePage(1);
   };

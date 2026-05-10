@@ -45,7 +45,9 @@ export const useTokensData = (openFluentNotification, openCCSwitchModal) => {
   const [groupRatios, setGroupRatios] = useState({});
   const [activePage, setActivePage] = useState(1);
   const [tokenCount, setTokenCount] = useState(0);
-  const [pageSize, setPageSize] = useState(ITEMS_PER_PAGE);
+  const [pageSize, setPageSize] = useState(
+    () => parseInt(localStorage.getItem('page-size')) || ITEMS_PER_PAGE,
+  );
   const [searching, setSearching] = useState(false);
   const [searchMode, setSearchMode] = useState(false); // 是否处于搜索结果视图
 
@@ -344,6 +346,7 @@ export const useTokensData = (openFluentNotification, openCCSwitchModal) => {
   };
 
   const handlePageSizeChange = async (size) => {
+    localStorage.setItem('page-size', size + '');
     setPageSize(size);
     if (searchMode) {
       await searchTokens(1, size);
