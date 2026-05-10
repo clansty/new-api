@@ -1,6 +1,7 @@
 package service
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
@@ -155,6 +156,54 @@ func TestStreamResponseOpenAI2ClaudeEmitsBlankSignatureBeforeToolUse(t *testing.
 	require.Equal(t, "tool_use", responses[2].ContentBlock.Type)
 }
 
+func TestStreamResponseOpenAI2ClaudeClosesToolBlockWithoutUsage(t *testing.T) {
+	info := testRelayInfo()
+	info.RelayFormat = types.RelayFormatClaude
+	info.SendResponseCount = 1
+	args := `{"filePath":"/tmp/1.txt"}`
+
+	tool := &dto.ChatCompletionsStreamResponse{
+		Id:    "chatcmpl_123",
+		Model: "gpt-5.5",
+		Choices: []dto.ChatCompletionsStreamResponseChoice{
+			{
+				Index: 0,
+				Delta: dto.ChatCompletionsStreamResponseChoiceDelta{
+					ToolCalls: []dto.ToolCallResponse{
+						{
+							Index: common.GetPointer[int](0),
+							ID:    "call_123",
+							Type:  "function",
+							Function: dto.FunctionResponse{
+								Name:      "read",
+								Arguments: args,
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+	responses := StreamResponseOpenAI2Claude(tool, info)
+	require.NotEmpty(t, responses)
+	require.Equal(t, "content_block_start", responses[1].Type)
+	require.Equal(t, "tool_use", responses[1].ContentBlock.Type)
+
+	info.SendResponseCount++
+	finishReason := "tool_calls"
+	stop := &dto.ChatCompletionsStreamResponse{
+		Id:    "chatcmpl_123",
+		Model: "gpt-5.5",
+		Choices: []dto.ChatCompletionsStreamResponseChoice{
+			{FinishReason: &finishReason},
+		},
+	}
+	responses = StreamResponseOpenAI2Claude(stop, info)
+	require.NotEmpty(t, responses)
+	require.Equal(t, "content_block_stop", responses[0].Type)
+	require.Equal(t, "message_stop", responses[len(responses)-1].Type)
+}
+
 func TestClaudeToOpenAIRequestPreservesThinkingForToolUse(t *testing.T) {
 	thinking := "I need to inspect the file before answering."
 	signature := "EqQBCgIYAhIM1xYvopaqueSignature"
@@ -270,6 +319,96 @@ func TestClaudeToOpenAIRequestPreservesThinkingWithNilChannelMeta(t *testing.T) 
 	require.NoError(t, err)
 	require.Len(t, openAIRequest.Messages, 1)
 	require.Equal(t, thinking, openAIRequest.Messages[0].GetReasoningContent())
+}
+
+func TestClaudeRequestToResponsesRequestMapsReasoningAndMessages(t *testing.T) {
+	thinking := "已有推理不应回放到 Responses input"
+	budgetTokens := 8192
+	maxTokens := uint(8)
+	stream := true
+	outputFormat := json.RawMessage(`{"type":"json_object"}`)
+	metadata := json.RawMessage(`{"user_id":"user_123"}`)
+	claudeRequest := dto.ClaudeRequest{
+		Model:         "gpt-5",
+		System:        []dto.ClaudeMediaMessage{{Type: "text", Text: common.GetPointer("系统提示")}},
+		MaxTokens:     &maxTokens,
+		StopSequences: []string{"END"},
+		Stream:        &stream,
+		OutputFormat:  outputFormat,
+		Metadata:      metadata,
+		Thinking: &dto.Thinking{
+			Type:         "enabled",
+			BudgetTokens: &budgetTokens,
+		},
+		Messages: []dto.ClaudeMessage{
+			{Role: "user", Content: []dto.ClaudeMediaMessage{{Type: "text", Text: common.GetPointer("你好")}}},
+			{Role: "assistant", Content: []dto.ClaudeMediaMessage{
+				{Type: "thinking", Thinking: &thinking},
+				{Type: "text", Text: common.GetPointer("我需要调用工具")},
+				{Type: "tool_use", Id: "call_123", Name: "lookup", Input: map[string]any{"query": "new-api"}},
+			}},
+			{Role: "user", Content: []dto.ClaudeMediaMessage{{Type: "tool_result", ToolUseId: "call_123", Content: "工具结果"}}},
+		},
+		Tools: []dto.Tool{{
+			Name:        "lookup",
+			Description: "查询",
+			InputSchema: map[string]any{"type": "object"},
+		}},
+		ToolChoice: dto.ClaudeToolChoice{Type: "tool", Name: "lookup", DisableParallelToolUse: true},
+	}
+
+	responsesRequest, err := ClaudeRequestToResponsesRequest(&claudeRequest)
+	require.NoError(t, err)
+	require.Equal(t, "gpt-5", responsesRequest.Model)
+	require.True(t, *responsesRequest.Stream)
+	require.Equal(t, uint(16), *responsesRequest.MaxOutputTokens)
+	require.NotNil(t, responsesRequest.Reasoning)
+	require.Equal(t, "medium", responsesRequest.Reasoning.Effort)
+	require.Equal(t, "detailed", responsesRequest.Reasoning.Summary)
+	require.Equal(t, "END", responsesRequest.Stop)
+	require.JSONEq(t, `"系统提示"`, string(responsesRequest.Instructions))
+	require.JSONEq(t, `"user_123"`, string(responsesRequest.User))
+	require.JSONEq(t, `{"format":{"type":"json_object"}}`, string(responsesRequest.Text))
+	require.JSONEq(t, `{"type":"function","name":"lookup"}`, string(responsesRequest.ToolChoice))
+	require.JSONEq(t, `false`, string(responsesRequest.ParallelToolCalls))
+	require.JSONEq(t, `[{"type":"function","name":"lookup","description":"查询","parameters":{"type":"object"}}]`, string(responsesRequest.Tools))
+	require.JSONEq(t, `[
+		{"role":"user","content":[{"type":"input_text","text":"你好"}]},
+		{"role":"assistant","content":[{"type":"output_text","text":"我需要调用工具"}]},
+		{"type":"function_call","id":"fc_call_123","call_id":"call_123","name":"lookup","arguments":"{\"query\":\"new-api\"}","status":"completed"},
+		{"type":"function_call_output","call_id":"call_123","output":"工具结果"}
+	]`, string(responsesRequest.Input))
+}
+
+func TestClaudeRequestToResponsesRequestMapsMaxEffortToXHigh(t *testing.T) {
+	claudeRequest := dto.ClaudeRequest{
+		Model:        "gpt-5",
+		OutputConfig: json.RawMessage(`{"effort":"max"}`),
+		Messages:     []dto.ClaudeMessage{{Role: "user", Content: "hi"}},
+	}
+
+	responsesRequest, err := ClaudeRequestToResponsesRequest(&claudeRequest)
+	require.NoError(t, err)
+	require.NotNil(t, responsesRequest.Reasoning)
+	require.Equal(t, "xhigh", responsesRequest.Reasoning.Effort)
+}
+
+func TestClaudeRequestToResponsesRequestKeepsToolsAfterJSONRoundTrip(t *testing.T) {
+	claudeRequest := dto.ClaudeRequest{
+		Model:    "gpt-5",
+		Messages: []dto.ClaudeMessage{{Role: "user", Content: "hi"}},
+		Tools: []any{
+			map[string]any{
+				"name":         "lookup",
+				"description":  "查询",
+				"input_schema": map[string]any{"type": "object"},
+			},
+		},
+	}
+
+	responsesRequest, err := ClaudeRequestToResponsesRequest(&claudeRequest)
+	require.NoError(t, err)
+	require.JSONEq(t, `[{"type":"function","name":"lookup","description":"查询","parameters":{"type":"object"}}]`, string(responsesRequest.Tools))
 }
 
 func TestResponseOpenAI2ClaudePreservesReasoningBeforeToolUse(t *testing.T) {
