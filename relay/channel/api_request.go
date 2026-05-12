@@ -520,6 +520,7 @@ func doRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http
 			logger.LogInfo(c, "request cancelled by client: "+err.Error())
 			return nil, types.NewError(err, types.ErrorCodeDoRequestFailed,
 				types.ErrOptionWithSkipRetry(),
+				types.ErrOptionWithNoRecordErrorLog(),
 				types.ErrOptionWithHideErrMsg("client disconnected"))
 		}
 		logger.LogError(c, "do request failed: "+err.Error())
