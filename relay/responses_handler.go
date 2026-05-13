@@ -18,6 +18,7 @@ import (
 	"github.com/QuantumNous/new-api/types"
 
 	"github.com/gin-gonic/gin"
+	"github.com/tidwall/sjson"
 )
 
 func ResponsesHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *types.NewAPIError) {
@@ -99,6 +100,16 @@ func ResponsesHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *
 			jsonData, err = relaycommon.ApplyParamOverrideWithRelayInfo(jsonData, info)
 			if err != nil {
 				return newAPIErrorFromParamOverride(err)
+			}
+		}
+
+		// inject affinity user_id into metadata.user_id for upstream Anthropic affinity propagation
+		if info.ApiType == appconstant.APITypeAnthropic {
+			if affinityUserId, ok := service.GetAffinityUserIdForInjection(c); ok {
+				jsonData, err = sjson.SetBytes(jsonData, "metadata.user_id", affinityUserId)
+				if err != nil {
+					return types.NewError(fmt.Errorf("failed to inject affinity user_id: %w", err), types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
+				}
 			}
 		}
 
