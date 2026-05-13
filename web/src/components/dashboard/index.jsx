@@ -157,6 +157,18 @@ const Dashboard = () => {
       return;
     }
     dashboardData.loadTokenStats();
+    dashboardData.loadQuotaData().then((data) => {
+      if (data && data.length > 0) {
+        dashboardCharts.updateChartData(data);
+      }
+    });
+    if (dashboardData.isAdminUser) {
+      dashboardData.loadChannelStats();
+      loadUserData();
+      if (!dashboardData.showAllTokens && ['7', '8', '9', '10'].includes(dashboardData.activeChartTab)) {
+        dashboardData.setActiveChartTab('1');
+      }
+    }
   }, [dashboardData.showAllTokens]);
 
   useEffect(() => {
@@ -231,7 +243,9 @@ const Dashboard = () => {
             hasApiInfoPanel={dashboardData.hasApiInfoPanel}
             isAdminUser={dashboardData.isAdminUser}
             showAllTokens={dashboardData.showAllTokens}
-            onToggleAllTokens={(value) => dashboardData.setShowAllTokens(value)}
+            onToggleAllTokens={(value) =>
+              dashboardData.handleInputChange(value, 'show_all_tokens')
+            }
             t={dashboardData.t}
           />
 

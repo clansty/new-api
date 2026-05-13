@@ -178,7 +178,9 @@ export const useDashboardData = (userState, userDispatch, statusState) => {
       let localStartTimestamp = Date.parse(start_timestamp) / 1000;
       let localEndTimestamp = Date.parse(end_timestamp) / 1000;
 
-      if (isAdminUser) {
+      // 管理员可通过开关在『全站』和『仅我的令牌』之间切换
+      const useGlobal = isAdminUser && showAllTokens;
+      if (useGlobal) {
         url = `/api/data/?username=${username}&start_timestamp=${localStartTimestamp}&end_timestamp=${localEndTimestamp}&default_time=${dataExportDefaultTime}`;
       } else {
         url = `/api/data/self/?start_timestamp=${localStartTimestamp}&end_timestamp=${localEndTimestamp}&default_time=${dataExportDefaultTime}`;
@@ -205,7 +207,7 @@ export const useDashboardData = (userState, userDispatch, statusState) => {
     } finally {
       setLoading(false);
     }
-  }, [inputs, dataExportDefaultTime, isAdminUser, now]);
+  }, [inputs, dataExportDefaultTime, isAdminUser, showAllTokens, now]);
 
   const loadUptimeData = useCallback(async () => {
     setUptimeLoading(true);
@@ -228,7 +230,7 @@ export const useDashboardData = (userState, userDispatch, statusState) => {
   }, [activeUptimeTab]);
 
   const loadUserQuotaData = useCallback(async () => {
-    if (!isAdminUser) return [];
+    if (!isAdminUser || !showAllTokens) return [];
     try {
       const { start_timestamp, end_timestamp } = inputs;
       const localStartTimestamp = Date.parse(start_timestamp) / 1000;
@@ -246,7 +248,7 @@ export const useDashboardData = (userState, userDispatch, statusState) => {
       console.error(err);
       return [];
     }
-  }, [inputs, isAdminUser]);
+  }, [inputs, isAdminUser, showAllTokens]);
 
   const getUserData = useCallback(async () => {
     let res = await API.get(`/api/user/self`);
@@ -280,7 +282,10 @@ export const useDashboardData = (userState, userDispatch, statusState) => {
   }, [inputs, showAllTokens]);
 
   const loadChannelStats = useCallback(async () => {
-    if (!isAdminUser) return [];
+    if (!isAdminUser || !showAllTokens) {
+      setChannelStatsData([]);
+      return [];
+    }
     try {
       const { start_timestamp, end_timestamp } = inputs;
       let localStartTimestamp = Date.parse(start_timestamp) / 1000;
@@ -299,7 +304,7 @@ export const useDashboardData = (userState, userDispatch, statusState) => {
     } catch (err) {
       return [];
     }
-  }, [inputs, isAdminUser]);
+  }, [inputs, isAdminUser, showAllTokens]);
 
   const refresh = useCallback(async () => {
     loadTokenStats();

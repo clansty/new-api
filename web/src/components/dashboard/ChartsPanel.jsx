@@ -61,7 +61,7 @@ const ChartsPanel = ({
                   size='small'
                 />
                 <Typography.Text size='small' type='tertiary'>
-                  {showAllTokens ? t('所有令牌') : t('仅我的令牌')}
+                  {t('所有令牌')}
                 </Typography.Text>
               </div>
             )}
@@ -77,16 +77,16 @@ const ChartsPanel = ({
             <TabPane tab={<span>{t('调用次数排行')}</span>} itemKey='4' />
             <TabPane tab={<span>{t('令牌消耗分布')}</span>} itemKey='5' />
             <TabPane tab={<span>{t('令牌消耗占比')}</span>} itemKey='6' />
-            {isAdminUser && (
+            {isAdminUser && showAllTokens && (
               <TabPane tab={<span>{t('渠道消耗分布')}</span>} itemKey='7' />
             )}
-            {isAdminUser && (
+            {isAdminUser && showAllTokens && (
               <TabPane tab={<span>{t('渠道消耗占比')}</span>} itemKey='8' />
             )}
-            {isAdminUser && (
+            {isAdminUser && showAllTokens && (
               <TabPane tab={<span>{t('用户消耗排行')}</span>} itemKey='9' />
             )}
-            {isAdminUser && (
+            {isAdminUser && showAllTokens && (
               <TabPane tab={<span>{t('用户消耗趋势')}</span>} itemKey='10' />
             )}
           </Tabs>
@@ -113,16 +113,16 @@ const ChartsPanel = ({
         {activeChartTab === '6' && (
           <VChart spec={spec_token_pie} option={CHART_CONFIG} />
         )}
-        {activeChartTab === '7' && isAdminUser && (
+        {activeChartTab === '7' && isAdminUser && showAllTokens && (
           <VChart spec={spec_channel_bar} option={CHART_CONFIG} />
         )}
-        {activeChartTab === '8' && isAdminUser && (
+        {activeChartTab === '8' && isAdminUser && showAllTokens && (
           <VChart spec={spec_channel_pie} option={CHART_CONFIG} />
         )}
-        {activeChartTab === '9' && isAdminUser && (
+        {activeChartTab === '9' && isAdminUser && showAllTokens && (
           <VChart spec={spec_user_rank} option={CHART_CONFIG} />
         )}
-        {activeChartTab === '10' && isAdminUser && (
+        {activeChartTab === '10' && isAdminUser && showAllTokens && (
           <VChart spec={spec_user_trend} option={CHART_CONFIG} />
         )}
       </div>
