@@ -77,16 +77,16 @@ const ChartsPanel = ({
             <TabPane tab={<span>{t('调用次数排行')}</span>} itemKey='4' />
             <TabPane tab={<span>{t('令牌消耗分布')}</span>} itemKey='5' />
             <TabPane tab={<span>{t('令牌消耗占比')}</span>} itemKey='6' />
-            {isAdminUser && showAllTokens && (
+            {isAdminUser && (
               <TabPane tab={<span>{t('渠道消耗分布')}</span>} itemKey='7' />
             )}
-            {isAdminUser && showAllTokens && (
+            {isAdminUser && (
               <TabPane tab={<span>{t('渠道消耗占比')}</span>} itemKey='8' />
             )}
-            {isAdminUser && showAllTokens && (
+            {isAdminUser && (
               <TabPane tab={<span>{t('用户消耗排行')}</span>} itemKey='9' />
             )}
-            {isAdminUser && showAllTokens && (
+            {isAdminUser && (
               <TabPane tab={<span>{t('用户消耗趋势')}</span>} itemKey='10' />
             )}
           </Tabs>
@@ -113,16 +113,16 @@ const ChartsPanel = ({
         {activeChartTab === '6' && (
           <VChart spec={spec_token_pie} option={CHART_CONFIG} />
         )}
-        {activeChartTab === '7' && isAdminUser && showAllTokens && (
+        {activeChartTab === '7' && isAdminUser && (
           <VChart spec={spec_channel_bar} option={CHART_CONFIG} />
         )}
-        {activeChartTab === '8' && isAdminUser && showAllTokens && (
+        {activeChartTab === '8' && isAdminUser && (
           <VChart spec={spec_channel_pie} option={CHART_CONFIG} />
         )}
-        {activeChartTab === '9' && isAdminUser && showAllTokens && (
+        {activeChartTab === '9' && isAdminUser && (
           <VChart spec={spec_user_rank} option={CHART_CONFIG} />
         )}
-        {activeChartTab === '10' && isAdminUser && showAllTokens && (
+        {activeChartTab === '10' && isAdminUser && (
           <VChart spec={spec_user_trend} option={CHART_CONFIG} />
         )}
       </div>

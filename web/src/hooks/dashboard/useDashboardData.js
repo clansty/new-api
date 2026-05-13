@@ -230,7 +230,7 @@ export const useDashboardData = (userState, userDispatch, statusState) => {
   }, [activeUptimeTab]);
 
   const loadUserQuotaData = useCallback(async () => {
-    if (!isAdminUser || !showAllTokens) return [];
+    if (!isAdminUser) return [];
     try {
       const { start_timestamp, end_timestamp } = inputs;
       const localStartTimestamp = Date.parse(start_timestamp) / 1000;
@@ -248,7 +248,7 @@ export const useDashboardData = (userState, userDispatch, statusState) => {
       console.error(err);
       return [];
     }
-  }, [inputs, isAdminUser, showAllTokens]);
+  }, [inputs, isAdminUser]);
 
   const getUserData = useCallback(async () => {
     let res = await API.get(`/api/user/self`);
@@ -282,10 +282,7 @@ export const useDashboardData = (userState, userDispatch, statusState) => {
   }, [inputs, showAllTokens]);
 
   const loadChannelStats = useCallback(async () => {
-    if (!isAdminUser || !showAllTokens) {
-      setChannelStatsData([]);
-      return [];
-    }
+    if (!isAdminUser) return [];
     try {
       const { start_timestamp, end_timestamp } = inputs;
       let localStartTimestamp = Date.parse(start_timestamp) / 1000;
@@ -304,7 +301,7 @@ export const useDashboardData = (userState, userDispatch, statusState) => {
     } catch (err) {
       return [];
     }
-  }, [inputs, isAdminUser, showAllTokens]);
+  }, [inputs, isAdminUser]);
 
   const refresh = useCallback(async () => {
     loadTokenStats();

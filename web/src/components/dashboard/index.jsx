@@ -162,13 +162,6 @@ const Dashboard = () => {
         dashboardCharts.updateChartData(data);
       }
     });
-    if (dashboardData.isAdminUser) {
-      dashboardData.loadChannelStats();
-      loadUserData();
-      if (!dashboardData.showAllTokens && ['7', '8', '9', '10'].includes(dashboardData.activeChartTab)) {
-        dashboardData.setActiveChartTab('1');
-      }
-    }
   }, [dashboardData.showAllTokens]);
 
   useEffect(() => {
