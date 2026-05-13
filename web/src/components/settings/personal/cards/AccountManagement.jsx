@@ -53,6 +53,7 @@ import {
   getOAuthProviderIcon,
 } from '../../../../helpers';
 import TwoFASetting from '../components/TwoFASetting';
+import OIDCIcon from '@/components/common/logo/OIDCIcon';
 
 const AccountManagement = ({
   t,
@@ -363,7 +364,7 @@ const AccountManagement = ({
                 <div className='flex items-center justify-between gap-3'>
                   <div className='flex items-center flex-1 min-w-0'>
                     <div className='w-10 h-10 rounded-full bg-slate-100 dark:bg-slate-700 flex items-center justify-center mr-3 flex-shrink-0'>
-                      <IconShield
+                      <OIDCIcon
                         size='default'
                         className='text-slate-600 dark:text-slate-300'
                       />
