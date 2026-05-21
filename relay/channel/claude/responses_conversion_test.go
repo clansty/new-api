@@ -1025,3 +1025,513 @@ func TestCustomToolGrammarDescriptionTruncated(t *testing.T) {
 		t.Errorf("description should contain truncation marker, got %q", tool.Description[:200])
 	}
 }
+
+func TestDeveloperRolePrefixLiftedToSystem(t *testing.T) {
+	inputJSON := `[
+		{"role":"developer","content":"you are a translator"},
+		{"role":"system","content":"target language: Japanese"},
+		{"role":"user","content":"Hello"}
+	]`
+	req := &dto.OpenAIResponsesRequest{Model: "claude-opus-4-7", Input: []byte(inputJSON)}
+	claude, _, err := ConvertResponsesRequestToClaude(req)
+	if err != nil {
+		t.Fatalf("convert: %v", err)
+	}
+
+	sysBlocks, ok := claude.System.([]dto.ClaudeMediaMessage)
+	if !ok {
+		t.Fatalf("System type=%T want []ClaudeMediaMessage", claude.System)
+	}
+	if len(sysBlocks) != 2 {
+		t.Fatalf("system blocks=%d want 2", len(sysBlocks))
+	}
+	if sysBlocks[0].Text == nil || *sysBlocks[0].Text != "you are a translator" {
+		t.Errorf("system[0]=%v want 'you are a translator'", sysBlocks[0].Text)
+	}
+	if sysBlocks[1].Text == nil || *sysBlocks[1].Text != "target language: Japanese" {
+		t.Errorf("system[1]=%v want 'target language: Japanese'", sysBlocks[1].Text)
+	}
+
+	if len(claude.Messages) != 1 {
+		t.Fatalf("messages=%d want 1 (only user)", len(claude.Messages))
+	}
+	if claude.Messages[0].Role != "user" {
+		t.Errorf("messages[0].role=%q want user", claude.Messages[0].Role)
+	}
+	userBlocks, _ := claude.Messages[0].ParseContent()
+	if len(userBlocks) != 1 || userBlocks[0].Text == nil || *userBlocks[0].Text != "Hello" {
+		t.Errorf("user content wrong: %+v", userBlocks)
+	}
+}
+
+func TestDeveloperRolePrefixMergedWithInstructions(t *testing.T) {
+	inputJSON := `[
+		{"role":"developer","content":"extra rule"},
+		{"role":"user","content":"Hi"}
+	]`
+	req := &dto.OpenAIResponsesRequest{
+		Model:        "claude-opus-4-7",
+		Input:        []byte(inputJSON),
+		Instructions: []byte(`"base instructions"`),
+	}
+	claude, _, err := ConvertResponsesRequestToClaude(req)
+	if err != nil {
+		t.Fatalf("convert: %v", err)
+	}
+
+	sysBlocks, ok := claude.System.([]dto.ClaudeMediaMessage)
+	if !ok {
+		t.Fatalf("System type=%T want []ClaudeMediaMessage", claude.System)
+	}
+	if len(sysBlocks) != 2 {
+		t.Fatalf("system blocks=%d want 2", len(sysBlocks))
+	}
+	if *sysBlocks[0].Text != "base instructions" || *sysBlocks[1].Text != "extra rule" {
+		t.Errorf("system blocks order wrong: %q, %q", *sysBlocks[0].Text, *sysBlocks[1].Text)
+	}
+}
+
+func TestDeveloperRoleInterleavedWrappedToNextUser(t *testing.T) {
+	inputJSON := `[
+		{"role":"user","content":"Hello"},
+		{"role":"assistant","content":[{"type":"output_text","text":"Hi there"}]},
+		{"role":"developer","content":"switch to formal tone"},
+		{"role":"user","content":"How are you?"}
+	]`
+	req := &dto.OpenAIResponsesRequest{Model: "claude-opus-4-7", Input: []byte(inputJSON)}
+	claude, _, err := ConvertResponsesRequestToClaude(req)
+	if err != nil {
+		t.Fatalf("convert: %v", err)
+	}
+
+	if claude.System != nil {
+		t.Errorf("System should be nil when no prefix developer, got %v", claude.System)
+	}
+	if len(claude.Messages) != 3 {
+		t.Fatalf("messages=%d want 3 (user, assistant, user)", len(claude.Messages))
+	}
+
+	lastUser := claude.Messages[2]
+	if lastUser.Role != "user" {
+		t.Fatalf("messages[2].role=%q want user", lastUser.Role)
+	}
+	blocks, _ := lastUser.ParseContent()
+	if len(blocks) != 2 {
+		t.Fatalf("last user blocks=%d want 2 (wrapped dev + original text)", len(blocks))
+	}
+	if blocks[0].Text == nil || !strings.Contains(*blocks[0].Text, "<openai_developer_instruction>") || !strings.Contains(*blocks[0].Text, "switch to formal tone") {
+		t.Errorf("blocks[0] should wrap developer instruction, got %v", blocks[0].Text)
+	}
+	if blocks[1].Text == nil || *blocks[1].Text != "How are you?" {
+		t.Errorf("blocks[1] should be original user text, got %v", blocks[1].Text)
+	}
+}
+
+func TestDeveloperRoleTrailingAppendedToLastUser(t *testing.T) {
+	inputJSON := `[
+		{"role":"user","content":"Translate hello"},
+		{"role":"developer","content":"to French"}
+	]`
+	req := &dto.OpenAIResponsesRequest{Model: "claude-opus-4-7", Input: []byte(inputJSON)}
+	claude, _, err := ConvertResponsesRequestToClaude(req)
+	if err != nil {
+		t.Fatalf("convert: %v", err)
+	}
+
+	if len(claude.Messages) != 1 {
+		t.Fatalf("messages=%d want 1 (merged into last user)", len(claude.Messages))
+	}
+	blocks, _ := claude.Messages[0].ParseContent()
+	if len(blocks) != 2 {
+		t.Fatalf("user blocks=%d want 2 (original + wrapped dev)", len(blocks))
+	}
+	if *blocks[0].Text != "Translate hello" {
+		t.Errorf("blocks[0] wrong: %q", *blocks[0].Text)
+	}
+	if !strings.Contains(*blocks[1].Text, "<openai_developer_instruction>") || !strings.Contains(*blocks[1].Text, "to French") {
+		t.Errorf("blocks[1] should be wrapped developer, got %q", *blocks[1].Text)
+	}
+}
+
+func TestDeveloperRoleTrailingAfterAssistantBecomesNewUser(t *testing.T) {
+	inputJSON := `[
+		{"role":"user","content":"Hi"},
+		{"role":"assistant","content":[{"type":"output_text","text":"Hello"}]},
+		{"role":"developer","content":"reply more verbosely next time"}
+	]`
+	req := &dto.OpenAIResponsesRequest{Model: "claude-opus-4-7", Input: []byte(inputJSON)}
+	claude, _, err := ConvertResponsesRequestToClaude(req)
+	if err != nil {
+		t.Fatalf("convert: %v", err)
+	}
+
+	if len(claude.Messages) != 3 {
+		t.Fatalf("messages=%d want 3 (user, assistant, new user carrying dev)", len(claude.Messages))
+	}
+	if claude.Messages[2].Role != "user" {
+		t.Errorf("messages[2].role=%q want user", claude.Messages[2].Role)
+	}
+	blocks, _ := claude.Messages[2].ParseContent()
+	if len(blocks) != 1 || !strings.Contains(*blocks[0].Text, "<openai_developer_instruction>") {
+		t.Errorf("trailing dev should be wrapped in new user message, got %+v", blocks)
+	}
+}
+
+func TestDeveloperRoleOnlySystemNoUserRejected(t *testing.T) {
+	inputJSON := `[
+		{"role":"developer","content":"just rules"},
+		{"role":"system","content":"more rules"}
+	]`
+	req := &dto.OpenAIResponsesRequest{Model: "claude-opus-4-7", Input: []byte(inputJSON)}
+	_, _, err := ConvertResponsesRequestToClaude(req)
+	if err == nil || !strings.Contains(err.Error(), "system/developer") {
+		t.Errorf("expected rejection for system-only input, got %v", err)
+	}
+}
+
+func TestDeveloperRoleWithImageContentRejected(t *testing.T) {
+	inputJSON := `[
+		{"role":"developer","content":[{"type":"input_image","image_url":"https://example.com/a.png"}]},
+		{"role":"user","content":"hi"}
+	]`
+	req := &dto.OpenAIResponsesRequest{Model: "claude-opus-4-7", Input: []byte(inputJSON)}
+	_, _, err := ConvertResponsesRequestToClaude(req)
+	if err == nil || !strings.Contains(err.Error(), "text only") {
+		t.Errorf("expected rejection for non-text content in system/developer, got %v", err)
+	}
+}
+
+// Oracle round-2 gap: user → developer → assistant should put wrapper BEFORE assistant,
+// not after it (which the original trailing-fallback bug would have done).
+func TestDeveloperRoleBetweenUserAndAssistant(t *testing.T) {
+	inputJSON := `[
+		{"role":"user","content":"Hello"},
+		{"role":"developer","content":"be formal"},
+		{"role":"assistant","content":[{"type":"output_text","text":"Greetings"}]}
+	]`
+	req := &dto.OpenAIResponsesRequest{Model: "claude-opus-4-7", Input: []byte(inputJSON)}
+	claude, _, err := ConvertResponsesRequestToClaude(req)
+	if err != nil {
+		t.Fatalf("convert: %v", err)
+	}
+	if len(claude.Messages) != 2 {
+		t.Fatalf("messages=%d want 2 (user-with-wrapper, assistant)", len(claude.Messages))
+	}
+	if claude.Messages[0].Role != "user" || claude.Messages[1].Role != "assistant" {
+		t.Fatalf("roles wrong: %s, %s", claude.Messages[0].Role, claude.Messages[1].Role)
+	}
+	userBlocks, _ := claude.Messages[0].ParseContent()
+	if len(userBlocks) != 2 {
+		t.Fatalf("user blocks=%d want 2 (Hello + wrapped dev)", len(userBlocks))
+	}
+	if *userBlocks[0].Text != "Hello" {
+		t.Errorf("user[0]=%q want Hello", *userBlocks[0].Text)
+	}
+	if !strings.Contains(*userBlocks[1].Text, "<openai_developer_instruction>") || !strings.Contains(*userBlocks[1].Text, "be formal") {
+		t.Errorf("user[1] should be wrapped developer, got %q", *userBlocks[1].Text)
+	}
+}
+
+// Oracle round-2 gap: developer between two assistants must split them, not merge.
+func TestDeveloperRoleSplitsTwoAssistants(t *testing.T) {
+	inputJSON := `[
+		{"role":"user","content":"Q1"},
+		{"role":"assistant","content":[{"type":"output_text","text":"A1"}]},
+		{"role":"developer","content":"switch tone"},
+		{"role":"assistant","content":[{"type":"output_text","text":"A2"}]}
+	]`
+	req := &dto.OpenAIResponsesRequest{Model: "claude-opus-4-7", Input: []byte(inputJSON)}
+	claude, _, err := ConvertResponsesRequestToClaude(req)
+	if err != nil {
+		t.Fatalf("convert: %v", err)
+	}
+	if len(claude.Messages) != 4 {
+		t.Fatalf("messages=%d want 4 (user, A1, user-carrier, A2)", len(claude.Messages))
+	}
+	roles := []string{claude.Messages[0].Role, claude.Messages[1].Role, claude.Messages[2].Role, claude.Messages[3].Role}
+	wantRoles := []string{"user", "assistant", "user", "assistant"}
+	for i, r := range roles {
+		if r != wantRoles[i] {
+			t.Errorf("messages[%d].role=%q want %q", i, r, wantRoles[i])
+		}
+	}
+	a1Blocks, _ := claude.Messages[1].ParseContent()
+	if len(a1Blocks) != 1 || *a1Blocks[0].Text != "A1" {
+		t.Errorf("A1 should remain alone, got %+v", a1Blocks)
+	}
+	carrierBlocks, _ := claude.Messages[2].ParseContent()
+	if len(carrierBlocks) != 1 || !strings.Contains(*carrierBlocks[0].Text, "switch tone") {
+		t.Errorf("user-carrier should hold wrapped developer, got %+v", carrierBlocks)
+	}
+	a2Blocks, _ := claude.Messages[3].ParseContent()
+	if len(a2Blocks) != 1 || *a2Blocks[0].Text != "A2" {
+		t.Errorf("A2 should remain alone, got %+v", a2Blocks)
+	}
+}
+
+// Oracle round-2 gap: developer between assistant_text and reasoning shouldn't trigger false
+// assertReasoningOrder failure that would happen if both assistants merged.
+func TestDeveloperRoleBetweenAssistantTextAndReasoning(t *testing.T) {
+	encryptedRaw := EncodeThinkingSignature("SIG")
+	inputJSON := `[
+		{"role":"user","content":"hi"},
+		{"role":"assistant","content":[{"type":"output_text","text":"hello"}]},
+		{"role":"developer","content":"think harder"},
+		{"type":"reasoning","id":"rs_1","encrypted_content":"` + encryptedRaw + `","summary":[{"type":"summary_text","text":"reflect"}]}
+	]`
+	req := &dto.OpenAIResponsesRequest{Model: "claude-opus-4-7", Input: []byte(inputJSON)}
+	claude, _, err := ConvertResponsesRequestToClaude(req)
+	if err != nil {
+		t.Fatalf("convert: %v", err)
+	}
+	if len(claude.Messages) != 4 {
+		t.Fatalf("messages=%d want 4 (user, assistant-text, user-carrier, assistant-reasoning)", len(claude.Messages))
+	}
+	if claude.Messages[3].Role != "assistant" {
+		t.Errorf("messages[3].role=%q want assistant", claude.Messages[3].Role)
+	}
+	last, _ := claude.Messages[3].ParseContent()
+	if len(last) != 1 || last[0].Type != "thinking" {
+		t.Errorf("last assistant should be thinking-only, got %+v", last)
+	}
+}
+
+// Oracle round-2 gap: developer before a function_call_output (user with leading tool_result)
+// must keep tool_result at the message head; wrapped text must end up after tool_result.
+func TestDeveloperRoleBeforeFunctionCallOutput(t *testing.T) {
+	inputJSON := `[
+		{"role":"user","content":"call it"},
+		{"type":"function_call","call_id":"call_1","name":"do","arguments":"{}"},
+		{"role":"developer","content":"about to receive result"},
+		{"type":"function_call_output","call_id":"call_1","output":"ok"}
+	]`
+	req := &dto.OpenAIResponsesRequest{Model: "claude-opus-4-7", Input: []byte(inputJSON)}
+	claude, _, err := ConvertResponsesRequestToClaude(req)
+	if err != nil {
+		t.Fatalf("convert: %v", err)
+	}
+	if len(claude.Messages) != 3 {
+		t.Fatalf("messages=%d want 3 (user, assistant tool_use, user with tool_result+wrapped)", len(claude.Messages))
+	}
+	if claude.Messages[2].Role != "user" {
+		t.Fatalf("messages[2].role=%q want user", claude.Messages[2].Role)
+	}
+	blocks, _ := claude.Messages[2].ParseContent()
+	if len(blocks) != 2 {
+		t.Fatalf("messages[2] blocks=%d want 2 (tool_result + wrapped)", len(blocks))
+	}
+	if blocks[0].Type != "tool_result" {
+		t.Errorf("blocks[0].type=%q want tool_result (must be at head)", blocks[0].Type)
+	}
+	if blocks[1].Type != "text" || blocks[1].Text == nil || !strings.Contains(*blocks[1].Text, "about to receive result") {
+		t.Errorf("blocks[1] should be wrapped developer text, got %+v", blocks[1])
+	}
+}
+
+// Oracle round-2 gap: two consecutive developer items in the middle should preserve order.
+func TestDeveloperRoleTwoConsecutiveInterleavedPreservesOrder(t *testing.T) {
+	inputJSON := `[
+		{"role":"user","content":"first"},
+		{"role":"developer","content":"rule A"},
+		{"role":"developer","content":"rule B"},
+		{"role":"user","content":"second"}
+	]`
+	req := &dto.OpenAIResponsesRequest{Model: "claude-opus-4-7", Input: []byte(inputJSON)}
+	claude, _, err := ConvertResponsesRequestToClaude(req)
+	if err != nil {
+		t.Fatalf("convert: %v", err)
+	}
+	if len(claude.Messages) != 1 {
+		t.Fatalf("messages=%d want 1 (both users merged with wrappers between)", len(claude.Messages))
+	}
+	blocks, _ := claude.Messages[0].ParseContent()
+	if len(blocks) != 4 {
+		t.Fatalf("blocks=%d want 4 (first, ruleA, ruleB, second)", len(blocks))
+	}
+	if *blocks[0].Text != "first" {
+		t.Errorf("blocks[0]=%q want first", *blocks[0].Text)
+	}
+	if !strings.Contains(*blocks[1].Text, "rule A") {
+		t.Errorf("blocks[1] should contain rule A, got %q", *blocks[1].Text)
+	}
+	if !strings.Contains(*blocks[2].Text, "rule B") {
+		t.Errorf("blocks[2] should contain rule B, got %q", *blocks[2].Text)
+	}
+	if *blocks[3].Text != "second" {
+		t.Errorf("blocks[3]=%q want second", *blocks[3].Text)
+	}
+}
+
+// Oracle round-2 gap: instructions provided as an input_text array, combined with prefix dev.
+func TestDeveloperRolePrefixWithInstructionsArray(t *testing.T) {
+	instructionsRaw, _ := common.Marshal([]map[string]any{
+		{"type": "input_text", "text": "base from instructions"},
+	})
+	inputJSON := `[
+		{"role":"developer","content":"extra from input"},
+		{"role":"user","content":"hi"}
+	]`
+	req := &dto.OpenAIResponsesRequest{
+		Model:        "claude-opus-4-7",
+		Input:        []byte(inputJSON),
+		Instructions: instructionsRaw,
+	}
+	claude, _, err := ConvertResponsesRequestToClaude(req)
+	if err != nil {
+		t.Fatalf("convert: %v", err)
+	}
+	sysBlocks, ok := claude.System.([]dto.ClaudeMediaMessage)
+	if !ok {
+		t.Fatalf("System type=%T want []ClaudeMediaMessage", claude.System)
+	}
+	if len(sysBlocks) != 2 {
+		t.Fatalf("system blocks=%d want 2", len(sysBlocks))
+	}
+	if *sysBlocks[0].Text != "base from instructions" || *sysBlocks[1].Text != "extra from input" {
+		t.Errorf("system blocks wrong order: %q, %q", *sysBlocks[0].Text, *sysBlocks[1].Text)
+	}
+}
+
+// Oracle round-3 gap: parallel tool_use with developer before the outputs.
+// Two function_call_output items must keep tool_result blocks contiguous at head,
+// wrapped developer text deferred to after the last tool_result.
+func TestDeveloperRoleBeforeParallelFunctionCallOutputs(t *testing.T) {
+	inputJSON := `[
+		{"role":"user","content":"call both"},
+		{"type":"function_call","call_id":"c1","name":"a","arguments":"{}"},
+		{"type":"function_call","call_id":"c2","name":"b","arguments":"{}"},
+		{"role":"developer","content":"about to receive results"},
+		{"type":"function_call_output","call_id":"c1","output":"r1"},
+		{"type":"function_call_output","call_id":"c2","output":"r2"}
+	]`
+	req := &dto.OpenAIResponsesRequest{Model: "claude-opus-4-7", Input: []byte(inputJSON)}
+	claude, _, err := ConvertResponsesRequestToClaude(req)
+	if err != nil {
+		t.Fatalf("convert: %v", err)
+	}
+	if len(claude.Messages) != 3 {
+		t.Fatalf("messages=%d want 3 (user, assistant(2 tool_use), user(2 tool_result + wrapped))", len(claude.Messages))
+	}
+	if claude.Messages[2].Role != "user" {
+		t.Fatalf("messages[2].role=%q want user", claude.Messages[2].Role)
+	}
+	blocks, _ := claude.Messages[2].ParseContent()
+	if len(blocks) != 3 {
+		t.Fatalf("messages[2] blocks=%d want 3 ([tool_result, tool_result, wrapped]), got %+v", len(blocks), blocks)
+	}
+	if blocks[0].Type != "tool_result" || blocks[1].Type != "tool_result" {
+		t.Errorf("first two blocks must be tool_result, got %q, %q", blocks[0].Type, blocks[1].Type)
+	}
+	if blocks[2].Type != "text" || blocks[2].Text == nil || !strings.Contains(*blocks[2].Text, "about to receive results") {
+		t.Errorf("blocks[2] should be wrapped developer at tail, got %+v", blocks[2])
+	}
+}
+
+// Oracle round-3 gap: lock in positive behavior when developer follows the tool_result run.
+// function_call → output1 → output2 → developer → user normal
+// developer should appear after both tool_results and before the next user query.
+func TestDeveloperRoleAfterToolResultRunBeforeUser(t *testing.T) {
+	inputJSON := `[
+		{"role":"user","content":"call"},
+		{"type":"function_call","call_id":"c1","name":"a","arguments":"{}"},
+		{"type":"function_call_output","call_id":"c1","output":"r1"},
+		{"role":"developer","content":"now switch"},
+		{"role":"user","content":"next query"}
+	]`
+	req := &dto.OpenAIResponsesRequest{Model: "claude-opus-4-7", Input: []byte(inputJSON)}
+	claude, _, err := ConvertResponsesRequestToClaude(req)
+	if err != nil {
+		t.Fatalf("convert: %v", err)
+	}
+	if len(claude.Messages) != 3 {
+		t.Fatalf("messages=%d want 3 (user, assistant, user[tool_result, wrapped, next query])", len(claude.Messages))
+	}
+	blocks, _ := claude.Messages[2].ParseContent()
+	if len(blocks) != 3 {
+		t.Fatalf("user blocks=%d want 3, got %+v", len(blocks), blocks)
+	}
+	if blocks[0].Type != "tool_result" {
+		t.Errorf("blocks[0] must be tool_result, got %q", blocks[0].Type)
+	}
+	if !strings.Contains(*blocks[1].Text, "now switch") {
+		t.Errorf("blocks[1] should contain wrapped developer, got %q", *blocks[1].Text)
+	}
+	if *blocks[2].Text != "next query" {
+		t.Errorf("blocks[2] should be next query, got %q", *blocks[2].Text)
+	}
+}
+
+// Oracle round-3 gap: cannot insert developer between assistant tool_use and the matching tool_result.
+// function_call → developer → assistant text (no tool_result) → reject.
+func TestDeveloperRoleBetweenToolUseAndAssistantTextRejected(t *testing.T) {
+	inputJSON := `[
+		{"role":"user","content":"call"},
+		{"type":"function_call","call_id":"c1","name":"a","arguments":"{}"},
+		{"role":"developer","content":"sneaky"},
+		{"role":"assistant","content":[{"type":"output_text","text":"answer"}]}
+	]`
+	req := &dto.OpenAIResponsesRequest{Model: "claude-opus-4-7", Input: []byte(inputJSON)}
+	_, _, err := ConvertResponsesRequestToClaude(req)
+	if err == nil || !strings.Contains(err.Error(), "tool_use") {
+		t.Errorf("expected rejection for developer between tool_use and non-tool_result, got %v", err)
+	}
+}
+
+// Oracle round-3 gap: trailing developer right after assistant tool_use is also unrepresentable.
+func TestDeveloperRoleTrailingAfterToolUseRejected(t *testing.T) {
+	inputJSON := `[
+		{"role":"user","content":"call"},
+		{"type":"function_call","call_id":"c1","name":"a","arguments":"{}"},
+		{"role":"developer","content":"trailing dev"}
+	]`
+	req := &dto.OpenAIResponsesRequest{Model: "claude-opus-4-7", Input: []byte(inputJSON)}
+	_, _, err := ConvertResponsesRequestToClaude(req)
+	if err == nil || !strings.Contains(err.Error(), "tool_use") {
+		t.Errorf("expected rejection for trailing developer after unresolved tool_use, got %v", err)
+	}
+}
+
+// Oracle round-3 gap: developer between matched tool_use/tool_result and a later assistant_text
+// is legal: the handshake is already closed by the tool_result, so wrapped can flow into the
+// previous user(tool_result+wrapped) message.
+func TestDeveloperRoleAfterClosedHandshakeBeforeAssistantText(t *testing.T) {
+	inputJSON := `[
+		{"role":"user","content":"call"},
+		{"type":"function_call","call_id":"c1","name":"a","arguments":"{}"},
+		{"type":"function_call_output","call_id":"c1","output":"r1"},
+		{"role":"developer","content":"reflect"},
+		{"role":"assistant","content":[{"type":"output_text","text":"final"}]}
+	]`
+	req := &dto.OpenAIResponsesRequest{Model: "claude-opus-4-7", Input: []byte(inputJSON)}
+	claude, _, err := ConvertResponsesRequestToClaude(req)
+	if err != nil {
+		t.Fatalf("convert: %v", err)
+	}
+	if len(claude.Messages) != 4 {
+		t.Fatalf("messages=%d want 4 (user, assistant tool_use, user[tool_result+wrapped], assistant final)", len(claude.Messages))
+	}
+	toolUser, _ := claude.Messages[2].ParseContent()
+	if len(toolUser) != 2 || toolUser[0].Type != "tool_result" {
+		t.Fatalf("user[tool_result+wrapped] wrong: %+v", toolUser)
+	}
+	if !strings.Contains(*toolUser[1].Text, "reflect") {
+		t.Errorf("wrapped not present after tool_result, got %q", *toolUser[1].Text)
+	}
+}
+
+// Oracle round-4 gap: developer between assistant tool_use and a normal user_text (no tool_result)
+// is the same handshake violation as the assistant_text case; must also reject.
+func TestDeveloperRoleBetweenToolUseAndUserTextRejected(t *testing.T) {
+	inputJSON := `[
+		{"role":"user","content":"call"},
+		{"type":"function_call","call_id":"c1","name":"a","arguments":"{}"},
+		{"role":"developer","content":"sneak between"},
+		{"role":"user","content":"changed my mind"}
+	]`
+	req := &dto.OpenAIResponsesRequest{Model: "claude-opus-4-7", Input: []byte(inputJSON)}
+	_, _, err := ConvertResponsesRequestToClaude(req)
+	if err == nil || !strings.Contains(err.Error(), "tool_use") {
+		t.Errorf("expected rejection for developer between tool_use and normal user text, got %v", err)
+	}
+}
+

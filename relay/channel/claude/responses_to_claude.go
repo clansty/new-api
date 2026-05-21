@@ -51,13 +51,17 @@ func ConvertResponsesRequestToClaude(req *dto.OpenAIResponsesRequest) (*dto.Clau
 	if err != nil {
 		return nil, nil, err
 	}
-	claude.System = system
 
-	messages, err := convertResponsesInputToClaudeMessages(req.Input)
+	messages, systemPrefixBlocks, err := convertResponsesInputToClaudeMessages(req.Input)
 	if err != nil {
 		return nil, nil, err
 	}
 	claude.Messages = messages
+	mergedSystem, err := mergeSystem(system, systemPrefixBlocks)
+	if err != nil {
+		return nil, nil, err
+	}
+	claude.System = mergedSystem
 
 	tools, customNames, survivingNames, err := convertResponsesToolsToClaudeTools(req.Tools)
 	if err != nil {
@@ -178,53 +182,258 @@ func stringFromInputTextPart(m map[string]any) (string, bool) {
 	return "", false
 }
 
+// 把 instructions 来的 system（string 或 []ClaudeMediaMessage）与 input 开头抽出的
+// system/developer text blocks 合并。任一为空走快路径；都非空时统一规范成
+// []ClaudeMediaMessage，让 Anthropic 上游收到一份扁平 text block 数组。
+// 未知类型返回 error 而非 panic：API 网关路径上 panic 会暴露为 500，不如显式 400。
+func mergeSystem(instructions any, prefixBlocks []dto.ClaudeMediaMessage) (any, error) {
+	if len(prefixBlocks) == 0 {
+		return instructions, nil
+	}
+	if instructions == nil {
+		return prefixBlocks, nil
+	}
+	switch v := instructions.(type) {
+	case string:
+		head := []dto.ClaudeMediaMessage{{Type: "text", Text: common.GetPointer(v)}}
+		return append(head, prefixBlocks...), nil
+	case []dto.ClaudeMediaMessage:
+		return append(append([]dto.ClaudeMediaMessage{}, v...), prefixBlocks...), nil
+	}
+	return nil, fmt.Errorf("mergeSystem: unsupported instructions type %T; update buildSystemFromInstructions contract", instructions)
+}
+
 // Responses input 数组里可能混合：message / function_call / function_call_output / custom_tool_call / custom_tool_call_output / reasoning。
 // 多个相邻同 role 的 item 需要合并到同一个 Claude message 的 content blocks 里，
 // 这是 Anthropic 协议的硬要求：thinking → tool_use → text 等都属于同一 assistant turn。
-func convertResponsesInputToClaudeMessages(rawInput []byte) ([]dto.ClaudeMessage, error) {
+//
+// system/developer 在 OpenAI 协议中可穿插于对话中间表达"动态切换规则"，但 Anthropic 没有对应表达。
+// 采用三段策略（统称策略 D）：
+//   - 出现在任何对话 item 之前（开头）→ 抽到顶层 system 字段（无损）
+//   - 穿插在中间 → 用 <openai_developer_instruction> XML 标签包裹成 text block，按下面的规则插入
+//   - 末尾（后面没有对话 item）→ append 到末尾 user message，或新建 user message 承载
+//
+// 插入规则需要同时维护两个 Anthropic 硬约束：
+//  1. tool_result 块必须位于 user message 头部（不能被 text 块前置）。
+//     若 pending 出现时下一项是 user-with-leading-tool_result，wrapped 进入 deferredWrap，
+//     待 tool_result run 结束后再以独立 user message 形式 emit，依靠相邻同 role 合并产生
+//     [tool_result*, ..., wrapped] —— 这覆盖并行 tool 调用（多个 function_call_output 连续）。
+//  2. assistant 的 tool_use 块必须紧跟 user 的 tool_result（同一 handshake 内不能插任何 text）。
+//     若 pending 需要在前 assistant(含 tool_use) 后面注入 user text carrier，直接拒绝为
+//     "不可表达"，避免静默产出非法的 Anthropic 请求。
+//
+// 关键不变量：pending 必须在 **任何非-system item emit 之前** 被处理，否则会出现时序反转或
+// assistant turn 合并错误。
+//
+// 返回值 systemPrefixBlocks 是开头段抽出的 text blocks，由上层与 instructions 合并到 claude.System。
+func convertResponsesInputToClaudeMessages(rawInput []byte) ([]dto.ClaudeMessage, []dto.ClaudeMediaMessage, error) {
 	if isJSONNull(rawInput) {
-		return nil, errors.New("input is required")
+		return nil, nil, errors.New("input is required")
 	}
 	var asString string
 	if err := common.Unmarshal(rawInput, &asString); err == nil {
 		return []dto.ClaudeMessage{{
 			Role:    "user",
 			Content: asString,
-		}}, nil
+		}}, nil, nil
 	}
 
 	var items []map[string]any
 	if err := common.Unmarshal(rawInput, &items); err != nil {
-		return nil, fmt.Errorf("input must be a string or an array of items: %w", err)
+		return nil, nil, fmt.Errorf("input must be a string or an array of items: %w", err)
 	}
 
 	messages := make([]dto.ClaudeMessage, 0, len(items))
+	var systemPrefixBlocks []dto.ClaudeMediaMessage
+	var pendingSystemBlocks []dto.ClaudeMediaMessage
+	var deferredWrap []dto.ClaudeMediaMessage
+	seenNonSystem := false
+
+	emit := func(role string, blocks []dto.ClaudeMediaMessage) error {
+		if n := len(messages); n > 0 && messages[n-1].Role == role {
+			if existing, ok := messages[n-1].Content.([]dto.ClaudeMediaMessage); ok {
+				if err := assertReasoningOrder(existing, blocks); err != nil {
+					return err
+				}
+				messages[n-1].Content = append(existing, blocks...)
+				return nil
+			}
+		}
+		messages = append(messages, dto.ClaudeMessage{Role: role, Content: blocks})
+		return nil
+	}
+
+	prevIsUser := func() bool {
+		return len(messages) > 0 && messages[len(messages)-1].Role == "user"
+	}
+
+	lastAssistantHasToolUse := func() bool {
+		if len(messages) == 0 {
+			return false
+		}
+		last := messages[len(messages)-1]
+		if last.Role != "assistant" {
+			return false
+		}
+		blocks, ok := last.Content.([]dto.ClaudeMediaMessage)
+		if !ok {
+			return false
+		}
+		for _, b := range blocks {
+			if b.Type == "tool_use" {
+				return true
+			}
+		}
+		return false
+	}
+
+	appendToLastUserContent := func(blocks []dto.ClaudeMediaMessage) bool {
+		if !prevIsUser() {
+			return false
+		}
+		existing, ok := messages[len(messages)-1].Content.([]dto.ClaudeMediaMessage)
+		if !ok {
+			return false
+		}
+		messages[len(messages)-1].Content = append(existing, blocks...)
+		return true
+	}
+
+	flushDeferredWrap := func() error {
+		if len(deferredWrap) == 0 {
+			return nil
+		}
+		w := deferredWrap
+		deferredWrap = nil
+		return emit("user", w)
+	}
+
+	emitWithPendingFlush := func(role string, blocks []dto.ClaudeMediaMessage) error {
+		isNextToolResultUser := role == "user" && len(blocks) > 0 && blocks[0].Type == "tool_result"
+
+		// deferredWrap 来自更早的 pending dev，被 tool_result run 推迟。
+		// 当下一项不再是 leading-tool_result user 时，先 flush（合并到前 user 末尾）。
+		if !isNextToolResultUser {
+			if err := flushDeferredWrap(); err != nil {
+				return err
+			}
+		}
+
+		if len(pendingSystemBlocks) == 0 {
+			return emit(role, blocks)
+		}
+
+		// 统一 handshake guard：如果有 pending wrapped 要插入，且前一条 assistant
+		// 含未配对的 tool_use，下一项又不是 tool_result user，那么我们插入 wrapped
+		// 会破坏 tool_use→tool_result 配对（不管下一项是 user_text 还是 assistant 都一样）。
+		if !isNextToolResultUser && lastAssistantHasToolUse() {
+			return errors.New("cannot insert system/developer message between assistant tool_use and its matching tool_result; reorder your input")
+		}
+
+		wrapped := wrapSystemBlocksAsUserText(pendingSystemBlocks)
+		pendingSystemBlocks = nil
+		if len(wrapped) == 0 {
+			return emit(role, blocks)
+		}
+
+		if isNextToolResultUser {
+			// 推迟到 contiguous tool_result run 之后；本轮先 emit tool_result 保持位置。
+			deferredWrap = append(deferredWrap, wrapped...)
+			return emit("user", blocks)
+		}
+
+		if role == "user" {
+			// 普通 user：prepend wrapped 到 blocks，emit 单条 user message
+			merged := make([]dto.ClaudeMediaMessage, 0, len(wrapped)+len(blocks))
+			merged = append(merged, wrapped...)
+			merged = append(merged, blocks...)
+			return emit("user", merged)
+		}
+
+		// role == assistant：handshake guard 已在入口拦截，这里只需选择 wrapped 落点。
+		if appendToLastUserContent(wrapped) {
+			return emit(role, blocks)
+		}
+		if err := emit("user", wrapped); err != nil {
+			return err
+		}
+		return emit(role, blocks)
+	}
+
 	for _, item := range items {
 		role, blocks, err := convertResponsesInputItem(item)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		if len(blocks) == 0 {
 			continue
 		}
-		if n := len(messages); n > 0 && messages[n-1].Role == role {
-			if existing, ok := messages[n-1].Content.([]dto.ClaudeMediaMessage); ok {
-				if err := assertReasoningOrder(existing, blocks); err != nil {
-					return nil, err
-				}
-				messages[n-1].Content = append(existing, blocks...)
+
+		if role == roleSystemSentinel {
+			if !seenNonSystem {
+				systemPrefixBlocks = append(systemPrefixBlocks, blocks...)
 				continue
 			}
+			pendingSystemBlocks = append(pendingSystemBlocks, blocks...)
+			continue
 		}
-		messages = append(messages, dto.ClaudeMessage{
-			Role:    role,
-			Content: blocks,
-		})
+
+		seenNonSystem = true
+		if err := emitWithPendingFlush(role, blocks); err != nil {
+			return nil, nil, err
+		}
+	}
+
+	// 末尾收尾：先 flush 推迟的 wrap（如果整段以 tool_result 结尾会留在 deferred 里）
+	if err := flushDeferredWrap(); err != nil {
+		return nil, nil, err
+	}
+
+	// 末尾未消费的 pending dev：与中间的 assistant 分支同构。
+	if len(pendingSystemBlocks) > 0 {
+		wrapped := wrapSystemBlocksAsUserText(pendingSystemBlocks)
+		pendingSystemBlocks = nil
+		if len(wrapped) > 0 {
+			if lastAssistantHasToolUse() {
+				return nil, nil, errors.New("trailing system/developer cannot follow an unresolved assistant tool_use; provide the matching tool_result first")
+			}
+			if !appendToLastUserContent(wrapped) {
+				if err := emit("user", wrapped); err != nil {
+					return nil, nil, err
+				}
+			}
+		}
+	}
+
+	if len(messages) == 0 && len(systemPrefixBlocks) == 0 {
+		return nil, nil, errors.New("input did not produce any messages")
 	}
 	if len(messages) == 0 {
-		return nil, errors.New("input did not produce any messages")
+		return nil, nil, errors.New("input contained only system/developer messages without any user/assistant turn")
 	}
-	return messages, nil
+	return messages, systemPrefixBlocks, nil
+}
+
+// 把穿插在对话中间的 system/developer text 块包成 <openai_developer_instruction> XML，
+// 让 Claude 把它当作显式的开发者指令读取——保留时序但优先级降到 user 文本内嵌。
+// 标签前缀加 openai_ 命名空间，降低与用户内容碰撞概率（不是安全边界，仅是约定）。
+// 每条 block 单独包一对标签，保留原始 OpenAI message 的边界，便于模型识别多条独立指令。
+func wrapSystemBlocksAsUserText(blocks []dto.ClaudeMediaMessage) []dto.ClaudeMediaMessage {
+	if len(blocks) == 0 {
+		return nil
+	}
+	out := make([]dto.ClaudeMediaMessage, 0, len(blocks))
+	for _, b := range blocks {
+		if b.Type != "text" || b.Text == nil || *b.Text == "" {
+			continue
+		}
+		wrapped := "<openai_developer_instruction>\n" + *b.Text + "\n</openai_developer_instruction>"
+		out = append(out, dto.ClaudeMediaMessage{
+			Type: "text",
+			Text: common.GetPointer(wrapped),
+		})
+	}
+	return out
 }
 
 // Anthropic 协议要求 thinking/redacted_thinking 必须排在同一 assistant message 的非-thinking 块之前。
@@ -301,6 +510,12 @@ func convertResponsesInputItem(item map[string]any) (role string, blocks []dto.C
 	return "", nil, fmt.Errorf("unknown input item type %q", itemType)
 }
 
+// roleSystemSentinel 是把 OpenAI Responses 中 role=system/developer 的 message
+// 在内部分发流水线里暂存的占位 role。Anthropic Messages API 没有 system role，
+// 真正的派发在 convertResponsesInputToClaudeMessages 里：开头连续的抽到顶层 system，
+// 穿插在中间的降级成 XML 包裹的 user text。
+const roleSystemSentinel = "__system__"
+
 func convertResponsesInputMessage(item map[string]any) (string, []dto.ClaudeMediaMessage, error) {
 	role, _ := item["role"].(string)
 	if role == "" {
@@ -309,7 +524,8 @@ func convertResponsesInputMessage(item map[string]any) (string, []dto.ClaudeMedi
 	switch role {
 	case "user", "assistant":
 	case "system", "developer":
-		role = "user"
+		// 用 sentinel 把 system/developer 透传到上层，由上层决定抽到 system 还是降级到 user。
+		role = roleSystemSentinel
 	default:
 		return "", nil, fmt.Errorf("unknown message role %q", role)
 	}
@@ -342,9 +558,15 @@ func convertResponsesInputMessage(item map[string]any) (string, []dto.ClaudeMedi
 		if err != nil {
 			return "", nil, err
 		}
-		if blk != nil {
-			blocks = append(blocks, *blk)
+		if blk == nil {
+			continue
 		}
+		// system/developer 消息只允许文本，与 OpenAI Responses 的约束一致；
+		// 既避免把图片塞进 Anthropic 顶层 system（不支持），也避免被 XML 包裹后内容失真。
+		if role == roleSystemSentinel && blk.Type != "text" {
+			return "", nil, fmt.Errorf("system/developer message content must be text only, got %q", blk.Type)
+		}
+		blocks = append(blocks, *blk)
 	}
 	return role, blocks, nil
 }
