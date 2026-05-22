@@ -64,15 +64,19 @@ const HeaderBar = ({ onMobileMenuToggle, drawerOpen }) => {
 
   const { mainNavLinks } = useNavigation(t, docsLink, headerNavModules);
 
+  const isLoggedIn = !!userState?.user?.id;
+
   return (
     <header className='text-semi-color-text-0 sticky top-0 z-50 transition-colors duration-300 bg-white/75 dark:bg-zinc-900/75 backdrop-blur-lg'>
-      <NoticeModal
-        visible={noticeVisible}
-        onClose={handleNoticeClose}
-        isMobile={isMobile}
-        defaultTab={unreadCount > 0 ? 'system' : 'inApp'}
-        unreadKeys={getUnreadKeys()}
-      />
+      {isLoggedIn && (
+        <NoticeModal
+          visible={noticeVisible}
+          onClose={handleNoticeClose}
+          isMobile={isMobile}
+          defaultTab={unreadCount > 0 ? 'system' : 'inApp'}
+          unreadKeys={getUnreadKeys()}
+        />
+      )}
 
       <div className='w-full px-2'>
         <div className='flex items-center justify-between h-16'>
@@ -111,6 +115,7 @@ const HeaderBar = ({ onMobileMenuToggle, drawerOpen }) => {
             isNewYear={isNewYear}
             unreadCount={unreadCount}
             onNoticeOpen={handleNoticeOpen}
+            showNotification={isLoggedIn}
             theme={theme}
             onThemeToggle={handleThemeToggle}
             currentLang={currentLang}
