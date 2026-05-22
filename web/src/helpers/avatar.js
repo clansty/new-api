@@ -17,17 +17,24 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-export * from './history';
-export * from './auth';
-export * from './utils';
-export * from './base64';
-export * from './api';
-export * from './render';
-export * from './log';
-export * from './data';
-export * from './token';
-export * from './boolean';
-export * from './dashboard';
-export * from './passkey';
-export * from './statusCodeRules';
-export * from './avatar';
+// 失败 URL 缓存，避免渲染数十行日志时反复触发 404 请求
+const failedAvatarUrls = new Set();
+
+export function buildAvatarUrl(oidcId, template) {
+  if (!oidcId || !template) return '';
+  const id = String(oidcId);
+  if (!id) return '';
+  if (template.includes('{sub}')) {
+    return template.replace(/\{sub\}/g, encodeURIComponent(id));
+  }
+  return template.replace(/\/+$/, '') + '/' + encodeURIComponent(id);
+}
+
+export function isAvatarFailed(url) {
+  if (!url) return false;
+  return failedAvatarUrls.has(url);
+}
+
+export function markAvatarFailed(url) {
+  if (url) failedAvatarUrls.add(url);
+}
