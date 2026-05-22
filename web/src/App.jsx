@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import React, { lazy, Suspense, useContext, useMemo } from 'react';
-import { Route, Routes, useLocation, useParams } from 'react-router-dom';
+import { Navigate, Route, Routes, useLocation, useParams } from 'react-router-dom';
 import Loading from './components/common/ui/Loading';
 import User from './pages/User';
 import { AuthRedirect, PrivateRoute, AdminRoute } from './helpers';
@@ -87,15 +87,34 @@ function App() {
     return false; // 默认不需要登录
   }, [statusState?.status?.HeaderNavModules]);
 
+  // 顶栏管理禁用首页时：已登录跳转控制台，未登录跳转登录页
+  const homeDisabled = useMemo(() => {
+    const headerNavModulesConfig = statusState?.status?.HeaderNavModules;
+    if (!headerNavModulesConfig) return false;
+    try {
+      const modules = JSON.parse(headerNavModulesConfig);
+      return modules.home === false;
+    } catch (error) {
+      console.error('解析顶栏模块配置失败:', error);
+      return false;
+    }
+  }, [statusState?.status?.HeaderNavModules]);
+
+  const homeRedirectTarget = localStorage.getItem('user') ? '/console' : '/login';
+
   return (
     <SetupCheck>
       <Routes>
         <Route
           path='/'
           element={
-            <Suspense fallback={<Loading></Loading>} key={location.pathname}>
-              <Home />
-            </Suspense>
+            homeDisabled ? (
+              <Navigate to={homeRedirectTarget} replace />
+            ) : (
+              <Suspense fallback={<Loading></Loading>} key={location.pathname}>
+                <Home />
+              </Suspense>
+            )
           }
         />
         <Route
