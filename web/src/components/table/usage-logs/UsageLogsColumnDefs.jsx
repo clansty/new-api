@@ -19,7 +19,6 @@ For commercial licensing, please contact support@quantumnous.com
 
 import React from 'react';
 import {
-  Avatar,
   Space,
   Tag,
   Tooltip,
@@ -29,7 +28,6 @@ import {
 import {
   renderGroup,
   renderQuota,
-  stringToColor,
   getLogOther,
   renderModelTag,
   renderModelPriceSimple,
@@ -37,6 +35,7 @@ import {
 } from '../../../helpers';
 import { IconHelpCircle } from '@douyinfe/semi-icons';
 import { CircleAlert, Route, Sparkles } from 'lucide-react';
+import UserAvatar from '../../common/UserAvatar';
 
 const colors = [
   'amber',
@@ -590,17 +589,16 @@ export const getLogsColumns = ({
       render: (text, record, index) => {
         return isAdminUser ? (
           <div>
-            <Avatar
+            <UserAvatar
               size='extra-small'
-              color={stringToColor(text)}
+              oidcId={record.oidc_id}
+              username={text}
               style={{ marginRight: 4 }}
               onClick={(event) => {
                 event.stopPropagation();
                 showUserInfoFunc(record.user_id);
               }}
-            >
-              {typeof text === 'string' && text.slice(0, 1)}
-            </Avatar>
+            />
             {text}
           </div>
         ) : (

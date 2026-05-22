@@ -42,8 +42,8 @@ import {
   TASK_ACTION_REMIX_GENERATE,
 } from '../../../constants/common.constant';
 import { CHANNEL_OPTIONS } from '../../../constants/channel.constants';
-import { stringToColor } from '../../../helpers/render';
-import { Avatar, Space } from '@douyinfe/semi-ui';
+import { Space } from '@douyinfe/semi-ui';
+import UserAvatar from '../../common/UserAvatar';
 
 const colors = [
   'amber',
@@ -301,12 +301,11 @@ export const getTaskLogsColumns = ({
         const displayText = String(record.username || userId || '?');
         return (
           <Space>
-            <Avatar
+            <UserAvatar
               size='extra-small'
-              color={stringToColor(displayText)}
-            >
-              {displayText.slice(0, 1)}
-            </Avatar>
+              oidcId={record.oidc_id}
+              username={displayText}
+            />
             <Typography.Text>
               {displayText}
             </Typography.Text>
