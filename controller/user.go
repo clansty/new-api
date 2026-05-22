@@ -113,6 +113,13 @@ func setupLogin(user *model.User, c *gin.Context) {
 			"role":         user.Role,
 			"status":       user.Status,
 			"group":        user.Group,
+			"email":        user.Email,
+			"oidc_id":      user.OidcId,
+			"github_id":    user.GitHubId,
+			"discord_id":   user.DiscordId,
+			"wechat_id":    user.WeChatId,
+			"telegram_id":  user.TelegramId,
+			"linux_do_id":  user.LinuxDOId,
 		},
 	})
 }
@@ -279,10 +286,24 @@ func GetUser(c *gin.Context) {
 		common.ApiErrorI18n(c, i18n.MsgUserNoPermissionSameLevel)
 		return
 	}
+
+	bindings, err := buildUserOAuthBindingsResponse(id)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+
+	type userWithBindings struct {
+		*model.User
+		OAuthBindings []UserOAuthBindingResponse `json:"oauth_bindings"`
+	}
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",
-		"data":    user,
+		"data": &userWithBindings{
+			User:          user,
+			OAuthBindings: bindings,
+		},
 	})
 	return
 }
