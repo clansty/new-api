@@ -11,23 +11,24 @@ import (
 )
 
 // 不走 Chat Completions 中间格式，避免有损翻译丢失 thinking signature 等关键字段。
-// 第二个返回值为 OpenAI Responses 里 type:"custom" 工具的名字集合；
-// 上游 Anthropic 无 custom tool 概念，所以请求侧降级成 function tool，
-// 响应侧需要这个集合把 tool_use 还原成 custom_tool_call 实现透明往返。
-func ConvertResponsesRequestToClaude(req *dto.OpenAIResponsesRequest) (*dto.ClaudeRequest, map[string]bool, error) {
+// 返回值中除 ClaudeRequest 外：
+//   - customNames: type:"custom" 工具被降级成 function tool 后的名字集合，响应侧需要它把 tool_use 还原成 custom_tool_call
+//   - namespaceMap: prefixed_name -> (原 inner name, 所属 namespace)；扁平化 namespace 工具时把名字改成 "{ns}__{tool}" 形态喂给上游，
+//     这样跨 namespace 同名 inner tool 不冲突、且响应阶段能把 Anthropic 返回的扁平 tool_use 反查还原成 OpenAI Responses 的 function_call{name,namespace} 透传给客户端。
+func ConvertResponsesRequestToClaude(req *dto.OpenAIResponsesRequest) (*dto.ClaudeRequest, map[string]bool, map[string]NamespaceMapping, error) {
 	if req == nil {
-		return nil, nil, errors.New("request is nil")
+		return nil, nil, nil, errors.New("request is nil")
 	}
 	if len(req.PreviousResponseID) > 0 {
-		return nil, nil, errors.New("previous_response_id is not supported when converting to Anthropic Messages API; pass the full conversation in input")
+		return nil, nil, nil, errors.New("previous_response_id is not supported when converting to Anthropic Messages API; pass the full conversation in input")
 	}
 	if len(req.Conversation) > 0 && !isJSONNull(req.Conversation) {
-		return nil, nil, errors.New("conversation is not supported when converting to Anthropic Messages API")
+		return nil, nil, nil, errors.New("conversation is not supported when converting to Anthropic Messages API")
 	}
 	if format, present, err := extractTextFormatType(req.Text); err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	} else if present && format != "text" {
-		return nil, nil, fmt.Errorf("text.format=%q is not supported when converting to Anthropic Messages API", format)
+		return nil, nil, nil, fmt.Errorf("text.format=%q is not supported when converting to Anthropic Messages API", format)
 	}
 
 	claude := &dto.ClaudeRequest{
@@ -42,37 +43,46 @@ func ConvertResponsesRequestToClaude(req *dto.OpenAIResponsesRequest) (*dto.Clau
 	}
 
 	if stops, err := extractStopSequences(req.Stop); err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	} else if len(stops) > 0 {
 		claude.StopSequences = stops
 	}
 
 	system, err := buildSystemFromInstructions(req.Instructions)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
-	messages, systemPrefixBlocks, err := convertResponsesInputToClaudeMessages(req.Input)
+	tools, customNames, survivingNames, namespaceMap, mcpInstructions, err := convertResponsesToolsToClaudeTools(req.Tools)
 	if err != nil {
-		return nil, nil, err
-	}
-	claude.Messages = messages
-	mergedSystem, err := mergeSystem(system, systemPrefixBlocks)
-	if err != nil {
-		return nil, nil, err
-	}
-	claude.System = mergedSystem
-
-	tools, customNames, survivingNames, err := convertResponsesToolsToClaudeTools(req.Tools)
-	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	if len(tools) > 0 {
 		claude.Tools = tools
 	}
 
+	// input 处理依赖 namespaceMap：客户端回传的 function_call 用的是 OpenAI 原 inner name + namespace 字段，
+	// 我们要把它合成 prefixed name 才能与 Anthropic 历史里的 tool_use name 对齐。
+	messages, systemPrefixBlocks, err := convertResponsesInputToClaudeMessages(req.Input, namespaceMap)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	claude.Messages = messages
+	// mcpInstructions（聚合的 namespace 描述）以独立 block 形式追加到 system 末尾，对齐 Claude Code 的实现。
+	if mcpInstructions != "" {
+		systemPrefixBlocks = append(systemPrefixBlocks, dto.ClaudeMediaMessage{
+			Type: "text",
+			Text: common.GetPointer(mcpInstructions),
+		})
+	}
+	mergedSystem, err := mergeSystem(system, systemPrefixBlocks)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	claude.System = mergedSystem
+
 	if tc, err := convertResponsesToolChoiceToClaude(req.ToolChoice, survivingNames); err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	} else if tc != nil {
 		claude.ToolChoice = tc
 	}
@@ -82,12 +92,68 @@ func ConvertResponsesRequestToClaude(req *dto.OpenAIResponsesRequest) (*dto.Clau
 	}
 
 	if meta, err := convertResponsesMetadataToClaude(req.Metadata); err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	} else if meta != nil {
 		claude.Metadata = meta
 	}
 
-	return claude, customNames, nil
+	return claude, customNames, namespaceMap, nil
+}
+
+// NamespaceMapping 记录扁平化时一个 inner tool 的原始 OpenAI 信息。
+// key 是扁平后的 prefixed name（喂给 Anthropic 的 tool name），value 用于响应阶段把 tool_use 还原成 function_call{name,namespace}。
+type NamespaceMapping struct {
+	OriginalName string
+	Namespace    string
+}
+
+// 拼接 namespace + inner tool name 的对外暴露名。
+// 当 namespace 名已经以 "__" 结尾（典型如 Codex 的 "mcp__playwright__"）时不再追加分隔符，保持与 MCP 命名约定 "mcp__{server}__{tool}" 一致；
+// 否则用 "__" 显式分隔避免歧义（multi_agent_v1 + spawn_agent -> multi_agent_v1__spawn_agent）。
+func buildNamespacedToolName(nsName, innerName string) string {
+	if strings.HasSuffix(nsName, "__") {
+		return nsName + innerName
+	}
+	return nsName + "__" + innerName
+}
+
+// validateClaudeToolName 把不符合 Anthropic 工具名 schema 的请求在本地早早 400，避免被上游拒绝后客户端只看到一个含糊的 invalid_request_error。
+// schema 来自 Anthropic API 错误响应实测：^[A-Za-z0-9_-]{1,128}$。NBSP、零宽空格、中日韩字符、emoji、.、/ 等全部 reject。
+var claudeToolNameRE = regexp.MustCompile(`^[A-Za-z0-9_-]{1,128}$`)
+
+func validateClaudeToolName(name string) error {
+	if strings.TrimSpace(name) == "" {
+		return errors.New("tool name must not be empty")
+	}
+	if !claudeToolNameRE.MatchString(name) {
+		return fmt.Errorf("tool name %q violates Anthropic schema ^[A-Za-z0-9_-]{1,128}$", name)
+	}
+	return nil
+}
+
+// buildNamespaceInstructionBlock 把单个 namespace 的 description 格式化成 Claude Code 风格的 "## {name}\n{desc}" block，
+// 超过 2KB 时做 rune 边界安全截断（避免切断 UTF-8 序列），并过滤 Codex 占位（trim 后比较，容忍尾随空白）。
+// 描述为空、纯空白、或匹配占位时返回空串，由调用方决定是否加入聚合列表。
+func buildNamespaceInstructionBlock(nsName string, descField any) string {
+	desc, _ := descField.(string)
+	desc = strings.TrimSpace(desc)
+	if desc == "" {
+		return ""
+	}
+	codexPlaceholder := "Tools in the " + nsName + " namespace."
+	if desc == codexPlaceholder {
+		return ""
+	}
+	const maxNsDescBytes = 2048
+	if len(desc) > maxNsDescBytes {
+		cut := maxNsDescBytes
+		// 沿 UTF-8 续字节回退到 rune 边界（最多回退 3 字节）
+		for cut > 0 && cut < len(desc) && (desc[cut]&0xC0) == 0x80 {
+			cut--
+		}
+		desc = desc[:cut] + "… [truncated]"
+	}
+	return "## " + nsName + "\n" + desc
 }
 
 func isJSONNull(raw []byte) bool {
@@ -226,7 +292,7 @@ func mergeSystem(instructions any, prefixBlocks []dto.ClaudeMediaMessage) (any, 
 // assistant turn 合并错误。
 //
 // 返回值 systemPrefixBlocks 是开头段抽出的 text blocks，由上层与 instructions 合并到 claude.System。
-func convertResponsesInputToClaudeMessages(rawInput []byte) ([]dto.ClaudeMessage, []dto.ClaudeMediaMessage, error) {
+func convertResponsesInputToClaudeMessages(rawInput []byte, namespaceMap map[string]NamespaceMapping) ([]dto.ClaudeMessage, []dto.ClaudeMediaMessage, error) {
 	if isJSONNull(rawInput) {
 		return nil, nil, errors.New("input is required")
 	}
@@ -361,7 +427,7 @@ func convertResponsesInputToClaudeMessages(rawInput []byte) ([]dto.ClaudeMessage
 	}
 
 	for _, item := range items {
-		role, blocks, err := convertResponsesInputItem(item)
+		role, blocks, err := convertResponsesInputItem(item, namespaceMap)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -458,13 +524,13 @@ func assertReasoningOrder(existing, incoming []dto.ClaudeMediaMessage) error {
 	return nil
 }
 
-func convertResponsesInputItem(item map[string]any) (role string, blocks []dto.ClaudeMediaMessage, err error) {
+func convertResponsesInputItem(item map[string]any, namespaceMap map[string]NamespaceMapping) (role string, blocks []dto.ClaudeMediaMessage, err error) {
 	itemType, _ := item["type"].(string)
 	switch itemType {
 	case "", "message":
 		return convertResponsesInputMessage(item)
 	case "function_call":
-		blk, err := convertResponsesInputFunctionCall(item)
+		blk, err := convertResponsesInputFunctionCall(item, namespaceMap)
 		if err != nil {
 			return "", nil, err
 		}
@@ -479,7 +545,7 @@ func convertResponsesInputItem(item map[string]any) (role string, blocks []dto.C
 		// 客户端把上一轮我们返回的 custom_tool_call 回传给我们。因为请求侧把 custom tool 降级为
 		// {input: string} schema 的 function tool，所以这里要把 raw string 重新包成 {"input": ...}
 		// 才与 Anthropic 上游已知的 tool schema 对得上。
-		blk, err := convertResponsesInputCustomToolCall(item)
+		blk, err := convertResponsesInputCustomToolCall(item, namespaceMap)
 		if err != nil {
 			return "", nil, err
 		}
@@ -670,12 +736,18 @@ func parseDataURL(url string) (mediaType, data string, ok bool) {
 	return rest[:idx], rest[idx+len(";base64,"):], true
 }
 
-func convertResponsesInputFunctionCall(item map[string]any) (dto.ClaudeMediaMessage, error) {
+func convertResponsesInputFunctionCall(item map[string]any, namespaceMap map[string]NamespaceMapping) (dto.ClaudeMediaMessage, error) {
 	callID, _ := item["call_id"].(string)
 	name, _ := item["name"].(string)
 	if callID == "" || name == "" {
 		return dto.ClaudeMediaMessage{}, errors.New("function_call requires call_id and name")
 	}
+	// 客户端按 OpenAI Responses 协议回传 function_call 时，name 是 inner tool 原名、namespace 字段携带所属 ns；
+	// 我们请求侧已经把对应工具前缀化为 "{ns}__{inner}" 发给上游，所以这里必须重建相同的 prefixed name 才能跟历史的 tool_use 名字对齐。
+	if ns, _ := item["namespace"].(string); ns != "" {
+		name = buildNamespacedToolName(ns, name)
+	}
+	_ = namespaceMap
 	args := item["arguments"]
 	var input any
 	switch v := args.(type) {
@@ -700,12 +772,17 @@ func convertResponsesInputFunctionCall(item map[string]any) (dto.ClaudeMediaMess
 	}, nil
 }
 
-func convertResponsesInputCustomToolCall(item map[string]any) (dto.ClaudeMediaMessage, error) {
+func convertResponsesInputCustomToolCall(item map[string]any, namespaceMap map[string]NamespaceMapping) (dto.ClaudeMediaMessage, error) {
 	callID, _ := item["call_id"].(string)
 	name, _ := item["name"].(string)
 	if callID == "" || name == "" {
 		return dto.ClaudeMediaMessage{}, errors.New("custom_tool_call requires call_id and name")
 	}
+	// 与 function_call 同理：custom_tool_call 也可能带 namespace 字段，需要前缀化对齐上游 tool_use 历史名。
+	if ns, _ := item["namespace"].(string); ns != "" {
+		name = buildNamespacedToolName(ns, name)
+	}
+	_ = namespaceMap
 	input, _ := item["input"].(string)
 	return dto.ClaudeMediaMessage{
 		Type: "tool_use",
@@ -808,37 +885,52 @@ func convertResponsesInputReasoning(item map[string]any) (*dto.ClaudeMediaMessag
 	return blk, nil
 }
 
-func convertResponsesToolsToClaudeTools(raw []byte) ([]any, map[string]bool, map[string]bool, error) {
+// convertResponsesToolsToClaudeTools 把 OpenAI Responses 的 tools 数组扁平化为 Anthropic tools。
+// 返回值：
+//   - tools: 扁平化后的 Anthropic 工具列表（其中 namespace 内的 inner tool 名字已被前缀化为 "{ns}__{tool}"）
+//   - customNames: type:"custom" 工具的名字集合（响应侧把 tool_use 还原为 custom_tool_call 时使用）
+//   - survivingNames: 所有最终发给上游的工具名集合（含前缀化后的 namespace 工具），tool_choice 校验用
+//   - namespaceMap: prefixed_name -> {原 inner name, 所属 namespace}，响应阶段反查还原 function_call{name,namespace}
+//   - mcpInstructions: 聚合的 namespace 描述（含义 = MCP server instructions），按 Claude Code 风格格式化；上层 merge 到 claude.System
+func convertResponsesToolsToClaudeTools(raw []byte) ([]any, map[string]bool, map[string]bool, map[string]NamespaceMapping, string, error) {
 	if isJSONNull(raw) {
-		return nil, nil, nil, nil
+		return nil, nil, nil, nil, "", nil
 	}
 	var tools []map[string]any
 	if err := common.Unmarshal(raw, &tools); err != nil {
-		return nil, nil, nil, fmt.Errorf("tools must be an array: %w", err)
+		return nil, nil, nil, nil, "", fmt.Errorf("tools must be an array: %w", err)
 	}
 	result := make([]any, 0, len(tools))
 	var customNames map[string]bool
 	survivingNames := map[string]bool{}
+	var namespaceMap map[string]NamespaceMapping
+	var nsInstructionBlocks []string
 	for _, t := range tools {
 		ty, _ := t["type"].(string)
 		switch ty {
 		case "function":
 			tool, err := convertResponsesFunctionToolToClaude(t)
 			if err != nil {
-				return nil, nil, nil, err
+				return nil, nil, nil, nil, "", err
+			}
+			if err := validateClaudeToolName(tool.Name); err != nil {
+				return nil, nil, nil, nil, "", err
 			}
 			if survivingNames[tool.Name] {
-				return nil, nil, nil, fmt.Errorf("duplicate tool name %q", tool.Name)
+				return nil, nil, nil, nil, "", fmt.Errorf("duplicate tool name %q", tool.Name)
 			}
 			survivingNames[tool.Name] = true
 			result = append(result, tool)
 		case "custom":
 			tool, err := convertResponsesCustomToolToClaude(t)
 			if err != nil {
-				return nil, nil, nil, err
+				return nil, nil, nil, nil, "", err
+			}
+			if err := validateClaudeToolName(tool.Name); err != nil {
+				return nil, nil, nil, nil, "", err
 			}
 			if survivingNames[tool.Name] {
-				return nil, nil, nil, fmt.Errorf("duplicate tool name %q (function/custom name conflict cannot be disambiguated when round-tripping through Anthropic)", tool.Name)
+				return nil, nil, nil, nil, "", fmt.Errorf("duplicate tool name %q (function/custom name conflict cannot be disambiguated when round-tripping through Anthropic)", tool.Name)
 			}
 			survivingNames[tool.Name] = true
 			result = append(result, tool)
@@ -855,11 +947,88 @@ func convertResponsesToolsToClaudeTools(raw []byte) ([]any, map[string]bool, map
 			// 上游 Anthropic 不支持这些 OpenAI 内置服务端工具（或者支持但需要单独开通/付费/语义不一致），
 			// 静默剥离避免转发到上游导致 schema 错误或意外计费；模型不会看到这些工具，行为等价于客户端没传。
 			continue
+		case "namespace":
+			// OpenAI Responses API 用 namespace 把多个 function/custom tool 分组（典型来源是 MCP server，如 Codex CLI 的 mcp__playwright__）。
+			// 处理策略对齐 Anthropic 官方 Claude Code 的实现（参见泄漏源码 src/services/mcp/client.ts:1159 + src/constants/prompts.ts:579）：
+			//   1. 每个 inner tool 重命名为 "{namespace}__{inner}"（Claude Code 内部 MCP 工具命名也是 mcp__{server}__{tool}），
+			//      这解决跨 namespace 同名 inner tool 的冲突，也让响应阶段能把上游返回的扁平 tool_use 反查还原成 function_call{name,namespace}。
+			//   2. namespace.description（≈ MCP server instructions）截断到 2KB 后聚合成独立的 system prompt block 注入，
+			//      不污染任何 tool 自己的 description；这是 Anthropic 自家客户端的做法。
+			nsName, _ := t["name"].(string)
+			if strings.TrimSpace(nsName) == "" {
+				return nil, nil, nil, nil, "", errors.New("namespace tool requires non-empty name")
+			}
+			// 必须先有合法的 inner tools 才接受这个 namespace；否则只让模型看到 server instructions 但没工具可调，纯噪音。
+			// 同时把 malformed tools（非数组）显式 400，而不是静默退化为空数组。
+			rawInnerField, hasInner := t["tools"]
+			if !hasInner {
+				return nil, nil, nil, nil, "", fmt.Errorf("namespace %q missing required field \"tools\"", nsName)
+			}
+			inner, ok := rawInnerField.([]any)
+			if !ok {
+				return nil, nil, nil, nil, "", fmt.Errorf("namespace %q field \"tools\" must be an array, got %T", nsName, rawInnerField)
+			}
+			acceptedFromNs := 0
+			for _, raw := range inner {
+				innerMap, ok := raw.(map[string]any)
+				if !ok {
+					return nil, nil, nil, nil, "", fmt.Errorf("namespace %q inner tool must be an object, got %T", nsName, raw)
+				}
+				originalName, _ := innerMap["name"].(string)
+				if strings.TrimSpace(originalName) == "" {
+					return nil, nil, nil, nil, "", fmt.Errorf("namespace %q inner tool requires non-empty name", nsName)
+				}
+				prefixedName := buildNamespacedToolName(nsName, originalName)
+				if err := validateClaudeToolName(prefixedName); err != nil {
+					return nil, nil, nil, nil, "", fmt.Errorf("namespace %q inner tool %q: %w", nsName, originalName, err)
+				}
+				var tool *dto.Tool
+				var err error
+				switch ity, _ := innerMap["type"].(string); ity {
+				case "function":
+					tool, err = convertResponsesFunctionToolToClaude(innerMap)
+				case "custom":
+					tool, err = convertResponsesCustomToolToClaude(innerMap)
+					if err == nil && tool != nil {
+						if customNames == nil {
+							customNames = map[string]bool{}
+						}
+						customNames[prefixedName] = true
+					}
+				default:
+					return nil, nil, nil, nil, "", fmt.Errorf("unsupported tool type %q inside namespace %q", ity, nsName)
+				}
+				if err != nil {
+					return nil, nil, nil, nil, "", fmt.Errorf("namespace %q: %w", nsName, err)
+				}
+				tool.Name = prefixedName
+				if survivingNames[prefixedName] {
+					return nil, nil, nil, nil, "", fmt.Errorf("duplicate tool name %q (from namespace %q)", prefixedName, nsName)
+				}
+				survivingNames[prefixedName] = true
+				if namespaceMap == nil {
+					namespaceMap = map[string]NamespaceMapping{}
+				}
+				namespaceMap[prefixedName] = NamespaceMapping{OriginalName: originalName, Namespace: nsName}
+				result = append(result, tool)
+				acceptedFromNs++
+			}
+			// 只在至少一个 inner tool 真的进入工具表时，namespace.description 才有意义；空 namespace 的描述全部丢弃避免纯噪音。
+			if acceptedFromNs > 0 {
+				if block := buildNamespaceInstructionBlock(nsName, t["description"]); block != "" {
+					nsInstructionBlocks = append(nsInstructionBlocks, block)
+				}
+			}
 		default:
-			return nil, nil, nil, fmt.Errorf("unsupported tool type %q", ty)
+			return nil, nil, nil, nil, "", fmt.Errorf("unsupported tool type %q", ty)
 		}
 	}
-	return result, customNames, survivingNames, nil
+	mcpInstructions := ""
+	if len(nsInstructionBlocks) > 0 {
+		// Claude Code 的格式（src/constants/prompts.ts:579-604），header + 各 server block 用 \n\n 分隔。
+		mcpInstructions = "# MCP Server Instructions\n\nThe following MCP servers have provided instructions for how to use their tools and resources:\n\n" + strings.Join(nsInstructionBlocks, "\n\n")
+	}
+	return result, customNames, survivingNames, namespaceMap, mcpInstructions, nil
 }
 
 // Anthropic 无 free-text/grammar 输入工具的原生对应；把 OpenAI custom tool 降级为接受单个 input string 的 function tool。
@@ -975,7 +1144,20 @@ func convertResponsesToolChoiceToClaude(raw []byte, survivingTools map[string]bo
 		if name == "" {
 			return nil, errors.New("tool_choice." + ty + " requires name")
 		}
+		// 与 tools 阶段对称：客户端用 OpenAI 原 name+namespace 引用 namespace 内工具，我们请求侧把工具名前缀化成 "{ns}__{tool}" 发给上游，
+		// 这里必须用相同规则重建 prefixed name 才能在 survivingNames 里找到。否则 tool_choice 会被静默丢弃为 nil。
+		nsExplicit := false
+		if ns, _ := asObject["namespace"].(string); ns != "" {
+			name = buildNamespacedToolName(ns, name)
+			nsExplicit = true
+		}
 		if !survivingTools[name] {
+			// 显式带 namespace 说明客户端意图清楚地强制使用某 namespace 内的工具；如果重建后找不到（典型 typo / 工具未上传），
+			// 静默降级为 nil 会让模型自由选择别的工具，掩盖配置错误。直接 400 让客户端发现问题。
+			if nsExplicit {
+				return nil, fmt.Errorf("tool_choice.%s references unknown namespaced tool %q", ty, name)
+			}
+			// 非 namespace 引用沿用旧行为：可能指向被静默剥离的 builtin（web_search 等），降级为 nil 是合理兼容。
 			return nil, nil
 		}
 		return &dto.ClaudeToolChoice{Type: "tool", Name: name}, nil

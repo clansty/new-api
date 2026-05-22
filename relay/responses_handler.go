@@ -78,6 +78,17 @@ func ResponsesHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *
 			return types.NewError(err, types.ErrorCodeReadRequestBodyFailed, types.ErrOptionWithSkipRetry())
 		}
 		requestBody = common.ReaderOnly(storage)
+		// pass-through 模式下我们不会调 ConvertOpenAIResponsesRequest，但部分通道（如 Claude）的响应转换依赖请求阶段构造的反查表（namespaceMap / customNames）。
+		// 给 adaptor 一次机会从原始请求里预扫这些状态写入 context；不需要的 adaptor 不实现该 interface 即可。
+		if prescanner, ok := adaptor.(interface {
+			PrescanResponsesRequest(c *gin.Context, info *relaycommon.RelayInfo, request dto.OpenAIResponsesRequest) error
+		}); ok {
+			if responsesReq != nil {
+				if err := prescanner.PrescanResponsesRequest(c, info, *responsesReq); err != nil {
+					return types.NewError(err, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
+				}
+			}
+		}
 	} else {
 		convertedRequest, err := adaptor.ConvertOpenAIResponsesRequest(c, info, *request)
 		if err != nil {

@@ -108,13 +108,28 @@ func (a *Adaptor) ConvertEmbeddingRequest(c *gin.Context, info *relaycommon.Rela
 }
 
 func (a *Adaptor) ConvertOpenAIResponsesRequest(c *gin.Context, info *relaycommon.RelayInfo, request dto.OpenAIResponsesRequest) (any, error) {
-	claudeReq, customToolNames, err := ConvertResponsesRequestToClaude(&request)
+	claudeReq, customToolNames, namespaceMap, err := ConvertResponsesRequestToClaude(&request)
 	if err != nil {
 		return nil, err
 	}
-	// 无条件覆盖：retry 或 pass-through 路径下，前一次设置的 customToolNames 不应残留污染响应分支。
+	// 无条件覆盖：retry 或 pass-through 路径下，前一次设置的 customToolNames / namespaceMap 不应残留污染响应分支。
 	c.Set(customToolNamesContextKey, customToolNames)
+	c.Set(namespaceMapContextKey, namespaceMap)
 	return claudeReq, nil
+}
+
+// PrescanResponsesRequest 是 pass-through 路径的钩子：通用入口 (relay/responses_handler.go) 启用 pass-through 时不会调 ConvertOpenAIResponsesRequest，
+// 但 Claude 通道的响应转换依然依赖 customToolNames / namespaceMap 才能把上游 tool_use 还原成 function_call{name,namespace}。
+// 这里只扫 tools 数组提取两个反查表，不复用完整的 ConvertResponsesRequestToClaude —— 避免对 input/messages/instructions 等字段做严格 schema 检查
+// 误伤 pass-through 模式下应该透传给上游决定的字段（如 previous_response_id / conversation / 非 text format）。
+func (a *Adaptor) PrescanResponsesRequest(c *gin.Context, info *relaycommon.RelayInfo, request dto.OpenAIResponsesRequest) error {
+	_, customToolNames, _, namespaceMap, _, err := convertResponsesToolsToClaudeTools(request.Tools)
+	if err != nil {
+		return err
+	}
+	c.Set(customToolNamesContextKey, customToolNames)
+	c.Set(namespaceMapContextKey, namespaceMap)
+	return nil
 }
 
 func (a *Adaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, requestBody io.Reader) (any, error) {

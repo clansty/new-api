@@ -44,6 +44,7 @@ const (
 )
 
 const customToolNamesContextKey = "claude_responses_custom_tool_names"
+const namespaceMapContextKey = "claude_responses_namespace_map"
 
 type responsesOutputItem struct {
 	kind             responsesBlockKind
@@ -55,6 +56,7 @@ type responsesOutputItem struct {
 	signature        strings.Builder
 	toolCallID       string
 	toolName         string
+	toolNamespace    string
 	toolArgs         strings.Builder
 	annotations      []any
 	redactedData     string
@@ -74,6 +76,9 @@ type ClaudeResponsesStreamState struct {
 	Usage           *dto.ClaudeUsage
 	Outputs         []*responsesOutputItem
 	CustomToolNames map[string]bool
+	// NamespaceMap 由请求阶段构造，prefixed_name -> {OriginalName, Namespace}；
+	// 响应阶段把 Anthropic 返回的扁平 tool_use.name 反查还原为 OpenAI Responses function_call{name, namespace}，让客户端能路由回正确的 MCP server。
+	NamespaceMap    map[string]NamespaceMapping
 	blockToOutput   map[int]*responsesOutputItem
 	nextOutputIdx   int
 	seq             int
@@ -160,16 +165,18 @@ func (it *responsesOutputItem) toOutput() dto.ResponsesOutput {
 			Status:    "completed",
 			CallId:    it.toolCallID,
 			Name:      it.toolName,
+			Namespace: it.toolNamespace,
 			Arguments: argumentsAsJSONString(args),
 		}
 	case blockCustomToolCall:
 		return dto.ResponsesOutput{
-			Type:   "custom_tool_call",
-			ID:     it.itemID,
-			Status: "completed",
-			CallId: it.toolCallID,
-			Name:   it.toolName,
-			Input:  it.customInput,
+			Type:      "custom_tool_call",
+			ID:        it.itemID,
+			Status:    "completed",
+			CallId:    it.toolCallID,
+			Name:      it.toolName,
+			Namespace: it.toolNamespace,
+			Input:     it.customInput,
 		}
 	}
 	return dto.ResponsesOutput{Type: "unknown", ID: it.itemID}
@@ -347,12 +354,12 @@ func (s *ClaudeResponsesStreamState) handleBlockStart(chunk *dto.ClaudeResponse)
 		events = append(events, s.emitOutputItemAdded(it))
 	case blockToolUse:
 		it.toolCallID = chunk.ContentBlock.Id
-		it.toolName = chunk.ContentBlock.Name
+		it.toolName, it.toolNamespace = resolveResponsesToolName(chunk.ContentBlock.Name, s.NamespaceMap)
 		it.itemID = "fc_" + it.toolCallID
 		events = append(events, s.emitOutputItemAdded(it))
 	case blockCustomToolCall:
 		it.toolCallID = chunk.ContentBlock.Id
-		it.toolName = chunk.ContentBlock.Name
+		it.toolName, it.toolNamespace = resolveResponsesToolName(chunk.ContentBlock.Name, s.NamespaceMap)
 		it.itemID = "ctc_" + it.toolCallID
 		it.customStreamer = newCustomInputStreamer()
 		events = append(events, s.emitOutputItemAdded(it))
@@ -622,7 +629,7 @@ func (s *ClaudeResponsesStreamState) emitSummaryPartAdded(it *responsesOutputIte
 	}
 }
 
-func ConvertClaudeResponseToResponses(claudeResp *dto.ClaudeResponse, customToolNames map[string]bool) *dto.OpenAIResponsesResponse {
+func ConvertClaudeResponseToResponses(claudeResp *dto.ClaudeResponse, customToolNames map[string]bool, namespaceMap map[string]NamespaceMapping) *dto.OpenAIResponsesResponse {
 	if claudeResp == nil {
 		return nil
 	}
@@ -681,18 +688,20 @@ func ConvertClaudeResponseToResponses(claudeResp *dto.ClaudeResponse, customTool
 				EncryptedContent: EncodeRedactedThinking(block.Data),
 			})
 		case "tool_use":
+			origName, ns := resolveResponsesToolName(block.Name, namespaceMap)
 			if customToolNames[block.Name] {
 				inputStr := ""
 				if raw, marshalErr := common.Marshal(block.Input); marshalErr == nil {
 					inputStr = extractCustomToolInput(string(raw))
 				}
 				resp.Output = append(resp.Output, dto.ResponsesOutput{
-					Type:   "custom_tool_call",
-					ID:     "ctc_" + block.Id,
-					Status: "completed",
-					CallId: block.Id,
-					Name:   block.Name,
-					Input:  inputStr,
+					Type:      "custom_tool_call",
+					ID:        "ctc_" + block.Id,
+					Status:    "completed",
+					CallId:    block.Id,
+					Name:      origName,
+					Namespace: ns,
+					Input:     inputStr,
 				})
 				break
 			}
@@ -705,7 +714,8 @@ func ConvertClaudeResponseToResponses(claudeResp *dto.ClaudeResponse, customTool
 				ID:        "fc_" + block.Id,
 				Status:    "completed",
 				CallId:    block.Id,
-				Name:      block.Name,
+				Name:      origName,
+				Namespace: ns,
 				Arguments: argumentsAsJSONString(string(args)),
 			})
 		}
@@ -716,6 +726,15 @@ func ConvertClaudeResponseToResponses(claudeResp *dto.ClaudeResponse, customTool
 		resp.Usage = buildResponsesUsage(claudeResp.Usage)
 	}
 	return resp
+}
+
+// resolveResponsesToolName 把 Anthropic 返回的扁平 tool_use.name 反查还原为 OpenAI Responses 的 (name, namespace)。
+// 若 prefixed name 不在 namespaceMap 里（即顶层 function/custom 工具，未做前缀化），直接原样返回，namespace 留空。
+func resolveResponsesToolName(prefixedName string, namespaceMap map[string]NamespaceMapping) (origName, namespace string) {
+	if mapping, ok := namespaceMap[prefixedName]; ok {
+		return mapping.OriginalName, mapping.Namespace
+	}
+	return prefixedName, ""
 }
 
 func mapClaudeStopReasonToResponsesStatus(reason string) string {

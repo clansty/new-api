@@ -186,7 +186,7 @@ func TestResponsesRequestReasoningRoundTrip(t *testing.T) {
 		Model: "claude-opus-4-7",
 		Input: []byte(inputJSON),
 	}
-	claude, _, err := ConvertResponsesRequestToClaude(req)
+	claude, _, _, err := ConvertResponsesRequestToClaude(req)
 	if err != nil {
 		t.Fatalf("convert: %v", err)
 	}
@@ -221,7 +221,7 @@ func TestResponsesRequestPreviousResponseIDRejected(t *testing.T) {
 		Input:              []byte(`"hi"`),
 		PreviousResponseID: "resp_prev_xxx",
 	}
-	_, _, err := ConvertResponsesRequestToClaude(req)
+	_, _, _, err := ConvertResponsesRequestToClaude(req)
 	if err == nil || !strings.Contains(err.Error(), "previous_response_id") {
 		t.Errorf("expected previous_response_id rejection, got %v", err)
 	}
@@ -234,7 +234,7 @@ func TestResponsesRequestJSONSchemaFormatRejected(t *testing.T) {
 		Input: []byte(`"hi"`),
 		Text:  textRaw,
 	}
-	_, _, err := ConvertResponsesRequestToClaude(req)
+	_, _, _, err := ConvertResponsesRequestToClaude(req)
 	if err == nil || !strings.Contains(err.Error(), "json_schema") {
 		t.Errorf("expected json_schema rejection, got %v", err)
 	}
@@ -261,7 +261,7 @@ func TestResponsesRequestReasoningEffortMapsToAdaptive(t *testing.T) {
 				Input:     []byte(`"hi"`),
 				Reasoning: &dto.Reasoning{Effort: tc.effort, Summary: tc.summary},
 			}
-			claude, _, err := ConvertResponsesRequestToClaude(req)
+			claude, _, _, err := ConvertResponsesRequestToClaude(req)
 			if err != nil {
 				t.Fatalf("convert: %v", err)
 			}
@@ -288,7 +288,7 @@ func TestResponsesRequestToolCallRoundTrip(t *testing.T) {
 		Model: "claude-opus-4-7",
 		Input: []byte(inputJSON),
 	}
-	claude, _, err := ConvertResponsesRequestToClaude(req)
+	claude, _, _, err := ConvertResponsesRequestToClaude(req)
 	if err != nil {
 		t.Fatalf("convert: %v", err)
 	}
@@ -370,7 +370,7 @@ func TestNonStreamMaxTokensIncomplete(t *testing.T) {
 		},
 		Usage: &dto.ClaudeUsage{InputTokens: 5, OutputTokens: 50},
 	}
-	resp := ConvertClaudeResponseToResponses(cr, nil)
+	resp := ConvertClaudeResponseToResponses(cr, nil, nil)
 	if resp.IncompleteDetails == nil {
 		t.Fatal("incomplete_details should be set")
 	}
@@ -387,7 +387,7 @@ func TestAssistantTextThenReasoningRejected(t *testing.T) {
 		{"type":"reasoning","id":"rs_1","encrypted_content":"` + encryptedRaw + `","summary":[{"type":"summary_text","text":"thought"}]}
 	]`
 	req := &dto.OpenAIResponsesRequest{Model: "claude-opus-4-7", Input: []byte(inputJSON)}
-	_, _, err := ConvertResponsesRequestToClaude(req)
+	_, _, _, err := ConvertResponsesRequestToClaude(req)
 	if err == nil || !strings.Contains(err.Error(), "reasoning") {
 		t.Errorf("expected rejection for reasoning after text, got %v", err)
 	}
@@ -401,7 +401,7 @@ func TestAssistantReasoningThenTextAllowed(t *testing.T) {
 		{"role":"assistant","content":[{"type":"output_text","text":"hello"}]}
 	]`
 	req := &dto.OpenAIResponsesRequest{Model: "claude-opus-4-7", Input: []byte(inputJSON)}
-	claude, _, err := ConvertResponsesRequestToClaude(req)
+	claude, _, _, err := ConvertResponsesRequestToClaude(req)
 	if err != nil {
 		t.Fatalf("should not err: %v", err)
 	}
@@ -425,7 +425,7 @@ func TestToolChoiceAllowedToolsRejected(t *testing.T) {
 		Input:      []byte(`"hi"`),
 		ToolChoice: tc,
 	}
-	_, _, err := ConvertResponsesRequestToClaude(req)
+	_, _, _, err := ConvertResponsesRequestToClaude(req)
 	if err == nil || !strings.Contains(err.Error(), "allowed_tools") {
 		t.Errorf("expected allowed_tools rejection, got %v", err)
 	}
@@ -498,7 +498,7 @@ func TestStreamMalformedEnvelopeInInputRejected(t *testing.T) {
 		{"type":"reasoning","id":"rs_1","encrypted_content":"` + bad + `","summary":[{"type":"summary_text","text":"x"}]}
 	]`
 	req := &dto.OpenAIResponsesRequest{Model: "claude-opus-4-7", Input: []byte(inputJSON)}
-	_, _, err := ConvertResponsesRequestToClaude(req)
+	_, _, _, err := ConvertResponsesRequestToClaude(req)
 	if err == nil || !strings.Contains(err.Error(), "envelope") {
 		t.Errorf("expected envelope decode error, got %v", err)
 	}
@@ -617,7 +617,7 @@ func TestCustomToolDescriptionStripsFreeformHint(t *testing.T) {
 		Input: []byte(`"hi"`),
 		Tools: toolsRaw,
 	}
-	claude, _, err := ConvertResponsesRequestToClaude(req)
+	claude, _, _, err := ConvertResponsesRequestToClaude(req)
 	if err != nil {
 		t.Fatalf("convert: %v", err)
 	}
@@ -650,7 +650,7 @@ func TestCustomToolConvertedToFunctionTool(t *testing.T) {
 		Input: []byte(`"hi"`),
 		Tools: toolsRaw,
 	}
-	claude, _, err := ConvertResponsesRequestToClaude(req)
+	claude, _, _, err := ConvertResponsesRequestToClaude(req)
 	if err != nil {
 		t.Fatalf("convert: %v", err)
 	}
@@ -683,7 +683,7 @@ func TestNonStreamCustomToolCallRestoredWithNames(t *testing.T) {
 		StopReason: "tool_use",
 		Usage:      &dto.ClaudeUsage{InputTokens: 10, OutputTokens: 20},
 	}
-	resp := ConvertClaudeResponseToResponses(cr, map[string]bool{"apply_patch": true})
+	resp := ConvertClaudeResponseToResponses(cr, map[string]bool{"apply_patch": true}, nil)
 	if len(resp.Output) != 2 {
 		t.Fatalf("output count=%d want 2", len(resp.Output))
 	}
@@ -806,7 +806,7 @@ func TestBuiltinToolsStrippedSilently(t *testing.T) {
 		{"type": "mcp"},
 	})
 	req := &dto.OpenAIResponsesRequest{Model: "claude-opus-4-7", Input: []byte(`"hi"`), Tools: toolsRaw}
-	claude, _, err := ConvertResponsesRequestToClaude(req)
+	claude, _, _, err := ConvertResponsesRequestToClaude(req)
 	if err != nil {
 		t.Fatalf("convert: %v", err)
 	}
@@ -829,7 +829,7 @@ func TestRequestAcceptsCustomToolCallEcho(t *testing.T) {
 		Model: "claude-opus-4-7",
 		Input: []byte(inputJSON),
 	}
-	claude, _, err := ConvertResponsesRequestToClaude(req)
+	claude, _, _, err := ConvertResponsesRequestToClaude(req)
 	if err != nil {
 		t.Fatalf("convert: %v", err)
 	}
@@ -869,7 +869,7 @@ func TestCustomToolNamesTracked(t *testing.T) {
 		{"type": "custom", "name": "freeform"},
 	})
 	req := &dto.OpenAIResponsesRequest{Model: "claude-opus-4-7", Input: []byte(`"hi"`), Tools: toolsRaw}
-	_, names, err := ConvertResponsesRequestToClaude(req)
+	_, names, _, err := ConvertResponsesRequestToClaude(req)
 	if err != nil {
 		t.Fatalf("convert: %v", err)
 	}
@@ -900,7 +900,7 @@ func TestDuplicateToolNamesRejected(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			raw, _ := common.Marshal(tc.tools)
 			req := &dto.OpenAIResponsesRequest{Model: "claude-opus-4-7", Input: []byte(`"hi"`), Tools: raw}
-			_, _, err := ConvertResponsesRequestToClaude(req)
+			_, _, _, err := ConvertResponsesRequestToClaude(req)
 			if err == nil || !strings.Contains(err.Error(), "duplicate tool name") {
 				t.Errorf("expected duplicate name rejection, got %v", err)
 			}
@@ -917,7 +917,7 @@ func TestToolChoiceSanitizedAfterStrip(t *testing.T) {
 		})
 		tc, _ := common.Marshal(map[string]any{"type": "function", "name": "web_search"})
 		req := &dto.OpenAIResponsesRequest{Model: "claude-opus-4-7", Input: []byte(`"hi"`), Tools: toolsRaw, ToolChoice: tc}
-		claude, _, err := ConvertResponsesRequestToClaude(req)
+		claude, _, _, err := ConvertResponsesRequestToClaude(req)
 		if err != nil {
 			t.Fatalf("convert: %v", err)
 		}
@@ -933,7 +933,7 @@ func TestToolChoiceSanitizedAfterStrip(t *testing.T) {
 		})
 		tc, _ := common.Marshal("required")
 		req := &dto.OpenAIResponsesRequest{Model: "claude-opus-4-7", Input: []byte(`"hi"`), Tools: toolsRaw, ToolChoice: tc}
-		claude, _, err := ConvertResponsesRequestToClaude(req)
+		claude, _, _, err := ConvertResponsesRequestToClaude(req)
 		if err != nil {
 			t.Fatalf("convert: %v", err)
 		}
@@ -949,7 +949,7 @@ func TestToolChoiceSanitizedAfterStrip(t *testing.T) {
 		})
 		tc, _ := common.Marshal("required")
 		req := &dto.OpenAIResponsesRequest{Model: "claude-opus-4-7", Input: []byte(`"hi"`), Tools: toolsRaw, ToolChoice: tc}
-		claude, _, err := ConvertResponsesRequestToClaude(req)
+		claude, _, _, err := ConvertResponsesRequestToClaude(req)
 		if err != nil {
 			t.Fatalf("convert: %v", err)
 		}
@@ -965,7 +965,7 @@ func TestToolChoiceSanitizedAfterStrip(t *testing.T) {
 		})
 		tc, _ := common.Marshal(map[string]any{"type": "function", "name": "exec"})
 		req := &dto.OpenAIResponsesRequest{Model: "claude-opus-4-7", Input: []byte(`"hi"`), Tools: toolsRaw, ToolChoice: tc}
-		claude, _, err := ConvertResponsesRequestToClaude(req)
+		claude, _, _, err := ConvertResponsesRequestToClaude(req)
 		if err != nil {
 			t.Fatalf("convert: %v", err)
 		}
@@ -988,7 +988,7 @@ func TestNonStreamCustomToolInputFallbackForMalformedOutput(t *testing.T) {
 		},
 		StopReason: "tool_use",
 	}
-	resp := ConvertClaudeResponseToResponses(cr, map[string]bool{"apply_patch": true})
+	resp := ConvertClaudeResponseToResponses(cr, map[string]bool{"apply_patch": true}, nil)
 	if len(resp.Output) != 1 {
 		t.Fatalf("output count=%d want 1", len(resp.Output))
 	}
@@ -1013,7 +1013,7 @@ func TestCustomToolGrammarDescriptionTruncated(t *testing.T) {
 		},
 	}})
 	req := &dto.OpenAIResponsesRequest{Model: "claude-opus-4-7", Input: []byte(`"hi"`), Tools: toolsRaw}
-	claude, _, err := ConvertResponsesRequestToClaude(req)
+	claude, _, _, err := ConvertResponsesRequestToClaude(req)
 	if err != nil {
 		t.Fatalf("convert: %v", err)
 	}
@@ -1033,7 +1033,7 @@ func TestDeveloperRolePrefixLiftedToSystem(t *testing.T) {
 		{"role":"user","content":"Hello"}
 	]`
 	req := &dto.OpenAIResponsesRequest{Model: "claude-opus-4-7", Input: []byte(inputJSON)}
-	claude, _, err := ConvertResponsesRequestToClaude(req)
+	claude, _, _, err := ConvertResponsesRequestToClaude(req)
 	if err != nil {
 		t.Fatalf("convert: %v", err)
 	}
@@ -1074,7 +1074,7 @@ func TestDeveloperRolePrefixMergedWithInstructions(t *testing.T) {
 		Input:        []byte(inputJSON),
 		Instructions: []byte(`"base instructions"`),
 	}
-	claude, _, err := ConvertResponsesRequestToClaude(req)
+	claude, _, _, err := ConvertResponsesRequestToClaude(req)
 	if err != nil {
 		t.Fatalf("convert: %v", err)
 	}
@@ -1099,7 +1099,7 @@ func TestDeveloperRoleInterleavedWrappedToNextUser(t *testing.T) {
 		{"role":"user","content":"How are you?"}
 	]`
 	req := &dto.OpenAIResponsesRequest{Model: "claude-opus-4-7", Input: []byte(inputJSON)}
-	claude, _, err := ConvertResponsesRequestToClaude(req)
+	claude, _, _, err := ConvertResponsesRequestToClaude(req)
 	if err != nil {
 		t.Fatalf("convert: %v", err)
 	}
@@ -1133,7 +1133,7 @@ func TestDeveloperRoleTrailingAppendedToLastUser(t *testing.T) {
 		{"role":"developer","content":"to French"}
 	]`
 	req := &dto.OpenAIResponsesRequest{Model: "claude-opus-4-7", Input: []byte(inputJSON)}
-	claude, _, err := ConvertResponsesRequestToClaude(req)
+	claude, _, _, err := ConvertResponsesRequestToClaude(req)
 	if err != nil {
 		t.Fatalf("convert: %v", err)
 	}
@@ -1160,7 +1160,7 @@ func TestDeveloperRoleTrailingAfterAssistantBecomesNewUser(t *testing.T) {
 		{"role":"developer","content":"reply more verbosely next time"}
 	]`
 	req := &dto.OpenAIResponsesRequest{Model: "claude-opus-4-7", Input: []byte(inputJSON)}
-	claude, _, err := ConvertResponsesRequestToClaude(req)
+	claude, _, _, err := ConvertResponsesRequestToClaude(req)
 	if err != nil {
 		t.Fatalf("convert: %v", err)
 	}
@@ -1183,7 +1183,7 @@ func TestDeveloperRoleOnlySystemNoUserRejected(t *testing.T) {
 		{"role":"system","content":"more rules"}
 	]`
 	req := &dto.OpenAIResponsesRequest{Model: "claude-opus-4-7", Input: []byte(inputJSON)}
-	_, _, err := ConvertResponsesRequestToClaude(req)
+	_, _, _, err := ConvertResponsesRequestToClaude(req)
 	if err == nil || !strings.Contains(err.Error(), "system/developer") {
 		t.Errorf("expected rejection for system-only input, got %v", err)
 	}
@@ -1195,7 +1195,7 @@ func TestDeveloperRoleWithImageContentRejected(t *testing.T) {
 		{"role":"user","content":"hi"}
 	]`
 	req := &dto.OpenAIResponsesRequest{Model: "claude-opus-4-7", Input: []byte(inputJSON)}
-	_, _, err := ConvertResponsesRequestToClaude(req)
+	_, _, _, err := ConvertResponsesRequestToClaude(req)
 	if err == nil || !strings.Contains(err.Error(), "text only") {
 		t.Errorf("expected rejection for non-text content in system/developer, got %v", err)
 	}
@@ -1210,7 +1210,7 @@ func TestDeveloperRoleBetweenUserAndAssistant(t *testing.T) {
 		{"role":"assistant","content":[{"type":"output_text","text":"Greetings"}]}
 	]`
 	req := &dto.OpenAIResponsesRequest{Model: "claude-opus-4-7", Input: []byte(inputJSON)}
-	claude, _, err := ConvertResponsesRequestToClaude(req)
+	claude, _, _, err := ConvertResponsesRequestToClaude(req)
 	if err != nil {
 		t.Fatalf("convert: %v", err)
 	}
@@ -1241,7 +1241,7 @@ func TestDeveloperRoleSplitsTwoAssistants(t *testing.T) {
 		{"role":"assistant","content":[{"type":"output_text","text":"A2"}]}
 	]`
 	req := &dto.OpenAIResponsesRequest{Model: "claude-opus-4-7", Input: []byte(inputJSON)}
-	claude, _, err := ConvertResponsesRequestToClaude(req)
+	claude, _, _, err := ConvertResponsesRequestToClaude(req)
 	if err != nil {
 		t.Fatalf("convert: %v", err)
 	}
@@ -1280,7 +1280,7 @@ func TestDeveloperRoleBetweenAssistantTextAndReasoning(t *testing.T) {
 		{"type":"reasoning","id":"rs_1","encrypted_content":"` + encryptedRaw + `","summary":[{"type":"summary_text","text":"reflect"}]}
 	]`
 	req := &dto.OpenAIResponsesRequest{Model: "claude-opus-4-7", Input: []byte(inputJSON)}
-	claude, _, err := ConvertResponsesRequestToClaude(req)
+	claude, _, _, err := ConvertResponsesRequestToClaude(req)
 	if err != nil {
 		t.Fatalf("convert: %v", err)
 	}
@@ -1306,7 +1306,7 @@ func TestDeveloperRoleBeforeFunctionCallOutput(t *testing.T) {
 		{"type":"function_call_output","call_id":"call_1","output":"ok"}
 	]`
 	req := &dto.OpenAIResponsesRequest{Model: "claude-opus-4-7", Input: []byte(inputJSON)}
-	claude, _, err := ConvertResponsesRequestToClaude(req)
+	claude, _, _, err := ConvertResponsesRequestToClaude(req)
 	if err != nil {
 		t.Fatalf("convert: %v", err)
 	}
@@ -1337,7 +1337,7 @@ func TestDeveloperRoleTwoConsecutiveInterleavedPreservesOrder(t *testing.T) {
 		{"role":"user","content":"second"}
 	]`
 	req := &dto.OpenAIResponsesRequest{Model: "claude-opus-4-7", Input: []byte(inputJSON)}
-	claude, _, err := ConvertResponsesRequestToClaude(req)
+	claude, _, _, err := ConvertResponsesRequestToClaude(req)
 	if err != nil {
 		t.Fatalf("convert: %v", err)
 	}
@@ -1376,7 +1376,7 @@ func TestDeveloperRolePrefixWithInstructionsArray(t *testing.T) {
 		Input:        []byte(inputJSON),
 		Instructions: instructionsRaw,
 	}
-	claude, _, err := ConvertResponsesRequestToClaude(req)
+	claude, _, _, err := ConvertResponsesRequestToClaude(req)
 	if err != nil {
 		t.Fatalf("convert: %v", err)
 	}
@@ -1405,7 +1405,7 @@ func TestDeveloperRoleBeforeParallelFunctionCallOutputs(t *testing.T) {
 		{"type":"function_call_output","call_id":"c2","output":"r2"}
 	]`
 	req := &dto.OpenAIResponsesRequest{Model: "claude-opus-4-7", Input: []byte(inputJSON)}
-	claude, _, err := ConvertResponsesRequestToClaude(req)
+	claude, _, _, err := ConvertResponsesRequestToClaude(req)
 	if err != nil {
 		t.Fatalf("convert: %v", err)
 	}
@@ -1439,7 +1439,7 @@ func TestDeveloperRoleAfterToolResultRunBeforeUser(t *testing.T) {
 		{"role":"user","content":"next query"}
 	]`
 	req := &dto.OpenAIResponsesRequest{Model: "claude-opus-4-7", Input: []byte(inputJSON)}
-	claude, _, err := ConvertResponsesRequestToClaude(req)
+	claude, _, _, err := ConvertResponsesRequestToClaude(req)
 	if err != nil {
 		t.Fatalf("convert: %v", err)
 	}
@@ -1471,7 +1471,7 @@ func TestDeveloperRoleBetweenToolUseAndAssistantTextRejected(t *testing.T) {
 		{"role":"assistant","content":[{"type":"output_text","text":"answer"}]}
 	]`
 	req := &dto.OpenAIResponsesRequest{Model: "claude-opus-4-7", Input: []byte(inputJSON)}
-	_, _, err := ConvertResponsesRequestToClaude(req)
+	_, _, _, err := ConvertResponsesRequestToClaude(req)
 	if err == nil || !strings.Contains(err.Error(), "tool_use") {
 		t.Errorf("expected rejection for developer between tool_use and non-tool_result, got %v", err)
 	}
@@ -1485,7 +1485,7 @@ func TestDeveloperRoleTrailingAfterToolUseRejected(t *testing.T) {
 		{"role":"developer","content":"trailing dev"}
 	]`
 	req := &dto.OpenAIResponsesRequest{Model: "claude-opus-4-7", Input: []byte(inputJSON)}
-	_, _, err := ConvertResponsesRequestToClaude(req)
+	_, _, _, err := ConvertResponsesRequestToClaude(req)
 	if err == nil || !strings.Contains(err.Error(), "tool_use") {
 		t.Errorf("expected rejection for trailing developer after unresolved tool_use, got %v", err)
 	}
@@ -1503,7 +1503,7 @@ func TestDeveloperRoleAfterClosedHandshakeBeforeAssistantText(t *testing.T) {
 		{"role":"assistant","content":[{"type":"output_text","text":"final"}]}
 	]`
 	req := &dto.OpenAIResponsesRequest{Model: "claude-opus-4-7", Input: []byte(inputJSON)}
-	claude, _, err := ConvertResponsesRequestToClaude(req)
+	claude, _, _, err := ConvertResponsesRequestToClaude(req)
 	if err != nil {
 		t.Fatalf("convert: %v", err)
 	}
@@ -1529,7 +1529,7 @@ func TestDeveloperRoleBetweenToolUseAndUserTextRejected(t *testing.T) {
 		{"role":"user","content":"changed my mind"}
 	]`
 	req := &dto.OpenAIResponsesRequest{Model: "claude-opus-4-7", Input: []byte(inputJSON)}
-	_, _, err := ConvertResponsesRequestToClaude(req)
+	_, _, _, err := ConvertResponsesRequestToClaude(req)
 	if err == nil || !strings.Contains(err.Error(), "tool_use") {
 		t.Errorf("expected rejection for developer between tool_use and normal user text, got %v", err)
 	}

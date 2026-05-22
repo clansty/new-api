@@ -355,6 +355,9 @@ type ResponsesOutput struct {
 	Size             string                          `json:"size,omitempty"`
 	CallId           string                          `json:"call_id,omitempty"`
 	Name             string                          `json:"name,omitempty"`
+	// OpenAI Responses 协议中 function_call 输出会带 namespace 字段，
+	// 表示 inner tool 所属的 namespace（如 MCP server 名），客户端用它做工具路由反查。
+	Namespace        string                          `json:"namespace,omitempty"`
 	Arguments        json.RawMessage                 `json:"arguments,omitempty"`
 	Input            string                          `json:"input,omitempty"`
 	Summary          []ResponsesReasoningSummaryPart `json:"summary,omitempty"`

@@ -601,6 +601,18 @@ func getResponsesCustomToolNames(c *gin.Context) map[string]bool {
 	return names
 }
 
+func getResponsesNamespaceMap(c *gin.Context) map[string]NamespaceMapping {
+	if c == nil {
+		return nil
+	}
+	v, ok := c.Get(namespaceMapContextKey)
+	if !ok {
+		return nil
+	}
+	m, _ := v.(map[string]NamespaceMapping)
+	return m
+}
+
 func cacheCreationTokensForOpenAIUsage(usage *dto.Usage) int {
 	if usage == nil {
 		return 0
@@ -844,6 +856,7 @@ func HandleStreamResponseData(c *gin.Context, info *relaycommon.RelayInfo, claud
 			claudeInfo.ResponsesState.CreatedAt = claudeInfo.Created
 			claudeInfo.ResponsesState.ResponseID = claudeInfo.ResponseId
 			claudeInfo.ResponsesState.CustomToolNames = getResponsesCustomToolNames(c)
+			claudeInfo.ResponsesState.NamespaceMap = getResponsesNamespaceMap(c)
 		}
 		for _, evt := range claudeInfo.ResponsesState.HandleClaudeChunk(&claudeResponse) {
 			payload, marshalErr := common.Marshal(evt)
@@ -899,6 +912,7 @@ func HandleStreamFinalResponse(c *gin.Context, info *relaycommon.RelayInfo, clau
 			claudeInfo.ResponsesState.CreatedAt = claudeInfo.Created
 			claudeInfo.ResponsesState.ResponseID = claudeInfo.ResponseId
 			claudeInfo.ResponsesState.CustomToolNames = getResponsesCustomToolNames(c)
+			claudeInfo.ResponsesState.NamespaceMap = getResponsesNamespaceMap(c)
 		}
 		for _, evt := range claudeInfo.ResponsesState.FinalEvents() {
 			payload, marshalErr := common.Marshal(evt)
@@ -969,7 +983,7 @@ func HandleClaudeResponseData(c *gin.Context, info *relaycommon.RelayInfo, claud
 	case types.RelayFormatClaude:
 		responseData = data
 	case types.RelayFormatOpenAIResponses:
-		responsesResp := ConvertClaudeResponseToResponses(&claudeResponse, getResponsesCustomToolNames(c))
+		responsesResp := ConvertClaudeResponseToResponses(&claudeResponse, getResponsesCustomToolNames(c), getResponsesNamespaceMap(c))
 		if claudeInfo.Created > 0 {
 			responsesResp.CreatedAt = int(claudeInfo.Created)
 		}
