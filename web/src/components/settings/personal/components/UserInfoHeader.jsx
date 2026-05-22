@@ -19,7 +19,6 @@ For commercial licensing, please contact support@quantumnous.com
 
 import React from 'react';
 import {
-  Avatar,
   Card,
   Tag,
   Divider,
@@ -30,9 +29,9 @@ import {
   isRoot,
   isAdmin,
   renderQuota,
-  stringToColor,
 } from '../../../../helpers';
 import { Coins, BarChart2, Users } from 'lucide-react';
+import UserAvatar from '../../../common/UserAvatar';
 
 const UserInfoHeader = ({ t, userState }) => {
   const getUsername = () => {
@@ -69,9 +68,13 @@ const UserInfoHeader = ({ t, userState }) => {
           <div className='relative z-10 h-full flex flex-col justify-end p-6'>
             <div className='flex items-center'>
               <div className='flex items-stretch gap-3 sm:gap-4 flex-1 min-w-0'>
-                <Avatar size='large' color={stringToColor(getUsername())}>
+                <UserAvatar
+                  size='large'
+                  oidcId={userState?.user?.oidc_id}
+                  username={getUsername()}
+                >
                   {getAvatarText()}
-                </Avatar>
+                </UserAvatar>
                 <div className='flex-1 min-w-0 flex flex-col justify-between'>
                   <div
                     className='text-3xl font-bold truncate'
