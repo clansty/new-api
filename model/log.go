@@ -37,6 +37,7 @@ type Log struct {
 	Ip               string `json:"ip" gorm:"index;default:''"`
 	RequestId        string `json:"request_id,omitempty" gorm:"type:varchar(64);index:idx_logs_request_id;default:''"`
 	Other            string `json:"other"`
+	OidcId           string `json:"oidc_id,omitempty" gorm:"-"`
 }
 
 // don't use iota, avoid change log type value
@@ -337,9 +338,13 @@ func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName
 	}
 
 	channelIds := types.NewSet[int]()
+	userIds := types.NewSet[int]()
 	for _, log := range logs {
 		if log.ChannelId != 0 {
 			channelIds.Add(log.ChannelId)
+		}
+		if log.UserId != 0 {
+			userIds.Add(log.UserId)
 		}
 	}
 
@@ -373,6 +378,24 @@ func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName
 		}
 		for i := range logs {
 			logs[i].ChannelName = channelMap[logs[i].ChannelId]
+		}
+	}
+
+	if userIds.Len() > 0 {
+		var oidcRows []struct {
+			Id     int    `gorm:"column:id"`
+			OidcId string `gorm:"column:oidc_id"`
+		}
+		if err := DB.Table("users").Select("id, oidc_id").Where("id IN ? AND oidc_id <> ?", userIds.Items(), "").Find(&oidcRows).Error; err == nil {
+			oidcMap := make(map[int]string, len(oidcRows))
+			for _, row := range oidcRows {
+				oidcMap[row.Id] = row.OidcId
+			}
+			for i := range logs {
+				if oid, ok := oidcMap[logs[i].UserId]; ok {
+					logs[i].OidcId = oid
+				}
+			}
 		}
 	}
 

@@ -67,25 +67,30 @@ func GetUserTask(c *gin.Context) {
 }
 
 func tasksToDto(tasks []*model.Task, fillUser bool) []*dto.TaskDto {
-	var userIdMap map[int]*model.UserBase
-	if fillUser {
-		userIdMap = make(map[int]*model.UserBase)
+	type userRow struct {
+		Id       int    `gorm:"column:id"`
+		Username string `gorm:"column:username"`
+		OidcId   string `gorm:"column:oidc_id"`
+	}
+	userMap := make(map[int]userRow)
+	if fillUser && len(tasks) > 0 {
 		userIds := types.NewSet[int]()
 		for _, task := range tasks {
 			userIds.Add(task.UserId)
 		}
-		for _, userId := range userIds.Items() {
-			cacheUser, err := model.GetUserCache(userId)
-			if err == nil {
-				userIdMap[userId] = cacheUser
+		var rows []userRow
+		if err := model.DB.Table("users").Select("id, username, oidc_id").Where("id IN ?", userIds.Items()).Find(&rows).Error; err == nil {
+			for _, row := range rows {
+				userMap[row.Id] = row
 			}
 		}
 	}
 	result := make([]*dto.TaskDto, len(tasks))
 	for i, task := range tasks {
 		if fillUser {
-			if user, ok := userIdMap[task.UserId]; ok {
-				task.Username = user.Username
+			if row, ok := userMap[task.UserId]; ok {
+				task.Username = row.Username
+				task.OidcId = row.OidcId
 			}
 		}
 		result[i] = relay.TaskModel2Dto(task)
