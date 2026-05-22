@@ -35,6 +35,7 @@ import {
   renderQuota,
   timestamp2string,
 } from '../../../helpers';
+import UserAvatar from '../../common/UserAvatar';
 
 const renderTimestamp = (text) => (text ? timestamp2string(text) : '-');
 
@@ -75,14 +76,27 @@ const renderRole = (role, t) => {
  */
 const renderUsername = (text, record) => {
   const remark = record.remark;
+  const avatar = (
+    <UserAvatar
+      size='extra-small'
+      oidcId={record.oidc_id}
+      username={text}
+    />
+  );
   if (!remark) {
-    return <span>{text}</span>;
+    return (
+      <Space spacing={4}>
+        {avatar}
+        <span>{text}</span>
+      </Space>
+    );
   }
   const maxLen = 10;
   const displayRemark =
     remark.length > maxLen ? remark.slice(0, maxLen) + '…' : remark;
   return (
-    <Space spacing={2}>
+    <Space spacing={4}>
+      {avatar}
       <span>{text}</span>
       <Tooltip content={remark} position='top' showArrow>
         <Tag color='white' shape='circle' className='!text-xs'>
