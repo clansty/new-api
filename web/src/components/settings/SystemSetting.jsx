@@ -63,6 +63,7 @@ const SystemSetting = () => {
     'oidc.authorization_endpoint': '',
     'oidc.token_endpoint': '',
     'oidc.user_info_endpoint': '',
+    'oidc.picture_endpoint': '',
     Notice: '',
     SMTPServer: '',
     SMTPPort: '',
@@ -572,6 +573,15 @@ const SystemSetting = () => {
       options.push({
         key: 'oidc.user_info_endpoint',
         value: inputs['oidc.user_info_endpoint'],
+      });
+    }
+    if (
+      originInputs['oidc.picture_endpoint'] !==
+      inputs['oidc.picture_endpoint']
+    ) {
+      options.push({
+        key: 'oidc.picture_endpoint',
+        value: inputs['oidc.picture_endpoint'],
       });
     }
 
@@ -1420,6 +1430,19 @@ const SystemSetting = () => {
                         field="['oidc.user_info_endpoint']"
                         label={t('User Info Endpoint')}
                         placeholder={t('输入 OIDC 的 Userinfo Endpoint')}
+                      />
+                    </Col>
+                  </Row>
+                  <Row
+                    gutter={{ xs: 8, sm: 16, md: 24, lg: 24, xl: 24, xxl: 24 }}
+                  >
+                    <Col xs={24} sm={24} md={24} lg={24} xl={24}>
+                      <Form.Input
+                        field="['oidc.picture_endpoint']"
+                        label={t('头像 Endpoint 模板')}
+                        placeholder={t(
+                          '可选，使用 {sub} 占位符，例如 https://auth.example.com/avatar/{sub}',
+                        )}
                       />
                     </Col>
                   </Row>
