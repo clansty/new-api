@@ -40,6 +40,7 @@ const HeaderBar = ({ onMobileMenuToggle, drawerOpen }) => {
     logo,
     isNewYear,
     isSelfUseMode,
+    isPasswordRegisterEnabled,
     docsLink,
     isDemoSiteMode,
     isConsoleRoute,
@@ -124,6 +125,7 @@ const HeaderBar = ({ onMobileMenuToggle, drawerOpen }) => {
             isLoading={isLoading}
             isMobile={isMobile}
             isSelfUseMode={isSelfUseMode}
+            isPasswordRegisterEnabled={isPasswordRegisterEnabled}
             logout={logout}
             navigate={navigate}
             t={t}

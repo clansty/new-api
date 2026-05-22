@@ -51,6 +51,9 @@ export const useHeaderBar = ({ onMobileMenuToggle, drawerOpen }) => {
   const isSelfUseMode = statusState?.status?.self_use_mode_enabled || false;
   const docsLink = statusState?.status?.docs_link || '';
   const isDemoSiteMode = statusState?.status?.demo_site_enabled || false;
+  // 仅当显式禁用用户名注册时才视为关闭，避免状态未加载时误隐藏
+  const isPasswordRegisterEnabled =
+    statusState?.status?.password_register_enabled !== false;
 
   // 获取顶栏模块配置
   const headerNavModulesConfig = statusState?.status?.HeaderNavModules;
@@ -231,6 +234,7 @@ export const useHeaderBar = ({ onMobileMenuToggle, drawerOpen }) => {
     logo,
     isNewYear,
     isSelfUseMode,
+    isPasswordRegisterEnabled,
     docsLink,
     isDemoSiteMode,
     isConsoleRoute,

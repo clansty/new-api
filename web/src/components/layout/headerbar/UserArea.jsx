@@ -35,6 +35,7 @@ const UserArea = ({
   isLoading,
   isMobile,
   isSelfUseMode,
+  isPasswordRegisterEnabled = true,
   logout,
   navigate,
   t,
@@ -142,7 +143,7 @@ const UserArea = ({
       </div>
     );
   } else {
-    const showRegisterButton = !isSelfUseMode;
+    const showRegisterButton = !isSelfUseMode && isPasswordRegisterEnabled;
 
     const commonSizingAndLayoutClass =
       'flex items-center justify-center !py-[10px] !px-1.5';
