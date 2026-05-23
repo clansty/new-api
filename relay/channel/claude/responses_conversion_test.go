@@ -804,6 +804,7 @@ func TestBuiltinToolsStrippedSilently(t *testing.T) {
 		{"type": "code_interpreter"},
 		{"type": "image_generation"},
 		{"type": "mcp"},
+		{"type": "tool_search", "execution": "client"},
 	})
 	req := &dto.OpenAIResponsesRequest{Model: "claude-opus-4-7", Input: []byte(`"hi"`), Tools: toolsRaw}
 	claude, _, _, err := ConvertResponsesRequestToClaude(req)
@@ -816,6 +817,55 @@ func TestBuiltinToolsStrippedSilently(t *testing.T) {
 	}
 	if fn, ok := tools[0].(*dto.Tool); !ok || fn.Name != "exec" {
 		t.Errorf("surviving tool wrong: %+v", tools[0])
+	}
+}
+
+func TestToolSearchCallAndOutputSilentlySkipped(t *testing.T) {
+	inputJSON := `[
+		{"role":"user","content":"hi"},
+		{"type":"tool_search_call","id":"ts_1","status":"completed","queries":["search"]},
+		{"type":"tool_search_output","id":"tso_1","tool_search_call_id":"ts_1","tools":[]},
+		{"role":"assistant","content":[{"type":"output_text","text":"ok"}]}
+	]`
+	req := &dto.OpenAIResponsesRequest{
+		Model: "claude-opus-4-7",
+		Input: []byte(inputJSON),
+	}
+	claude, _, _, err := ConvertResponsesRequestToClaude(req)
+	if err != nil {
+		t.Fatalf("convert: %v", err)
+	}
+	if len(claude.Messages) != 2 {
+		t.Fatalf("expected 2 messages (user + assistant, tool_search items skipped), got %d", len(claude.Messages))
+	}
+	if claude.Messages[0].Role != "user" || claude.Messages[1].Role != "assistant" {
+		t.Errorf("roles wrong: %q, %q", claude.Messages[0].Role, claude.Messages[1].Role)
+	}
+}
+
+func TestDeferLoadingIgnoredFunctionLoadsImmediately(t *testing.T) {
+	toolsRaw, _ := common.Marshal([]map[string]any{
+		{"type": "function", "name": "search_docs", "defer_loading": true, "parameters": map[string]any{"type": "object"}},
+		{"type": "function", "name": "exec", "parameters": map[string]any{"type": "object"}},
+		{"type": "tool_search", "execution": "server"},
+	})
+	req := &dto.OpenAIResponsesRequest{Model: "claude-opus-4-7", Input: []byte(`"hi"`), Tools: toolsRaw}
+	claude, _, _, err := ConvertResponsesRequestToClaude(req)
+	if err != nil {
+		t.Fatalf("convert: %v", err)
+	}
+	tools := claude.Tools.([]any)
+	if len(tools) != 2 {
+		t.Fatalf("expected 2 surviving tools (defer_loading must be ignored, tool_search stripped), got %d: %+v", len(tools), tools)
+	}
+	names := map[string]bool{}
+	for _, x := range tools {
+		if fn, ok := x.(*dto.Tool); ok {
+			names[fn.Name] = true
+		}
+	}
+	if !names["search_docs"] || !names["exec"] {
+		t.Errorf("expected both search_docs and exec to survive, got %+v", names)
 	}
 }
 

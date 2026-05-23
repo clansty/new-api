@@ -567,6 +567,11 @@ func convertResponsesInputItem(item map[string]any, namespaceMap map[string]Name
 		return "assistant", []dto.ClaudeMediaMessage{*blk}, nil
 	case "item_reference":
 		return "", nil, errors.New("item_reference is not supported when converting to Anthropic Messages API")
+	case "tool_search_call", "tool_search_output":
+		// 请求侧 tool_search 已经被静默剥离（见 convertResponsesToolsToClaudeTools），
+		// 历史里残留的发现调用/结果对 Anthropic 来说毫无意义（所有工具早就立即可见），
+		// 跳过即可，不要报错破坏历史回放。
+		return "", nil, nil
 	case "web_search_call", "file_search_call", "code_interpreter_call",
 		"image_generation_call", "computer_call", "computer_call_output",
 		"local_shell_call", "mcp_call", "mcp_list_tools",
@@ -943,10 +948,14 @@ func convertResponsesToolsToClaudeTools(raw []byte) ([]any, map[string]bool, map
 			"code_interpreter",
 			"computer_use_preview", "computer",
 			"image_generation",
-			"mcp":
+			"mcp",
+			"tool_search":
 			// 上游 Anthropic 不支持这些 OpenAI 内置服务端工具（或者支持但需要单独开通/付费/语义不一致），
 			// 静默剥离避免转发到上游导致 schema 错误或意外计费；模型不会看到这些工具，行为等价于客户端没传。
-			continue
+			//
+			// tool_search 是 OpenAI 的"延迟工具发现"协议（配合 defer_loading: true），Anthropic 无等价物。
+			// 直接剥离 + 不读 defer_loading 字段（见 convertResponsesFunctionToolToClaude）使所有工具立即可见，
+			// 等价于把"延迟加载"退化为"立即加载"。
 		case "namespace":
 			// OpenAI Responses API 用 namespace 把多个 function/custom tool 分组（典型来源是 MCP server，如 Codex CLI 的 mcp__playwright__）。
 			// 处理策略对齐 Anthropic 官方 Claude Code 的实现（参见泄漏源码 src/services/mcp/client.ts:1159 + src/constants/prompts.ts:579）：
