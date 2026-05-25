@@ -52,6 +52,7 @@ type User struct {
 	StripeCustomer   string         `json:"stripe_customer" gorm:"type:varchar(64);column:stripe_customer;index"`
 	CreatedAt        int64          `json:"created_at" gorm:"autoCreateTime;column:created_at"`
 	LastLoginAt      int64          `json:"last_login_at" gorm:"default:0;column:last_login_at"`
+	PinnedTime       int64          `json:"pinned_time" gorm:"type:bigint;not null;default:0;column:pinned_time;index"`
 }
 
 func (user *User) ToBaseUser() *UserBase {
@@ -210,7 +211,7 @@ func GetAllUsers(pageInfo *common.PageInfo) (users []*User, total int64, err err
 	}
 
 	// Get paginated users within same transaction
-	err = tx.Unscoped().Order("id desc").Limit(pageInfo.GetPageSize()).Offset(pageInfo.GetStartIdx()).Omit("password").Find(&users).Error
+	err = tx.Unscoped().Order("pinned_time desc, id desc").Limit(pageInfo.GetPageSize()).Offset(pageInfo.GetStartIdx()).Omit("password").Find(&users).Error
 	if err != nil {
 		tx.Rollback()
 		return nil, 0, err
@@ -278,7 +279,7 @@ func SearchUsers(keyword string, group string, startIdx int, num int) ([]*User, 
 	}
 
 	// 获取分页数据
-	err = query.Omit("password").Order("id desc").Limit(num).Offset(startIdx).Find(&users).Error
+	err = query.Omit("password").Order("pinned_time desc, id desc").Limit(num).Offset(startIdx).Find(&users).Error
 	if err != nil {
 		tx.Rollback()
 		return nil, 0, err
@@ -512,6 +513,21 @@ func (user *User) Update(updatePassword bool) error {
 	return updateUserCache(*user)
 }
 
+func (user *User) UpdatePinnedTime(pinnedTime int64) error {
+	if user.Id <= 0 {
+		return errors.New("id 为空！")
+	}
+	result := DB.Model(&User{}).Where("id = ?", user.Id).Update("pinned_time", pinnedTime)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return errors.New("用户不存在或已被删除")
+	}
+	user.PinnedTime = pinnedTime
+	return nil
+}
+
 func (user *User) Edit(updatePassword bool) error {
 	var err error
 	if updatePassword {
@@ -576,7 +592,13 @@ func (user *User) Delete() error {
 	if user.Id == 0 {
 		return errors.New("id 为空！")
 	}
-	if err := DB.Delete(user).Error; err != nil {
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(&User{}).Where("id = ?", user.Id).Update("pinned_time", 0).Error; err != nil {
+			return err
+		}
+		return tx.Delete(user).Error
+	})
+	if err != nil {
 		return err
 	}
 

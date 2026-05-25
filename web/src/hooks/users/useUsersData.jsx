@@ -137,6 +137,12 @@ export const useUsersData = () => {
       showSuccess(t('操作成功完成！'));
       const user = res.data.data;
 
+      if (action === 'pin' || action === 'unpin') {
+        await refresh(1);
+        setLoading(false);
+        return;
+      }
+
       // Create a new array and new object to ensure React detects changes
       const newUsers = users.map((u) => {
         if (u.id === userId) {
@@ -221,9 +227,15 @@ export const useUsersData = () => {
           background: 'var(--semi-color-disabled-border)',
         },
       };
-    } else {
-      return {};
     }
+    if (record.pinned_time && record.pinned_time > 0) {
+      return {
+        style: {
+          background: 'var(--semi-color-warning-light-default)',
+        },
+      };
+    }
+    return {};
   };
 
   // Refresh data

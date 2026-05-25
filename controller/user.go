@@ -938,6 +938,21 @@ func ManageUser(c *gin.Context) {
 			return
 		}
 		user.Role = common.RoleCommonUser
+	case "pin", "unpin":
+		var pinnedTime int64
+		if req.Action == "pin" {
+			pinnedTime = common.GetTimestamp()
+		}
+		if err := user.UpdatePinnedTime(pinnedTime); err != nil {
+			common.ApiError(c, err)
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{
+			"success": true,
+			"message": "",
+			"data":    model.User{PinnedTime: user.PinnedTime},
+		})
+		return
 	case "add_quota":
 		adminName := c.GetString("username")
 		adminId := c.GetInt("id")

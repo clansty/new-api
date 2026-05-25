@@ -230,6 +230,7 @@ const renderOperations = (
     showResetPasskeyModal,
     showResetTwoFAModal,
     showUserSubscriptionsModal,
+    togglePinUser,
     t,
   },
 ) => {
@@ -237,7 +238,16 @@ const renderOperations = (
     return <></>;
   }
 
+  const isPinned = record.pinned_time > 0;
   const moreMenu = [
+    {
+      node: 'item',
+      name: isPinned ? t('取消置顶') : t('置顶'),
+      onClick: () => togglePinUser(record),
+    },
+    {
+      node: 'divider',
+    },
     {
       node: 'item',
       name: t('订阅管理'),
@@ -330,6 +340,7 @@ export const getUsersColumns = ({
   showResetPasskeyModal,
   showResetTwoFAModal,
   showUserSubscriptionsModal,
+  togglePinUser,
 }) => {
   return [
     {
@@ -397,6 +408,7 @@ export const getUsersColumns = ({
           showResetPasskeyModal,
           showResetTwoFAModal,
           showUserSubscriptionsModal,
+          togglePinUser,
           t,
         }),
     },

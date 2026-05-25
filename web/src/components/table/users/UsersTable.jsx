@@ -102,6 +102,10 @@ const UsersTable = (usersData) => {
     setShowUserSubscriptionsModal(true);
   };
 
+  const togglePinUser = (user) => {
+    manageUser(user.id, user.pinned_time > 0 ? 'unpin' : 'pin', user);
+  };
+
   // Modal confirm handlers
   const handlePromoteConfirm = () => {
     manageUser(modalUser.id, 'promote', modalUser);
@@ -141,6 +145,7 @@ const UsersTable = (usersData) => {
       showResetPasskeyModal: showResetPasskeyUserModal,
       showResetTwoFAModal: showResetTwoFAUserModal,
       showUserSubscriptionsModal: showUserSubscriptionsUserModal,
+      togglePinUser,
     });
   }, [
     t,
@@ -153,6 +158,7 @@ const UsersTable = (usersData) => {
     showResetPasskeyUserModal,
     showResetTwoFAUserModal,
     showUserSubscriptionsUserModal,
+    togglePinUser,
   ]);
 
   // Handle compact mode by removing fixed positioning
