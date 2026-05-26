@@ -57,10 +57,19 @@ func RequestOpenAI2ClaudeMessage(c *gin.Context, textRequest dto.GeneralOpenAIRe
 			if params["type"] != nil {
 				claudeTool.InputSchema["type"] = params["type"].(string)
 			}
-			claudeTool.InputSchema["properties"] = params["properties"]
-			claudeTool.InputSchema["required"] = params["required"]
+			// 仅在源字段存在且非 nil 时写入，避免序列化出 "required": null / "properties": null
+			// 违反 Anthropic input_schema (JSON Schema Draft 2020-12) 规范
+			if v, ok := params["properties"]; ok && v != nil {
+				claudeTool.InputSchema["properties"] = v
+			}
+			if v, ok := params["required"]; ok && v != nil {
+				claudeTool.InputSchema["required"] = v
+			}
 			for s, a := range params {
 				if s == "type" || s == "properties" || s == "required" {
+					continue
+				}
+				if a == nil {
 					continue
 				}
 				claudeTool.InputSchema[s] = a

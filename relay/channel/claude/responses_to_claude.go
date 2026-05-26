@@ -1104,6 +1104,10 @@ func convertResponsesFunctionToolToClaude(t map[string]any) (*dto.Tool, error) {
 		InputSchema: make(map[string]any, len(params)),
 	}
 	for k, v := range params {
+		// 跳过 nil 值，避免 Anthropic input_schema 出现 "required": null 等违反 JSON Schema 的字段
+		if v == nil {
+			continue
+		}
 		tool.InputSchema[k] = v
 	}
 	if _, ok := tool.InputSchema["type"]; !ok {
