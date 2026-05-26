@@ -671,10 +671,16 @@ func StartChannelUpstreamModelUpdateTask() {
 		go func() {
 			common.SysLog(fmt.Sprintf("upstream model update task started: interval=%s", interval))
 			runChannelUpstreamModelUpdateTaskOnce()
+			ctx := common.ShutdownCtx()
 			ticker := time.NewTicker(interval)
 			defer ticker.Stop()
-			for range ticker.C {
-				runChannelUpstreamModelUpdateTaskOnce()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					runChannelUpstreamModelUpdateTaskOnce()
+				}
 			}
 		}()
 	})

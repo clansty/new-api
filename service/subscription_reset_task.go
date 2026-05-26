@@ -33,12 +33,18 @@ func StartSubscriptionQuotaResetTask() {
 		}
 		gopool.Go(func() {
 			logger.LogInfo(context.Background(), fmt.Sprintf("subscription quota reset task started: tick=%s", subscriptionResetTickInterval))
+			ctx := common.ShutdownCtx()
 			ticker := time.NewTicker(subscriptionResetTickInterval)
 			defer ticker.Stop()
 
 			runSubscriptionQuotaResetOnce()
-			for range ticker.C {
-				runSubscriptionQuotaResetOnce()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					runSubscriptionQuotaResetOnce()
+				}
 			}
 		})
 	})

@@ -496,10 +496,17 @@ func UpdateAllChannelsBalance(c *gin.Context) {
 }
 
 func AutomaticallyUpdateChannels(frequency int) {
+	ctx := common.ShutdownCtx()
+	ticker := time.NewTicker(time.Duration(frequency) * time.Minute)
+	defer ticker.Stop()
 	for {
-		time.Sleep(time.Duration(frequency) * time.Minute)
-		common.SysLog("updating all channels")
-		_ = updateAllChannelsBalance()
-		common.SysLog("channels update done")
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			common.SysLog("updating all channels")
+			_ = updateAllChannelsBalance()
+			common.SysLog("channels update done")
+		}
 	}
 }

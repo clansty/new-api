@@ -89,8 +89,11 @@ func sweepTimedOutTasks(ctx context.Context) {
 
 // TaskPollingLoop 主轮询循环，每 15 秒检查一次未完成的任务
 func TaskPollingLoop() {
+	shutdownCtx := common.ShutdownCtx()
 	for {
-		time.Sleep(time.Duration(15) * time.Second)
+		if !common.SleepOrDone(shutdownCtx, 15*time.Second) {
+			return
+		}
 		common.SysLog("任务进度轮询开始")
 		ctx := context.TODO()
 		sweepTimedOutTasks(ctx)

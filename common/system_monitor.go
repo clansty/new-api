@@ -36,15 +36,22 @@ func init() {
 // StartSystemMonitor 启动系统监控
 func StartSystemMonitor() {
 	go func() {
+		ctx := ShutdownCtx()
 		for {
 			config := GetPerformanceMonitorConfig()
+			d := 5 * time.Second
 			if !config.Enabled {
-				time.Sleep(30 * time.Second)
-				continue
+				d = 30 * time.Second
+			} else {
+				updateSystemStatus()
 			}
-
-			updateSystemStatus()
-			time.Sleep(5 * time.Second)
+			timer := time.NewTimer(d)
+			select {
+			case <-ctx.Done():
+				timer.Stop()
+				return
+			case <-timer.C:
+			}
 		}
 	}()
 }

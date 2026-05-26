@@ -2,13 +2,17 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"embed"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -56,13 +60,6 @@ func main() {
 	if common.DebugEnabled {
 		common.SysLog("running in debug mode")
 	}
-
-	defer func() {
-		err := model.CloseDB()
-		if err != nil {
-			common.FatalLog("failed to close database: " + err.Error())
-		}
-	}()
 
 	if common.RedisEnabled {
 		// for compatibility with old versions
@@ -192,9 +189,117 @@ func main() {
 	// Log startup success message
 	common.LogStartupSuccess(startTime, port)
 
-	err = server.Run(":" + port)
-	if err != nil {
-		common.FatalLog("failed to start HTTP server: " + err.Error())
+	srv := &http.Server{
+		Addr:    ":" + port,
+		Handler: server,
+	}
+
+	serverErrCh := make(chan error, 1)
+	go func() {
+		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			serverErrCh <- err
+		}
+		close(serverErrCh)
+	}()
+
+	signalCh := make(chan os.Signal, 1)
+	signal.Notify(signalCh, syscall.SIGINT, syscall.SIGTERM)
+
+	select {
+	case err := <-serverErrCh:
+		if err != nil {
+			common.FatalLog("failed to start HTTP server: " + err.Error())
+		}
+		return
+	case sig := <-signalCh:
+		common.SysLog(fmt.Sprintf("shutdown signal received: %s", sig))
+	}
+
+	gracefulShutdown(srv)
+}
+
+// gracefulShutdown 协调优雅关闭序列, 顺序很重要:
+//  1. 翻转 IsShuttingDown 标志并取消 ShutdownCtx, 让 /api/status 立刻返回 503,
+//     同时通知所有后台 goroutine 退出循环;
+//  2. 给 Docker Swarm / 上游 LB 一段缓冲时间观察到 health 失败并停止派发新流量;
+//  3. http.Server.Shutdown 等待所有进行中的 HTTP / SSE 请求自然完成(SSE 通过
+//     Flusher 而非 hijack, Shutdown 会等它们); 若超时则 srv.Close 强制断,
+//     并额外留一小段时间让 handler 派生的同步副作用收尾;
+//  4. WaitBackground 等 GoTracked 派生的关键 fire-and-forget goroutine 完成;
+//  5. 停 BatchUpdater (它用独立 ctx, 在此前持续 tick 写库, 缩短崩溃丢数据窗口);
+//  6. 带 deadline 重试 flush 直到所有内存中的 batch / quota 数据落库;
+//  7. 关闭 Redis 与 DB 连接.
+func gracefulShutdown(srv *http.Server) {
+	common.SysLog("graceful shutdown: marking unhealthy and cancelling background tasks")
+	common.TriggerShutdown()
+
+	drainDelay := time.Duration(common.GetEnvOrDefault("SHUTDOWN_DRAIN_DELAY_SECONDS", 5)) * time.Second
+	if drainDelay > 0 {
+		common.SysLog(fmt.Sprintf("graceful shutdown: waiting %s for upstream LB to remove this instance", drainDelay))
+		time.Sleep(drainDelay)
+	}
+
+	httpTimeout := time.Duration(common.GetEnvOrDefault("SHUTDOWN_HTTP_TIMEOUT_SECONDS", 14*60)) * time.Second
+	common.SysLog(fmt.Sprintf("graceful shutdown: waiting for in-flight HTTP requests (timeout %s)", httpTimeout))
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), httpTimeout)
+	defer cancel()
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		common.SysError("graceful shutdown: http server shutdown error (forcing close): " + err.Error())
+		// Shutdown 超时, 强制关闭剩余连接并等待 handler 派生的同步副作用 (退款/日志写入)
+		// 在 BatchUpdater 还活着的时候完成入队. 30s 是经验值, 足够 Refund / RecordConsumeLog
+		// 这些同步路径跑完.
+		_ = srv.Close()
+		postCloseGrace := time.Duration(common.GetEnvOrDefault("SHUTDOWN_POST_CLOSE_GRACE_SECONDS", 30)) * time.Second
+		common.SysLog(fmt.Sprintf("graceful shutdown: waiting %s for handler side-effects after force close", postCloseGrace))
+		time.Sleep(postCloseGrace)
+	}
+
+	// 等待 GoTracked 派生的后台任务 (如 testAllChannels) 完成, 它们可能写 batch / DB.
+	bgTimeout := time.Duration(common.GetEnvOrDefault("SHUTDOWN_BACKGROUND_TIMEOUT_SECONDS", 60)) * time.Second
+	common.SysLog(fmt.Sprintf("graceful shutdown: waiting for tracked background tasks (timeout %s)", bgTimeout))
+	common.WaitBackground(bgTimeout)
+
+	common.SysLog("graceful shutdown: stopping batch updater")
+	model.StopBatchUpdater()
+
+	flushDeadline := time.Now().Add(time.Duration(common.GetEnvOrDefault("SHUTDOWN_FLUSH_TIMEOUT_SECONDS", 30)) * time.Second)
+	flushWithRetry(flushDeadline)
+
+	if common.RedisEnabled {
+		if err := common.CloseRedisClient(); err != nil {
+			common.SysError("graceful shutdown: redis close error: " + err.Error())
+		}
+	}
+
+	if err := model.CloseDB(); err != nil {
+		common.SysError("graceful shutdown: db close error: " + err.Error())
+	}
+
+	common.SysLog("graceful shutdown: done")
+}
+
+// flushWithRetry 在 deadline 内反复尝试 flush batch / quota cache,
+// 退避 1s/2s/4s/8s. 任一调用返回 nil 即结束当前 flush;
+// 两者都 nil 时整体提前退出, 避免无谓等待.
+func flushWithRetry(deadline time.Time) {
+	common.SysLog("graceful shutdown: flushing in-memory batch updates")
+	backoff := 1 * time.Second
+	for {
+		batchErr := model.FlushBatchUpdater()
+		quotaErr := model.SaveQuotaDataCache()
+		if batchErr == nil && quotaErr == nil {
+			common.SysLog("graceful shutdown: flush complete")
+			return
+		}
+		if time.Now().After(deadline) {
+			common.SysError(fmt.Sprintf("graceful shutdown: flush deadline reached with pending data (batch_err=%v quota_err=%v)", batchErr, quotaErr))
+			return
+		}
+		common.SysError(fmt.Sprintf("graceful shutdown: flush failed, retrying in %s (batch_err=%v quota_err=%v)", backoff, batchErr, quotaErr))
+		time.Sleep(backoff)
+		if backoff < 8*time.Second {
+			backoff *= 2
+		}
 	}
 }
 

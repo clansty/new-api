@@ -12,7 +12,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/bytedance/gopkg/util/gopool"
 	"gorm.io/gorm"
 )
 
@@ -265,9 +264,9 @@ func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams)
 		logger.LogError(c, "failed to record log: "+err.Error())
 	}
 	if common.DataExportEnabled {
-		gopool.Go(func() {
-			LogQuotaData(userId, username, params.ModelName, params.Quota, common.GetTimestamp(), params.PromptTokens+params.CompletionTokens)
-		})
+		// 同步调用: LogQuotaData 内部只是加锁的 map 累加, 极快;
+		// 若派生 goroutine 则在 graceful shutdown 时可能晚于 SaveQuotaDataCache 执行, 导致数据丢失.
+		LogQuotaData(userId, username, params.ModelName, params.Quota, common.GetTimestamp(), params.PromptTokens+params.CompletionTokens)
 	}
 }
 

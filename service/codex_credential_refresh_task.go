@@ -41,12 +41,18 @@ func StartCodexCredentialAutoRefreshTask() {
 		gopool.Go(func() {
 			logger.LogInfo(context.Background(), fmt.Sprintf("codex credential auto-refresh task started: tick=%s threshold=%s", codexCredentialRefreshTickInterval, codexCredentialRefreshThreshold))
 
+			ctx := common.ShutdownCtx()
 			ticker := time.NewTicker(codexCredentialRefreshTickInterval)
 			defer ticker.Stop()
 
 			runCodexCredentialAutoRefreshOnce()
-			for range ticker.C {
-				runCodexCredentialAutoRefreshOnce()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					runCodexCredentialAutoRefreshOnce()
+				}
 			}
 		})
 	})

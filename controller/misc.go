@@ -40,6 +40,16 @@ func TestStatus(c *gin.Context) {
 }
 
 func GetStatus(c *gin.Context) {
+	// 优雅退出: 收到关闭信号后立即让 health check 失败,
+	// 触发 Docker Swarm / LB 把当前容器标记为 unhealthy 并停止转发新流量.
+	// healthcheck 命令检查 `"success":\s*true`, 这里返回 503 + success:false 即可命中失败分支.
+	if common.IsShuttingDown() {
+		c.JSON(http.StatusServiceUnavailable, gin.H{
+			"success": false,
+			"message": "server is shutting down",
+		})
+		return
+	}
 
 	cs := console_setting.GetConsoleSetting()
 	common.OptionMapRWMutex.RLock()

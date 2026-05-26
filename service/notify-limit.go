@@ -30,8 +30,11 @@ func getDuration() time.Duration {
 // startCleanupTask starts a background task to clean up expired entries
 func startCleanupTask() {
 	gopool.Go(func() {
+		ctx := common.ShutdownCtx()
 		for {
-			time.Sleep(time.Hour)
+			if !common.SleepOrDone(ctx, time.Hour) {
+				return
+			}
 			now := time.Now()
 			notifyLimitStore.Range(func(key, value interface{}) bool {
 				if limit, ok := value.(limitCount); ok {

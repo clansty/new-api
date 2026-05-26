@@ -23,8 +23,11 @@ import (
 func UpdateMidjourneyTaskBulk() {
 	//imageModel := "midjourney"
 	ctx := context.TODO()
+	shutdownCtx := common.ShutdownCtx()
 	for {
-		time.Sleep(time.Duration(15) * time.Second)
+		if !common.SleepOrDone(shutdownCtx, 15*time.Second) {
+			return
+		}
 
 		tasks := model.GetAllUnFinishTasks()
 		if len(tasks) == 0 {
@@ -77,46 +80,12 @@ func UpdateMidjourneyTaskBulk() {
 				}
 				continue
 			}
-			requestUrl := fmt.Sprintf("%s/mj/task/list-by-condition", *midjourneyChannel.BaseURL)
 
-			body, _ := json.Marshal(map[string]any{
-				"ids": taskIds,
-			})
-			req, err := http.NewRequest("POST", requestUrl, bytes.NewBuffer(body))
+			responseItems, err := fetchMidjourneyTasks(shutdownCtx, midjourneyChannel, taskIds)
 			if err != nil {
-				logger.LogError(ctx, fmt.Sprintf("Get Task error: %v", err))
+				logger.LogError(ctx, fmt.Sprintf("fetchMidjourneyTasks channel=%d: %v", channelId, err))
 				continue
 			}
-			// 设置超时时间
-			timeout := time.Second * 15
-			ctx, cancel := context.WithTimeout(context.Background(), timeout)
-			// 使用带有超时的 context 创建新的请求
-			req = req.WithContext(ctx)
-			req.Header.Set("Content-Type", "application/json")
-			req.Header.Set("mj-api-secret", midjourneyChannel.Key)
-			resp, err := service.GetHttpClient().Do(req)
-			if err != nil {
-				logger.LogError(ctx, fmt.Sprintf("Get Task Do req error: %v", err))
-				continue
-			}
-			if resp.StatusCode != http.StatusOK {
-				logger.LogError(ctx, fmt.Sprintf("Get Task status code: %d", resp.StatusCode))
-				continue
-			}
-			responseBody, err := io.ReadAll(resp.Body)
-			if err != nil {
-				logger.LogError(ctx, fmt.Sprintf("Get Mjp Task parse body error: %v", err))
-				continue
-			}
-			var responseItems []dto.MidjourneyDto
-			err = json.Unmarshal(responseBody, &responseItems)
-			if err != nil {
-				logger.LogError(ctx, fmt.Sprintf("Get Mjp Task parse body error2: %v, body: %s", err, string(responseBody)))
-				continue
-			}
-			resp.Body.Close()
-			req.Body.Close()
-			cancel()
 
 			for _, responseItem := range responseItems {
 				task := taskM[responseItem.MjId]
@@ -197,6 +166,45 @@ func UpdateMidjourneyTaskBulk() {
 			}
 		}
 	}
+}
+
+func fetchMidjourneyTasks(parentCtx context.Context, channel *model.Channel, taskIds []string) ([]dto.MidjourneyDto, error) {
+	requestUrl := fmt.Sprintf("%s/mj/task/list-by-condition", *channel.BaseURL)
+	body, err := common.Marshal(map[string]any{"ids": taskIds})
+	if err != nil {
+		return nil, fmt.Errorf("marshal body: %w", err)
+	}
+
+	ctx, cancel := context.WithTimeout(parentCtx, 15*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, "POST", requestUrl, bytes.NewBuffer(body))
+	if err != nil {
+		return nil, fmt.Errorf("new request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("mj-api-secret", channel.Key)
+
+	resp, err := service.GetHttpClient().Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("do request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("upstream status %d", resp.StatusCode)
+	}
+
+	responseBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read body: %w", err)
+	}
+
+	var items []dto.MidjourneyDto
+	if err := common.Unmarshal(responseBody, &items); err != nil {
+		return nil, fmt.Errorf("parse body: %w, raw: %s", err, string(responseBody))
+	}
+	return items, nil
 }
 
 func checkMjTaskNeedUpdate(oldTask *model.Midjourney, newTask dto.MidjourneyDto) bool {

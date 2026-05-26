@@ -86,10 +86,17 @@ func InitChannelCache() {
 }
 
 func SyncChannelCache(frequency int) {
+	ctx := common.ShutdownCtx()
+	ticker := time.NewTicker(time.Duration(frequency) * time.Second)
+	defer ticker.Stop()
 	for {
-		time.Sleep(time.Duration(frequency) * time.Second)
-		common.SysLog("syncing channels from database")
-		InitChannelCache()
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			common.SysLog("syncing channels from database")
+			InitChannelCache()
+		}
 	}
 }
 

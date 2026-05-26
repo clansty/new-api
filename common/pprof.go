@@ -11,7 +11,11 @@ import (
 
 // Monitor 定时监控cpu使用率，超过阈值输出pprof文件
 func Monitor() {
+	ctx := ShutdownCtx()
 	for {
+		if ctx.Err() != nil {
+			return
+		}
 		percent, err := cpu.Percent(time.Second, false)
 		if err != nil {
 			panic(err)
@@ -40,6 +44,12 @@ func Monitor() {
 			pprof.StopCPUProfile()
 			f.Close()
 		}
-		time.Sleep(30 * time.Second)
+		timer := time.NewTimer(30 * time.Second)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return
+		case <-timer.C:
+		}
 	}
 }

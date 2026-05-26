@@ -30,7 +30,6 @@ import (
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/types"
 
-	"github.com/bytedance/gopkg/util/gopool"
 	"github.com/samber/lo"
 	"github.com/tidwall/gjson"
 
@@ -888,7 +887,7 @@ func testAllChannels(notify bool) error {
 	if disableThreshold == 0 {
 		disableThreshold = 10000000 // a impossible value
 	}
-	gopool.Go(func() {
+	common.GoTracked(func() {
 		// 使用 defer 确保无论如何都会重置运行状态，防止死锁
 		defer func() {
 			testAllChannelsLock.Lock()
@@ -897,6 +896,11 @@ func testAllChannels(notify bool) error {
 		}()
 
 		for _, channel := range channels {
+			// 收到 shutdown 信号则立即中止, 避免在 DB 关闭后还写 channel 状态
+			if common.IsShuttingDown() {
+				common.SysLog("testAllChannels: shutdown detected, aborting remaining channels")
+				return
+			}
 			if channel.Status == common.ChannelStatusManuallyDisabled {
 				continue
 			}
@@ -963,14 +967,22 @@ func AutomaticallyTestChannels() {
 		return
 	}
 	autoTestChannelsOnce.Do(func() {
+		ctx := common.ShutdownCtx()
 		for {
+			if ctx.Err() != nil {
+				return
+			}
 			if !operation_setting.GetMonitorSetting().AutoTestChannelEnabled {
-				time.Sleep(1 * time.Minute)
+				if !common.SleepOrDone(ctx, 1*time.Minute) {
+					return
+				}
 				continue
 			}
 			for {
 				frequency := operation_setting.GetMonitorSetting().AutoTestChannelMinutes
-				time.Sleep(time.Duration(int(math.Round(frequency))) * time.Minute)
+				if !common.SleepOrDone(ctx, time.Duration(int(math.Round(frequency)))*time.Minute) {
+					return
+				}
 				common.SysLog(fmt.Sprintf("automatically test channels with interval %f minutes", frequency))
 				common.SysLog("automatically testing all channels")
 				_ = testAllChannels(false)
