@@ -318,15 +318,15 @@ func SearchChannels(keyword string, group string, model string, idSort bool) ([]
 	if group != "" && group != "null" {
 		var groupCondition string
 		if common.UsingMySQL {
-			groupCondition = `CONCAT(',', ` + commonGroupCol + `, ',') LIKE ?`
+			groupCondition = `CONCAT(',', ` + commonGroupCol + `, ',') ` + commonLikeOp + ` ?`
 		} else {
 			// sqlite, PostgreSQL
-			groupCondition = `(',' || ` + commonGroupCol + ` || ',') LIKE ?`
+			groupCondition = `(',' || ` + commonGroupCol + ` || ',') ` + commonLikeOp + ` ?`
 		}
-		whereClause = "(id = ? OR name LIKE ? OR " + commonKeyCol + " = ? OR " + baseURLCol + " LIKE ?) AND " + modelsCol + ` LIKE ? AND ` + groupCondition
+		whereClause = "(id = ? OR name " + commonLikeOp + " ? OR " + commonKeyCol + " = ? OR " + baseURLCol + " " + commonLikeOp + " ?) AND " + modelsCol + ` ` + commonLikeOp + ` ? AND ` + groupCondition
 		args = append(args, common.String2Int(keyword), "%"+keyword+"%", keyword, "%"+keyword+"%", "%"+model+"%", "%,"+group+",%")
 	} else {
-		whereClause = "(id = ? OR name LIKE ? OR " + commonKeyCol + " = ? OR " + baseURLCol + " LIKE ?) AND " + modelsCol + " LIKE ?"
+		whereClause = "(id = ? OR name " + commonLikeOp + " ? OR " + commonKeyCol + " = ? OR " + baseURLCol + " " + commonLikeOp + " ?) AND " + modelsCol + " " + commonLikeOp + " ?"
 		args = append(args, common.String2Int(keyword), "%"+keyword+"%", keyword, "%"+keyword+"%", "%"+model+"%")
 	}
 
@@ -813,15 +813,15 @@ func SearchTags(keyword string, group string, model string, idSort bool) ([]*str
 	if group != "" && group != "null" {
 		var groupCondition string
 		if common.UsingMySQL {
-			groupCondition = `CONCAT(',', ` + commonGroupCol + `, ',') LIKE ?`
+			groupCondition = `CONCAT(',', ` + commonGroupCol + `, ',') ` + commonLikeOp + ` ?`
 		} else {
 			// sqlite, PostgreSQL
-			groupCondition = `(',' || ` + commonGroupCol + ` || ',') LIKE ?`
+			groupCondition = `(',' || ` + commonGroupCol + ` || ',') ` + commonLikeOp + ` ?`
 		}
-		whereClause = "(id = ? OR name LIKE ? OR " + commonKeyCol + " = ? OR " + baseURLCol + " LIKE ?) AND " + modelsCol + ` LIKE ? AND ` + groupCondition
+		whereClause = "(id = ? OR name " + commonLikeOp + " ? OR " + commonKeyCol + " = ? OR " + baseURLCol + " " + commonLikeOp + " ?) AND " + modelsCol + ` ` + commonLikeOp + ` ? AND ` + groupCondition
 		args = append(args, common.String2Int(keyword), "%"+keyword+"%", keyword, "%"+keyword+"%", "%"+model+"%", "%,"+group+",%")
 	} else {
-		whereClause = "(id = ? OR name LIKE ? OR " + commonKeyCol + " = ? OR " + baseURLCol + " LIKE ?) AND " + modelsCol + " LIKE ?"
+		whereClause = "(id = ? OR name " + commonLikeOp + " ? OR " + commonKeyCol + " = ? OR " + baseURLCol + " " + commonLikeOp + " ?) AND " + modelsCol + " " + commonLikeOp + " ?"
 		args = append(args, common.String2Int(keyword), "%"+keyword+"%", keyword, "%"+keyword+"%", "%"+model+"%")
 	}
 

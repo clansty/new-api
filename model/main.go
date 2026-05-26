@@ -1,6 +1,7 @@
 package model
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -22,8 +23,19 @@ var commonKeyCol string
 var commonTrueVal string
 var commonFalseVal string
 
+// commonLikeOp 是大小写不敏感 LIKE 的方言操作符：
+//   - PostgreSQL: "ILIKE"（原生大小写不敏感）
+//   - MySQL/SQLite: "LIKE"（默认排序规则下本身大小写不敏感）
+// 用于 Search* 系列函数，使搜索在所有支持的数据库上行为一致（不区分大小写）。
+// 注意：MySQL utf8mb4_bin 等 binary 排序规则下 LIKE 仍区分大小写；SQLite 默认仅 ASCII 不区分。
+// 默认值为 "LIKE"，确保 initCol() 未运行的测试场景也能产出合法 SQL。
+var commonLikeOp = "LIKE"
+
 var logKeyCol string
 var logGroupCol string
+
+// logLikeOp 是日志库版本的 commonLikeOp（日志库可能与主库不同）。
+var logLikeOp = "LIKE"
 
 func initCol() {
 	// init common column names
@@ -32,33 +44,105 @@ func initCol() {
 		commonKeyCol = `"key"`
 		commonTrueVal = "true"
 		commonFalseVal = "false"
+		commonLikeOp = "ILIKE"
 	} else {
 		commonGroupCol = "`group`"
 		commonKeyCol = "`key`"
 		commonTrueVal = "1"
 		commonFalseVal = "0"
+		commonLikeOp = "LIKE"
 	}
-	if os.Getenv("LOG_SQL_DSN") != "" {
-		switch common.LogSqlType {
-		case common.DatabaseTypePostgreSQL:
-			logGroupCol = `"group"`
-			logKeyCol = `"key"`
-		default:
-			logGroupCol = commonGroupCol
-			logKeyCol = commonKeyCol
-		}
-	} else {
-		// LOG_SQL_DSN 为空时，日志数据库与主数据库相同
-		if common.UsingPostgreSQL {
-			logGroupCol = `"group"`
-			logKeyCol = `"key"`
-		} else {
-			logGroupCol = commonGroupCol
-			logKeyCol = commonKeyCol
-		}
+	// 日志库的列引号 / 操作符必须根据 LogSqlType 决定，
+	// 不能从主库 commonGroupCol 复制（PG 主库 + MySQL 日志库会拿到 "group" 这种非法引号）
+	switch common.LogSqlType {
+	case common.DatabaseTypePostgreSQL:
+		logGroupCol = `"group"`
+		logKeyCol = `"key"`
+		logLikeOp = "ILIKE"
+	default:
+		logGroupCol = "`group`"
+		logKeyCol = "`key`"
+		logLikeOp = "LIKE"
 	}
-	// log sql type and database type
-	//common.SysLog("Using Log SQL Type: " + common.LogSqlType)
+}
+
+// LogExactMatchExpr 返回日志库的"大小写敏感精确匹配"表达式占位符。
+// MySQL 默认排序规则（utf8mb4_general_ci 等）下 = 是大小写不敏感的，需要 BINARY 强制按字节比较；
+// PostgreSQL 和 SQLite 的 = 默认按字节比较，无需特殊处理。
+func LogExactMatchExpr(column string) string {
+	if common.LogSqlType == common.DatabaseTypeMySQL {
+		return "BINARY " + column + " = BINARY ?"
+	}
+	return column + " = ?"
+}
+
+// SanitizeLikePattern 校验并清洗用户输入的 LIKE 搜索模式（仅识别 % 作为通配符）。
+// 规则：
+//  1. 转义 ! 和 _（使用 ! 作为 ESCAPE 字符，兼容 MySQL/PostgreSQL/SQLite）
+//  2. 拒绝连续 %（如 %%）
+//  3. 最多允许 2 个 %
+//  4. 含 % 时（模糊搜索），去掉 % 后关键词长度必须 >= 2
+//  5. 不含 % 时按精确匹配
+// 调用方使用时需在 SQL 末尾添加 ESCAPE '!'，例如：
+//   "name LIKE ? ESCAPE '!'"
+func SanitizeLikePattern(input string) (string, error) {
+	// 使用 ! 而非 \ 作为 ESCAPE 字符，避免 MySQL 中反斜杠的字符串转义问题
+	input = strings.ReplaceAll(input, "!", "!!")
+	input = strings.ReplaceAll(input, `_`, `!_`)
+
+	if strings.Contains(input, "%%") {
+		return "", errors.New("搜索模式中不允许包含连续的 % 通配符")
+	}
+
+	count := strings.Count(input, "%")
+	if count > 2 {
+		return "", errors.New("搜索模式中最多允许包含 2 个 % 通配符")
+	}
+
+	if count > 0 {
+		stripped := strings.ReplaceAll(input, "%", "")
+		if len(stripped) < 2 {
+			return "", errors.New("使用模糊搜索时，关键词长度至少为 2 个字符")
+		}
+		return input, nil
+	}
+
+	return input, nil
+}
+
+// ConvertWildcardToLike 把用户输入的 glob 风格通配符（* 或 %）转换为 SQL LIKE 模式。
+// 用于"精确匹配 + 通配符"语义的字段（如日志过滤器），实现：
+//   - 输入无通配符 -> isFuzzy=false，调用方使用 "col = ?"（精确匹配，大小写敏感）
+//   - 输入含 * 或 % -> isFuzzy=true，调用方使用 "col {commonLikeOp/logLikeOp} ? ESCAPE '!'"
+//     （在 PostgreSQL 上为 ILIKE 大小写不敏感；MySQL/SQLite 默认排序规则下 LIKE 本身不区分）
+// 转换规则：
+//  1. 先转义 ! 和 _（! 为 ESCAPE 字符，避免与 LIKE 的 _ 冲突）
+//  2. 把 * 替换为 %
+//  3. 拒绝连续通配符（%% / ** / *% / %*）
+//  4. 去通配符后关键词长度必须 >= 2，避免无意义的全表扫描
+func ConvertWildcardToLike(input string) (pattern string, isFuzzy bool, err error) {
+	if input == "" {
+		return "", false, nil
+	}
+	if !strings.ContainsAny(input, "*%") {
+		return input, false, nil
+	}
+
+	// 使用 ! 而非 \ 作为 ESCAPE 字符，避免 MySQL 中反斜杠的字符串转义问题
+	escaped := strings.ReplaceAll(input, "!", "!!")
+	escaped = strings.ReplaceAll(escaped, "_", "!_")
+	escaped = strings.ReplaceAll(escaped, "*", "%")
+
+	if strings.Contains(escaped, "%%") {
+		return "", true, errors.New("通配符不允许连续出现")
+	}
+
+	stripped := strings.ReplaceAll(escaped, "%", "")
+	if len(stripped) < 2 {
+		return "", true, errors.New("使用通配符搜索时，关键词长度至少为 2 个字符")
+	}
+
+	return escaped, true, nil
 }
 
 var DB *gorm.DB

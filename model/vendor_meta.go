@@ -74,7 +74,7 @@ func SearchVendors(keyword string, offset int, limit int) ([]*Vendor, int64, err
 	db := DB.Model(&Vendor{})
 	if keyword != "" {
 		like := "%" + keyword + "%"
-		db = db.Where("name LIKE ? OR description LIKE ?", like, like)
+		db = db.Where("name "+commonLikeOp+" ? OR description "+commonLikeOp+" ?", like, like)
 	}
 	var total int64
 	if err := db.Count(&total).Error; err != nil {

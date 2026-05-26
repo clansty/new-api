@@ -51,6 +51,24 @@ const (
 	LogTypeRefund  = 6
 )
 
+// applyLogTextFilter 对日志库的文本字段应用过滤：
+//   - value 为空 -> 不加任何条件
+//   - 含 * 或 % 通配符 -> 大小写不敏感的 LIKE/ILIKE 模糊匹配
+//   - 不含通配符 -> 大小写敏感的精确匹配（MySQL 需要 BINARY，由 LogExactMatchExpr 处理）
+func applyLogTextFilter(tx *gorm.DB, column, value string) (*gorm.DB, error) {
+	if value == "" {
+		return tx, nil
+	}
+	pattern, isFuzzy, err := ConvertWildcardToLike(value)
+	if err != nil {
+		return tx, err
+	}
+	if isFuzzy {
+		return tx.Where(column+" "+logLikeOp+" ? ESCAPE '!'", pattern), nil
+	}
+	return tx.Where(LogExactMatchExpr(column), pattern), nil
+}
+
 func formatUserLogs(logs []*Log, startIdx int) {
 	for i := range logs {
 		logs[i].ChannelName = ""
@@ -304,17 +322,21 @@ func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName
 		tx = LOG_DB.Where("logs.type = ?", logType)
 	}
 
-	if modelName != "" {
-		tx = tx.Where("logs.model_name like ?", modelName)
+	tx, err = applyLogTextFilter(tx, "logs.model_name", modelName)
+	if err != nil {
+		return nil, 0, err
 	}
-	if username != "" {
-		tx = tx.Where("logs.username = ?", username)
+	tx, err = applyLogTextFilter(tx, "logs.username", username)
+	if err != nil {
+		return nil, 0, err
 	}
-	if tokenName != "" {
-		tx = tx.Where("logs.token_name = ?", tokenName)
+	tx, err = applyLogTextFilter(tx, "logs.token_name", tokenName)
+	if err != nil {
+		return nil, 0, err
 	}
-	if requestId != "" {
-		tx = tx.Where("logs.request_id = ?", requestId)
+	tx, err = applyLogTextFilter(tx, "logs.request_id", requestId)
+	if err != nil {
+		return nil, 0, err
 	}
 	if startTimestamp != 0 {
 		tx = tx.Where("logs.created_at >= ?", startTimestamp)
@@ -412,18 +434,17 @@ func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int
 		tx = LOG_DB.Where("logs.user_id = ? and logs.type = ?", userId, logType)
 	}
 
-	if modelName != "" {
-		modelNamePattern, err := sanitizeLikePattern(modelName)
-		if err != nil {
-			return nil, 0, err
-		}
-		tx = tx.Where("logs.model_name LIKE ? ESCAPE '!'", modelNamePattern)
+	tx, err = applyLogTextFilter(tx, "logs.model_name", modelName)
+	if err != nil {
+		return nil, 0, err
 	}
-	if tokenName != "" {
-		tx = tx.Where("logs.token_name = ?", tokenName)
+	tx, err = applyLogTextFilter(tx, "logs.token_name", tokenName)
+	if err != nil {
+		return nil, 0, err
 	}
-	if requestId != "" {
-		tx = tx.Where("logs.request_id = ?", requestId)
+	tx, err = applyLogTextFilter(tx, "logs.request_id", requestId)
+	if err != nil {
+		return nil, 0, err
 	}
 	if startTimestamp != 0 {
 		tx = tx.Where("logs.created_at >= ?", startTimestamp)
@@ -461,13 +482,21 @@ func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelNa
 	// 为rpm和tpm创建单独的查询
 	rpmTpmQuery := LOG_DB.Table("logs").Select("count(*) rpm, sum(prompt_tokens) + sum(completion_tokens) tpm")
 
-	if username != "" {
-		tx = tx.Where("username = ?", username)
-		rpmTpmQuery = rpmTpmQuery.Where("username = ?", username)
+	tx, err = applyLogTextFilter(tx, "username", username)
+	if err != nil {
+		return stat, err
 	}
-	if tokenName != "" {
-		tx = tx.Where("token_name = ?", tokenName)
-		rpmTpmQuery = rpmTpmQuery.Where("token_name = ?", tokenName)
+	rpmTpmQuery, err = applyLogTextFilter(rpmTpmQuery, "username", username)
+	if err != nil {
+		return stat, err
+	}
+	tx, err = applyLogTextFilter(tx, "token_name", tokenName)
+	if err != nil {
+		return stat, err
+	}
+	rpmTpmQuery, err = applyLogTextFilter(rpmTpmQuery, "token_name", tokenName)
+	if err != nil {
+		return stat, err
 	}
 	if startTimestamp != 0 {
 		tx = tx.Where("created_at >= ?", startTimestamp)
@@ -475,13 +504,13 @@ func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelNa
 	if endTimestamp != 0 {
 		tx = tx.Where("created_at <= ?", endTimestamp)
 	}
-	if modelName != "" {
-		modelNamePattern, err := sanitizeLikePattern(modelName)
-		if err != nil {
-			return stat, err
-		}
-		tx = tx.Where("model_name LIKE ? ESCAPE '!'", modelNamePattern)
-		rpmTpmQuery = rpmTpmQuery.Where("model_name LIKE ? ESCAPE '!'", modelNamePattern)
+	tx, err = applyLogTextFilter(tx, "model_name", modelName)
+	if err != nil {
+		return stat, err
+	}
+	rpmTpmQuery, err = applyLogTextFilter(rpmTpmQuery, "model_name", modelName)
+	if err != nil {
+		return stat, err
 	}
 	if channel != 0 {
 		tx = tx.Where("channel_id = ?", channel)
@@ -513,21 +542,16 @@ func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelNa
 
 func SumUsedToken(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string) (token int) {
 	tx := LOG_DB.Table("logs").Select("ifnull(sum(prompt_tokens),0) + ifnull(sum(completion_tokens),0)")
-	if username != "" {
-		tx = tx.Where("username = ?", username)
-	}
-	if tokenName != "" {
-		tx = tx.Where("token_name = ?", tokenName)
-	}
+	// 该函数无 error 返回，通配符校验失败时静默回退到精确匹配
+	tx, _ = applyLogTextFilter(tx, "username", username)
+	tx, _ = applyLogTextFilter(tx, "token_name", tokenName)
 	if startTimestamp != 0 {
 		tx = tx.Where("created_at >= ?", startTimestamp)
 	}
 	if endTimestamp != 0 {
 		tx = tx.Where("created_at <= ?", endTimestamp)
 	}
-	if modelName != "" {
-		tx = tx.Where("model_name = ?", modelName)
-	}
+	tx, _ = applyLogTextFilter(tx, "model_name", modelName)
 	tx.Where("type = ?", LogTypeConsume).Scan(&token)
 	return token
 }

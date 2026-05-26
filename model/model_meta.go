@@ -140,13 +140,13 @@ func SearchModels(keyword string, vendor string, offset int, limit int) ([]*Mode
 	db := DB.Model(&Model{})
 	if keyword != "" {
 		like := "%" + keyword + "%"
-		db = db.Where("model_name LIKE ? OR description LIKE ? OR tags LIKE ?", like, like, like)
+		db = db.Where("model_name "+commonLikeOp+" ? OR description "+commonLikeOp+" ? OR tags "+commonLikeOp+" ?", like, like, like)
 	}
 	if vendor != "" {
 		if vid, err := strconv.Atoi(vendor); err == nil {
 			db = db.Where("models.vendor_id = ?", vid)
 		} else {
-			db = db.Joins("JOIN vendors ON vendors.id = models.vendor_id").Where("vendors.name LIKE ?", "%"+vendor+"%")
+			db = db.Joins("JOIN vendors ON vendors.id = models.vendor_id").Where("vendors.name "+commonLikeOp+" ?", "%"+vendor+"%")
 		}
 	}
 	var total int64

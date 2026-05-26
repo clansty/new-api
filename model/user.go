@@ -245,7 +245,7 @@ func SearchUsers(keyword string, group string, startIdx int, num int) ([]*User, 
 	query := tx.Unscoped().Model(&User{})
 
 	// 构建搜索条件
-	likeCondition := "username LIKE ? OR email LIKE ? OR display_name LIKE ? OR remark LIKE ?"
+	likeCondition := "username " + commonLikeOp + " ? OR email " + commonLikeOp + " ? OR display_name " + commonLikeOp + " ? OR remark " + commonLikeOp + " ?"
 	likeArg := "%" + keyword + "%"
 
 	// 尝试将关键字转换为整数ID
