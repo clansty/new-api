@@ -6,6 +6,7 @@ const (
 	BalanceQueryModeDefault          BalanceQueryMode = ""
 	BalanceQueryModeOpenAICompatible BalanceQueryMode = "openai"
 	BalanceQueryModeSub2API          BalanceQueryMode = "sub2api"
+	BalanceQueryModeHYL2API          BalanceQueryMode = "hyl2api"
 	BalanceQueryModeDisabled         BalanceQueryMode = "disabled"
 )
 

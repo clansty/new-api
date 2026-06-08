@@ -23,6 +23,16 @@ type sub2APIUsageResponse struct {
 	Unit      string        `json:"unit,omitempty"`
 }
 
+type hyl2APIQuotaBucket struct {
+	Remaining *float64 `json:"remaining,omitempty"`
+}
+
+type hyl2APIQuotaResponse struct {
+	Success *bool               `json:"success,omitempty"`
+	Detail  string              `json:"detail,omitempty"`
+	USD     *hyl2APIQuotaBucket `json:"usd,omitempty"`
+}
+
 func ensureChannelBalanceBaseURL(channel *model.Channel) string {
 	baseURL := channel.GetBaseURL()
 	if baseURL == "" && channel.Type >= 0 && channel.Type < len(constant.ChannelBaseURLs) {
@@ -48,6 +58,12 @@ func updateChannelBalanceByQueryMode(channel *model.Channel) (float64, bool, err
 			channel.UpdateBalance(balance)
 		}
 		return balance, true, err
+	case dto.BalanceQueryModeHYL2API:
+		balance, err := queryHYL2APIBalance(channel)
+		if err == nil {
+			channel.UpdateBalance(balance)
+		}
+		return balance, true, err
 	case dto.BalanceQueryModeDisabled:
 		return channel.Balance, true, nil
 	default:
@@ -67,6 +83,16 @@ func joinUpstreamPath(baseURL string, path string) string {
 	}
 	if strings.HasSuffix(trimmedBase, "/v1") && strings.HasPrefix(trimmedPath, "v1/") {
 		trimmedPath = strings.TrimPrefix(trimmedPath, "v1/")
+	}
+	return trimmedBase + "/" + trimmedPath
+}
+
+func joinUpstreamRootPath(baseURL string, path string) string {
+	trimmedBase := strings.TrimRight(baseURL, "/")
+	trimmedBase = strings.TrimSuffix(trimmedBase, "/v1")
+	trimmedPath := strings.TrimLeft(path, "/")
+	if trimmedBase == "" {
+		return "/" + trimmedPath
 	}
 	return trimmedBase + "/" + trimmedPath
 }
@@ -136,4 +162,30 @@ func (response sub2APIUsageResponse) remainingBalance() (float64, error) {
 		return *response.Balance, nil
 	}
 	return 0, errors.New("sub2api usage response missing remaining balance")
+}
+
+func queryHYL2APIBalance(channel *model.Channel) (float64, error) {
+	url := joinUpstreamRootPath(channel.GetBaseURL(), "/user/api/quota")
+	body, err := GetResponseBody("GET", url, channel, GetAuthHeader(channel.Key))
+	if err != nil {
+		return 0, err
+	}
+	response := hyl2APIQuotaResponse{}
+	if err := common.Unmarshal(body, &response); err != nil {
+		return 0, err
+	}
+	return response.remainingBalance()
+}
+
+func (response hyl2APIQuotaResponse) remainingBalance() (float64, error) {
+	if response.Success != nil && !*response.Success {
+		if response.Detail != "" {
+			return 0, fmt.Errorf("hyl2api quota query failed: %s", response.Detail)
+		}
+		return 0, errors.New("hyl2api quota query failed")
+	}
+	if response.USD != nil && response.USD.Remaining != nil {
+		return *response.USD.Remaining, nil
+	}
+	return 0, errors.New("hyl2api quota response missing usd remaining balance")
 }

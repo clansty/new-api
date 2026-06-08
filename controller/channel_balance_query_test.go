@@ -115,6 +115,64 @@ func Test_sub2APIUsageResponseRemainingBalance_whenWalletBalanceIsPresent(t *tes
 	require.Equal(t, 28.75, balance)
 }
 
+func Test_queryHYL2APIBalance_whenBaseURLIncludesV1(t *testing.T) {
+	// Given: an hyl2api upstream whose quota endpoint is rooted outside /v1.
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/user/api/quota", r.URL.Path)
+		require.Equal(t, "Bearer test-key", r.Header.Get("Authorization"))
+		_, err := w.Write([]byte(`{"success":true,"limit_mode":"usd","usd":{"remaining":4102.476372}}`))
+		require.NoError(t, err)
+	}))
+	defer server.Close()
+
+	channel := &model.Channel{
+		Key:     "test-key",
+		BaseURL: common.GetPointer(server.URL + "/v1"),
+	}
+
+	// When: the hyl2api balance query reads the quota endpoint.
+	balance, err := queryHYL2APIBalance(channel)
+
+	// Then: it strips the OpenAI /v1 suffix and returns the USD remaining balance.
+	require.NoError(t, err)
+	require.Equal(t, 4102.476372, balance)
+}
+
+func Test_hyl2APIQuotaResponseRemainingBalance_whenUSDRemainingIsExplicitZero(t *testing.T) {
+	// Given: an hyl2api quota response with an explicit zero USD remaining balance.
+	success := true
+	remaining := 0.0
+	response := hyl2APIQuotaResponse{
+		Success: &success,
+		USD: &hyl2APIQuotaBucket{
+			Remaining: &remaining,
+		},
+	}
+
+	// When: the balance is extracted.
+	balance, err := response.remainingBalance()
+
+	// Then: the explicit zero is preserved instead of treated as absent.
+	require.NoError(t, err)
+	require.Equal(t, 0.0, balance)
+}
+
+func Test_hyl2APIQuotaResponseRemainingBalance_whenResponseIsUnsuccessful(t *testing.T) {
+	// Given: an hyl2api quota response that rejected the API key.
+	success := false
+	response := hyl2APIQuotaResponse{
+		Success: &success,
+		Detail:  "请提供 API Key",
+	}
+
+	// When: the balance is extracted.
+	balance, err := response.remainingBalance()
+
+	// Then: the API error is surfaced and no balance is returned.
+	require.ErrorContains(t, err, "请提供 API Key")
+	require.Equal(t, 0.0, balance)
+}
+
 func Test_updateChannelBalanceByQueryMode_whenDisabled(t *testing.T) {
 	// Given: a channel whose upstream balance query is explicitly disabled.
 	channel := &model.Channel{

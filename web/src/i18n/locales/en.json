@@ -3924,6 +3924,8 @@
     "X 也可以小于 1，当折扣用。想做\"只给输出加价\"或\"额外加固定费用\"，请直接写完整计费公式。": "",
     "自动刷新间隔": "Auto refresh interval",
     "自动刷新已暂停": "Auto refresh paused",
-    "暂停": "Paused"
+    "暂停": "Paused",
+    "hyl2api /user/api/quota": "hyl2api /user/api/quota",
+    "上游为 new-api 或 One API 时选择 OpenAI 兼容接口；上游为 sub2api 时选择 sub2api /v1/usage；上游为 hyl2api 时选择 hyl2api /user/api/quota": "Select OpenAI-compatible API for new-api or One API upstreams; select sub2api /v1/usage for sub2api upstreams; select hyl2api /user/api/quota for hyl2api upstreams"
   }
 }

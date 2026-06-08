@@ -133,6 +133,7 @@ const BALANCE_QUERY_OPTIONS = [
   { value: '', label: '默认' },
   { value: 'openai', label: 'OpenAI 兼容接口' },
   { value: 'sub2api', label: 'sub2api /v1/usage' },
+  { value: 'hyl2api', label: 'hyl2api /user/api/quota' },
   { value: 'disabled', label: '不获取' },
 ];
 
@@ -2549,7 +2550,7 @@ const EditChannelModal = (props) => {
                         label: t(option.label),
                       }))}
                       onChange={(value) => handleChannelSettingsChange('balance_query_mode', value)}
-                      extraText={t('上游为 new-api 或 One API 时选择 OpenAI 兼容接口；上游为 sub2api 时选择 sub2api /v1/usage')}
+                      extraText={t('上游为 new-api 或 One API 时选择 OpenAI 兼容接口；上游为 sub2api 时选择 sub2api /v1/usage；上游为 hyl2api 时选择 hyl2api /user/api/quota')}
                     />
                   )}
 
