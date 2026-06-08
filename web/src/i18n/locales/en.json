@@ -3916,6 +3916,9 @@
     "whsec_xxx 的 Webhook 签名密钥，敏感信息不显示": "Webhook signature key for whsec_xxx, sensitive information not displayed",
     "Worker地址": "Worker Address",
     "Worker密钥": "Worker Key",
-    "X 也可以小于 1，当折扣用。想做\"只给输出加价\"或\"额外加固定费用\"，请直接写完整计费公式。": ""
+    "X 也可以小于 1，当折扣用。想做\"只给输出加价\"或\"额外加固定费用\"，请直接写完整计费公式。": "",
+    "自动刷新间隔": "Auto refresh interval",
+    "自动刷新已暂停": "Auto refresh paused",
+    "暂停": "Paused"
   }
 }

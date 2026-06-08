@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Table,
@@ -45,6 +45,8 @@ const CardTable = ({
   loading = false,
   rowKey = 'key',
   hidePagination = false,
+  mobileExpandedRowKeys,
+  onMobileRowExpandChange,
   ...tableProps
 }) => {
   const isMobile = useIsMobile();
@@ -133,6 +135,10 @@ const CardTable = ({
   const MobileRowCard = ({ record, index }) => {
     const [showDetails, setShowDetails] = useState(false);
     const rowKeyVal = getRowKey(record, index);
+    const isMobileExpandControlled = Array.isArray(mobileExpandedRowKeys);
+    const detailsVisible = isMobileExpandControlled
+      ? mobileExpandedRowKeys.includes(rowKeyVal)
+      : showDetails;
 
     const hasDetails =
       tableProps.expandedRowRender &&
@@ -185,15 +191,19 @@ const CardTable = ({
               theme='borderless'
               size='small'
               className='w-full flex justify-center mt-2'
-              icon={showDetails ? <IconChevronUp /> : <IconChevronDown />}
+              icon={detailsVisible ? <IconChevronUp /> : <IconChevronDown />}
               onClick={(e) => {
                 e.stopPropagation();
-                setShowDetails(!showDetails);
+                const nextShowDetails = !detailsVisible;
+                if (!isMobileExpandControlled) {
+                  setShowDetails(nextShowDetails);
+                }
+                onMobileRowExpandChange?.(rowKeyVal, nextShowDetails, record);
               }}
             >
-              {showDetails ? t('收起') : t('详情')}
+              {detailsVisible ? t('收起') : t('详情')}
             </Button>
-            <Collapsible isOpen={showDetails} keepDOM>
+            <Collapsible isOpen={detailsVisible} keepDOM>
               <div className='pt-2'>
                 {tableProps.expandedRowRender(record, index)}
               </div>
@@ -237,6 +247,8 @@ CardTable.propTypes = {
   loading: PropTypes.bool,
   rowKey: PropTypes.oneOfType([PropTypes.string, PropTypes.func]),
   hidePagination: PropTypes.bool,
+  mobileExpandedRowKeys: PropTypes.array,
+  onMobileRowExpandChange: PropTypes.func,
 };
 
 export default CardTable;

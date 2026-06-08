@@ -17,18 +17,15 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Modal } from '@douyinfe/semi-ui';
 import {
   API,
-  getTodayStartTimestamp,
   isAdmin,
   showError,
   showSuccess,
   timestamp2string,
-  renderQuota,
-  renderNumber,
   getLogOther,
   copy,
   renderClaudeLogContent,
@@ -40,8 +37,68 @@ import {
   renderTaskBillingProcess,
 } from '../../helpers';
 import { ITEMS_PER_PAGE } from '../../constants';
+import { AUTO_REFRESH_INTERVAL_OPTIONS } from '../../constants/console.constants';
 import { useTableCompactMode } from '../common/useTableCompactMode';
 import ParamOverrideEntry from '../../components/table/usage-logs/components/ParamOverrideEntry';
+
+const getDefaultQueryDateRange = () => {
+  const endTimestamp = Math.floor(Date.now() / 1000);
+  return {
+    start_timestamp: timestamp2string(endTimestamp - 24 * 60 * 60),
+    end_timestamp: timestamp2string(endTimestamp),
+  };
+};
+
+const normalizeDateTimeValue = (value) => {
+  if (value instanceof Date) {
+    return timestamp2string(value.getTime() / 1000);
+  }
+
+  if (typeof value === 'string') {
+    return value;
+  }
+
+  return '';
+};
+
+const getQueryDateRange = (dateRange) => {
+  const defaults = getDefaultQueryDateRange();
+
+  if (!Array.isArray(dateRange) || dateRange.length !== 2) {
+    return defaults;
+  }
+
+  const start_timestamp = normalizeDateTimeValue(dateRange[0]);
+  const end_timestamp = normalizeDateTimeValue(dateRange[1]);
+
+  if (!start_timestamp || !end_timestamp) {
+    return defaults;
+  }
+
+  return { start_timestamp, end_timestamp };
+};
+
+const getTimestampForQuery = (dateTimeValue, fallbackTimestamp) => {
+  const parsed = Date.parse(dateTimeValue);
+  if (Number.isNaN(parsed)) {
+    return fallbackTimestamp;
+  }
+  return Math.floor(parsed / 1000);
+};
+
+const getQueryTimestamps = (start_timestamp, end_timestamp) => {
+  const defaultRange = getDefaultQueryDateRange();
+  const localStartTimestamp = getTimestampForQuery(
+    start_timestamp,
+    getTimestampForQuery(defaultRange.start_timestamp, 0),
+  );
+  const localEndTimestamp = getTimestampForQuery(
+    end_timestamp,
+    getTimestampForQuery(defaultRange.end_timestamp, localStartTimestamp),
+  );
+
+  return { localStartTimestamp, localEndTimestamp };
+};
 
 export const useLogsData = () => {
   const { t } = useTranslation();
@@ -70,10 +127,19 @@ export const useLogsData = () => {
   const [showStat, setShowStat] = useState(false);
   const [loading, setLoading] = useState(false);
   const [loadingStat, setLoadingStat] = useState(false);
+  const loadingRef = useRef(false);
+  const loadingStatRef = useRef(false);
+  const refreshRef = useRef(null);
   const [activePage, setActivePage] = useState(1);
   const [logCount, setLogCount] = useState(0);
   const [pageSize, setPageSize] = useState(ITEMS_PER_PAGE);
   const [logType, setLogType] = useState(0);
+  const [expandedRowKeys, setExpandedRowKeys] = useState([]);
+  const [mobileExpandedRowKeys, setMobileExpandedRowKeys] = useState([]);
+  const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(false);
+  const [autoRefreshInterval, setAutoRefreshInterval] = useState(
+    AUTO_REFRESH_INTERVAL_OPTIONS[2],
+  );
 
   // User and admin
   const isAdminUser = isAdmin();
@@ -93,7 +159,6 @@ export const useLogsData = () => {
 
   // Form state
   const [formApi, setFormApi] = useState(null);
-  let now = new Date();
   const formInitValues = {
     username: '',
     token_name: '',
@@ -101,10 +166,7 @@ export const useLogsData = () => {
     channel: '',
     group: '',
     request_id: '',
-    dateRange: [
-      timestamp2string(getTodayStartTimestamp()),
-      timestamp2string(now.getTime() / 1000 + 3600),
-    ],
+    dateRange: [],
     logType: '0',
   };
 
@@ -164,7 +226,9 @@ export const useLogsData = () => {
   };
 
   // Column visibility state
-  const [visibleColumns, setVisibleColumns] = useState(getInitialVisibleColumns);
+  const [visibleColumns, setVisibleColumns] = useState(
+    getInitialVisibleColumns,
+  );
   const [showColumnSelector, setShowColumnSelector] = useState(false);
   const [billingDisplayMode, setBillingDisplayMode] = useState(
     getInitialBillingDisplayMode,
@@ -186,6 +250,18 @@ export const useLogsData = () => {
     useState(null);
   const [showParamOverrideModal, setShowParamOverrideModal] = useState(false);
   const [paramOverrideTarget, setParamOverrideTarget] = useState(null);
+
+  const hasOpenModal =
+    showColumnSelector ||
+    showUserInfo ||
+    showChannelAffinityUsageCacheModal ||
+    showParamOverrideModal;
+  const currentRowKeys = new Set(logs.map((log) => log.key));
+  const hasExpandedRows =
+    expandedRowKeys.some((key) => currentRowKeys.has(key)) ||
+    mobileExpandedRowKeys.some((key) => currentRowKeys.has(key));
+  const isAutoRefreshPaused =
+    autoRefreshEnabled && (activePage !== 1 || hasOpenModal || hasExpandedRows);
 
   // Initialize default column visibility
   const initDefaultColumns = () => {
@@ -232,21 +308,20 @@ export const useLogsData = () => {
     localStorage.setItem(BILLING_DISPLAY_MODE_STORAGE_KEY, billingDisplayMode);
   }, [BILLING_DISPLAY_MODE_STORAGE_KEY, billingDisplayMode]);
 
+  useEffect(() => {
+    loadingRef.current = loading;
+  }, [loading]);
+
+  useEffect(() => {
+    loadingStatRef.current = loadingStat;
+  }, [loadingStat]);
+
   // 获取表单值的辅助函数，确保所有值都是字符串
   const getFormValues = () => {
     const formValues = formApi ? formApi.getValues() : {};
-
-    let start_timestamp = timestamp2string(getTodayStartTimestamp());
-    let end_timestamp = timestamp2string(now.getTime() / 1000 + 3600);
-
-    if (
-      formValues.dateRange &&
-      Array.isArray(formValues.dateRange) &&
-      formValues.dateRange.length === 2
-    ) {
-      start_timestamp = formValues.dateRange[0];
-      end_timestamp = formValues.dateRange[1];
-    }
+    const { start_timestamp, end_timestamp } = getQueryDateRange(
+      formValues.dateRange,
+    );
 
     return {
       username: formValues.username || '',
@@ -272,8 +347,10 @@ export const useLogsData = () => {
       logType: formLogType,
     } = getFormValues();
     const currentLogType = formLogType !== undefined ? formLogType : logType;
-    let localStartTimestamp = Date.parse(start_timestamp) / 1000;
-    let localEndTimestamp = Date.parse(end_timestamp) / 1000;
+    const { localStartTimestamp, localEndTimestamp } = getQueryTimestamps(
+      start_timestamp,
+      end_timestamp,
+    );
     let url = `/api/log/self/stat?type=${currentLogType}&token_name=${token_name}&model_name=${model_name}&start_timestamp=${localStartTimestamp}&end_timestamp=${localEndTimestamp}&group=${group}`;
     url = encodeURI(url);
     let res = await API.get(url);
@@ -297,8 +374,10 @@ export const useLogsData = () => {
       logType: formLogType,
     } = getFormValues();
     const currentLogType = formLogType !== undefined ? formLogType : logType;
-    let localStartTimestamp = Date.parse(start_timestamp) / 1000;
-    let localEndTimestamp = Date.parse(end_timestamp) / 1000;
+    const { localStartTimestamp, localEndTimestamp } = getQueryTimestamps(
+      start_timestamp,
+      end_timestamp,
+    );
     let url = `/api/log/stat?type=${currentLogType}&username=${username}&token_name=${token_name}&model_name=${model_name}&start_timestamp=${localStartTimestamp}&end_timestamp=${localEndTimestamp}&channel=${channel}&group=${group}`;
     url = encodeURI(url);
     let res = await API.get(url);
@@ -311,17 +390,24 @@ export const useLogsData = () => {
   };
 
   const handleEyeClick = async () => {
-    if (loadingStat) {
+    if (loadingStatRef.current) {
       return;
     }
+    loadingStatRef.current = true;
     setLoadingStat(true);
-    if (isAdminUser) {
-      await getLogStat();
-    } else {
-      await getLogSelfStat();
+    try {
+      if (isAdminUser) {
+        await getLogStat();
+      } else {
+        await getLogSelfStat();
+      }
+      setShowStat(true);
+    } catch (error) {
+      showError(error);
+    } finally {
+      loadingStatRef.current = false;
+      setLoadingStat(false);
     }
-    setShowStat(true);
-    setLoadingStat(false);
   };
 
   // User info function
@@ -364,6 +450,38 @@ export const useLogsData = () => {
     setShowParamOverrideModal(true);
   };
 
+  const handleRowExpand = (expanded, record) => {
+    const rowKey = record?.key;
+    if (rowKey === undefined || rowKey === null) {
+      return;
+    }
+
+    setExpandedRowKeys((keys) => {
+      if (expanded) {
+        return keys.includes(rowKey) ? keys : [...keys, rowKey];
+      }
+      return keys.filter((key) => key !== rowKey);
+    });
+  };
+
+  const handleMobileRowExpandChange = (rowKey, expanded) => {
+    if (rowKey === undefined || rowKey === null) {
+      return;
+    }
+
+    setMobileExpandedRowKeys((keys) => {
+      if (expanded) {
+        return keys.includes(rowKey) ? keys : [...keys, rowKey];
+      }
+      return keys.filter((key) => key !== rowKey);
+    });
+  };
+
+  const resetExpandedRows = () => {
+    setExpandedRowKeys([]);
+    setMobileExpandedRowKeys([]);
+  };
+
   // Format logs data
   const setLogsFormat = (logs) => {
     const requestConversionDisplayValue = (conversionChain) => {
@@ -383,7 +501,10 @@ export const useLogsData = () => {
       let other = getLogOther(logs[i].other);
       let expandDataLocal = [];
 
-      if (isAdminUser && (logs[i].type === 0 || logs[i].type === 2 || logs[i].type === 6)) {
+      if (
+        isAdminUser &&
+        (logs[i].type === 0 || logs[i].type === 2 || logs[i].type === 6)
+      ) {
         expandDataLocal.push({
           key: t('渠道信息'),
           value: `${logs[i].channel} - ${logs[i].channel_name || '[未知]'}`,
@@ -430,7 +551,10 @@ export const useLogsData = () => {
           expandDataLocal.push({
             key: t('日志详情'),
             value: other?.claude
-              ? renderClaudeLogContent({ ...other, displayMode: billingDisplayMode })
+              ? renderClaudeLogContent({
+                  ...other,
+                  displayMode: billingDisplayMode,
+                })
               : renderLogContent({ ...other, displayMode: billingDisplayMode }),
           });
         }
@@ -520,7 +644,14 @@ export const useLogsData = () => {
           expandDataLocal.push({
             key: t('失败原因'),
             value: (
-              <div style={{ maxWidth: 600, whiteSpace: 'normal', wordBreak: 'break-word', lineHeight: 1.6 }}>
+              <div
+                style={{
+                  maxWidth: 600,
+                  whiteSpace: 'normal',
+                  wordBreak: 'break-word',
+                  lineHeight: 1.6,
+                }}
+              >
                 {other.reason}
               </div>
             ),
@@ -537,7 +668,8 @@ export const useLogsData = () => {
         const ss = other.stream_status;
         const isOk = ss.status === 'ok';
         const statusLabel = isOk ? '✓ ' + t('正常') : '✗ ' + t('异常');
-        let streamValue = statusLabel + ' (' + (ss.end_reason || 'unknown') + ')';
+        let streamValue =
+          statusLabel + ' (' + (ss.end_reason || 'unknown') + ')';
         if (ss.error_count > 0) {
           streamValue += ` [${t('软错误')}: ${ss.error_count}]`;
         }
@@ -552,7 +684,14 @@ export const useLogsData = () => {
           expandDataLocal.push({
             key: t('流错误详情'),
             value: (
-              <div style={{ maxWidth: 600, whiteSpace: 'pre-line', wordBreak: 'break-word', lineHeight: 1.6 }}>
+              <div
+                style={{
+                  maxWidth: 600,
+                  whiteSpace: 'pre-line',
+                  wordBreak: 'break-word',
+                  lineHeight: 1.6,
+                }}
+              >
                 {ss.errors.join('\n')}
               </div>
             ),
@@ -727,74 +866,100 @@ export const useLogsData = () => {
 
   // Load logs function
   const loadLogs = async (startIdx, pageSize, customLogType = null) => {
+    loadingRef.current = true;
     setLoading(true);
+    try {
+      let url = '';
+      const {
+        username,
+        token_name,
+        model_name,
+        start_timestamp,
+        end_timestamp,
+        channel,
+        group,
+        request_id,
+        logType: formLogType,
+      } = getFormValues();
 
-    let url = '';
-    const {
-      username,
-      token_name,
-      model_name,
-      start_timestamp,
-      end_timestamp,
-      channel,
-      group,
-      request_id,
-      logType: formLogType,
-    } = getFormValues();
+      const currentLogType =
+        customLogType !== null
+          ? customLogType
+          : formLogType !== undefined
+            ? formLogType
+            : logType;
 
-    const currentLogType =
-      customLogType !== null
-        ? customLogType
-        : formLogType !== undefined
-          ? formLogType
-          : logType;
+      const { localStartTimestamp, localEndTimestamp } = getQueryTimestamps(
+        start_timestamp,
+        end_timestamp,
+      );
+      if (isAdminUser) {
+        url = `/api/log/?p=${startIdx}&page_size=${pageSize}&type=${currentLogType}&username=${username}&token_name=${token_name}&model_name=${model_name}&start_timestamp=${localStartTimestamp}&end_timestamp=${localEndTimestamp}&channel=${channel}&group=${group}&request_id=${request_id}`;
+      } else {
+        url = `/api/log/self/?p=${startIdx}&page_size=${pageSize}&type=${currentLogType}&token_name=${token_name}&model_name=${model_name}&start_timestamp=${localStartTimestamp}&end_timestamp=${localEndTimestamp}&group=${group}&request_id=${request_id}`;
+      }
+      url = encodeURI(url);
+      const res = await API.get(url);
+      const { success, message, data } = res.data;
+      if (success) {
+        const newPageData = data.items;
+        setActivePage(data.page);
+        setPageSize(data.page_size);
+        setLogCount(data.total);
 
-    let localStartTimestamp = Date.parse(start_timestamp) / 1000;
-    let localEndTimestamp = Date.parse(end_timestamp) / 1000;
-    if (isAdminUser) {
-      url = `/api/log/?p=${startIdx}&page_size=${pageSize}&type=${currentLogType}&username=${username}&token_name=${token_name}&model_name=${model_name}&start_timestamp=${localStartTimestamp}&end_timestamp=${localEndTimestamp}&channel=${channel}&group=${group}&request_id=${request_id}`;
-    } else {
-      url = `/api/log/self/?p=${startIdx}&page_size=${pageSize}&type=${currentLogType}&token_name=${token_name}&model_name=${model_name}&start_timestamp=${localStartTimestamp}&end_timestamp=${localEndTimestamp}&group=${group}&request_id=${request_id}`;
+        resetExpandedRows();
+        setLogsFormat(newPageData);
+      } else {
+        showError(message);
+      }
+    } catch (error) {
+      showError(error);
+    } finally {
+      loadingRef.current = false;
+      setLoading(false);
     }
-    url = encodeURI(url);
-    const res = await API.get(url);
-    const { success, message, data } = res.data;
-    if (success) {
-      const newPageData = data.items;
-      setActivePage(data.page);
-      setPageSize(data.page_size);
-      setLogCount(data.total);
-
-      setLogsFormat(newPageData);
-    } else {
-      showError(message);
-    }
-    setLoading(false);
   };
 
   // Page handlers
   const handlePageChange = (page) => {
     setActivePage(page);
-    loadLogs(page, pageSize).then((r) => {});
+    loadLogs(page, pageSize);
   };
 
   const handlePageSizeChange = async (size) => {
     localStorage.setItem('page-size', size + '');
     setPageSize(size);
     setActivePage(1);
-    loadLogs(activePage, size)
-      .then()
-      .catch((reason) => {
-        showError(reason);
-      });
+    loadLogs(1, size);
   };
 
   // Refresh function
   const refresh = async () => {
     setActivePage(1);
-    handleEyeClick();
-    await loadLogs(1, pageSize);
+    await Promise.all([handleEyeClick(), loadLogs(1, pageSize)]);
   };
+
+  useEffect(() => {
+    refreshRef.current = refresh;
+  });
+
+  useEffect(() => {
+    if (!autoRefreshEnabled || isAutoRefreshPaused) {
+      return;
+    }
+
+    const timer = setInterval(() => {
+      if (
+        !loadingRef.current &&
+        !loadingStatRef.current &&
+        refreshRef.current
+      ) {
+        refreshRef.current();
+      }
+    }, autoRefreshInterval);
+
+    return () => clearInterval(timer);
+  }, [autoRefreshEnabled, autoRefreshInterval, isAutoRefreshPaused, pageSize]);
 
   // Copy text function
   const copyText = async (e, text) => {
@@ -811,11 +976,7 @@ export const useLogsData = () => {
     const localPageSize =
       parseInt(localStorage.getItem('page-size')) || ITEMS_PER_PAGE;
     setPageSize(localPageSize);
-    loadLogs(activePage, localPageSize)
-      .then()
-      .catch((reason) => {
-        showError(reason);
-      });
+    loadLogs(activePage, localPageSize);
   }, []);
 
   // Initialize statistics when formApi is available
@@ -843,8 +1004,15 @@ export const useLogsData = () => {
     logCount,
     pageSize,
     logType,
+    expandedRowKeys,
+    mobileExpandedRowKeys,
     stat,
     isAdminUser,
+    autoRefreshEnabled,
+    setAutoRefreshEnabled,
+    autoRefreshInterval,
+    setAutoRefreshInterval,
+    isAutoRefreshPaused,
 
     // Form state
     formApi,
@@ -886,6 +1054,8 @@ export const useLogsData = () => {
     loadLogs,
     handlePageChange,
     handlePageSizeChange,
+    handleRowExpand,
+    handleMobileRowExpandChange,
     refresh,
     copyText,
     handleEyeClick,

@@ -34,10 +34,14 @@ const LogsTable = (logsData) => {
     activePage,
     pageSize,
     logCount,
+    expandedRowKeys,
+    mobileExpandedRowKeys,
     compactMode,
     visibleColumns,
     handlePageChange,
     handlePageSizeChange,
+    handleRowExpand,
+    handleMobileRowExpandChange,
     copyText,
     showUserInfoFunc,
     openChannelAffinityUsageCacheModal,
@@ -84,7 +88,7 @@ const LogsTable = (logsData) => {
       : visibleColumnsList;
   }, [compactMode, visibleColumnsList]);
 
-  const expandRowRender = (record, index) => {
+  const expandRowRender = (record) => {
     return <Descriptions data={expandData[record.key]} />;
   };
 
@@ -94,6 +98,8 @@ const LogsTable = (logsData) => {
       {...(hasExpandableRows() && {
         expandedRowRender: expandRowRender,
         expandRowByClick: true,
+        expandedRowKeys,
+        onExpand: handleRowExpand,
         rowExpandable: (record) =>
           expandData[record.key] && expandData[record.key].length > 0,
       })}
@@ -103,6 +109,8 @@ const LogsTable = (logsData) => {
       scroll={compactMode ? undefined : { x: 'max-content' }}
       className='rounded-xl overflow-hidden'
       size='small'
+      mobileExpandedRowKeys={mobileExpandedRowKeys}
+      onMobileRowExpandChange={handleMobileRowExpandChange}
       empty={
         <Empty
           image={<IllustrationNoResult style={{ width: 150, height: 150 }} />}

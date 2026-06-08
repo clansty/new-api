@@ -18,10 +18,21 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import React from 'react';
-import { Button, Form } from '@douyinfe/semi-ui';
-import { IconSearch } from '@douyinfe/semi-icons';
+import { Button, Form, Select, Tag } from '@douyinfe/semi-ui';
+import { IconPause, IconSearch, IconSync } from '@douyinfe/semi-icons';
 
-import { DATE_RANGE_PRESETS } from '../../../constants/console.constants';
+import {
+  AUTO_REFRESH_INTERVAL_OPTIONS,
+  DATE_RANGE_PRESETS,
+} from '../../../constants/console.constants';
+
+const formatAutoRefreshInterval = (interval, t) => {
+  if (interval < 60000) {
+    return `${interval / 1000} ${t('秒')}`;
+  }
+
+  return `${interval / 60000} ${t('分钟')}`;
+};
 
 const LogsFilters = ({
   formInitValues,
@@ -32,8 +43,19 @@ const LogsFilters = ({
   setLogType,
   loading,
   isAdminUser,
+  autoRefreshEnabled,
+  setAutoRefreshEnabled,
+  autoRefreshInterval,
+  setAutoRefreshInterval,
+  isAutoRefreshPaused,
   t,
 }) => {
+  const autoRefreshButtonText = autoRefreshEnabled
+    ? isAutoRefreshPaused
+      ? t('自动刷新已暂停')
+      : t('自动刷新中')
+    : t('自动刷新');
+
   return (
     <Form
       initValues={formInitValues}
@@ -152,7 +174,36 @@ const LogsFilters = ({
             </Form.Select>
           </div>
 
-          <div className='flex gap-2 w-full sm:w-auto justify-end'>
+          <div className='flex flex-wrap gap-2 w-full sm:w-auto justify-end'>
+            <div className='flex items-center gap-2'>
+              <Select
+                value={autoRefreshInterval}
+                onChange={setAutoRefreshInterval}
+                size='small'
+                style={{ width: 104 }}
+                aria-label={t('自动刷新间隔')}
+              >
+                {AUTO_REFRESH_INTERVAL_OPTIONS.map((interval) => (
+                  <Select.Option key={interval} value={interval}>
+                    {formatAutoRefreshInterval(interval, t)}
+                  </Select.Option>
+                ))}
+              </Select>
+              <Button
+                type={autoRefreshEnabled ? 'primary' : 'tertiary'}
+                theme={isAutoRefreshPaused ? 'outline' : 'light'}
+                icon={isAutoRefreshPaused ? <IconPause /> : <IconSync />}
+                onClick={() => setAutoRefreshEnabled(!autoRefreshEnabled)}
+                size='small'
+              >
+                {autoRefreshButtonText}
+              </Button>
+              {isAutoRefreshPaused && (
+                <Tag color='orange' size='small'>
+                  {t('暂停')}
+                </Tag>
+              )}
+            </div>
             <Button
               type='tertiary'
               htmlType='submit'

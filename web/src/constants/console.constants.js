@@ -47,3 +47,7 @@ export const DATE_RANGE_PRESETS = [
     end: () => dayjs().endOf('month').toDate(),
   },
 ];
+
+export const AUTO_REFRESH_INTERVAL_OPTIONS = [
+  5000, 10000, 30000, 60000, 300000,
+];
