@@ -33,3 +33,4 @@ data/
 token_estimator_test.go
 skills-lock.json
 .sisyphus
+.omo
