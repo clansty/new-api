@@ -44,6 +44,7 @@ import {
   MODEL_FETCHABLE_CHANNEL_TYPES,
 } from '../../../constants';
 import { parseUpstreamUpdateMeta } from '../../../hooks/channels/upstreamUpdateUtils';
+import { isCollapsedChannelsRow } from '../../../hooks/channels/channelCollapseRows';
 import {
   IconTreeTriangleDown,
   IconMore,
@@ -144,6 +145,14 @@ const renderTagType = (t) => {
   return (
     <Tag color='light-blue' shape='circle' type='light'>
       {t('标签聚合')}
+    </Tag>
+  );
+};
+
+const renderCollapsedType = (t) => {
+  return (
+    <Tag color='cyan' shape='circle' type='light'>
+      {t('渠道折叠')}
     </Tag>
   );
 };
@@ -339,6 +348,23 @@ export const getChannelsColumns = ({
       title: t('名称'),
       dataIndex: 'name',
       render: (text, record, index) => {
+        if (isCollapsedChannelsRow(record)) {
+          return (
+            <Space spacing={8} align='center' wrap>
+              <Typography.Text strong>{text}</Typography.Text>
+              <Tag color='blue' type='light' shape='circle'>
+                {t('已折叠')} {record.children?.length || 0}
+              </Tag>
+              <Tag color='green' type='light' shape='circle'>
+                {t('已启用')} {record.collapsed_enabled_count || 0}
+              </Tag>
+              <Tag color='yellow' type='light' shape='circle'>
+                {t('自动禁用')} {record.collapsed_auto_disabled_count || 0}
+              </Tag>
+            </Space>
+          );
+        }
+
         const passThroughEnabled = isRequestPassThroughEnabled(record);
         const upstreamUpdateMeta = getUpstreamUpdateMeta(record);
         const pendingAddCount = upstreamUpdateMeta.pendingAddModels.length;
@@ -461,26 +487,34 @@ export const getChannelsColumns = ({
       key: COLUMN_KEYS.GROUP,
       title: t('分组'),
       dataIndex: 'group',
-      render: (text, record, index) => (
-        <div>
-          <Space spacing={2}>
-            {text
-              ?.split(',')
-              .sort((a, b) => {
-                if (a === 'default') return -1;
-                if (b === 'default') return 1;
-                return a.localeCompare(b);
-              })
-              .map((item, index) => renderGroup(item))}
-          </Space>
-        </div>
-      ),
+      render: (text, record, index) => {
+        if (isCollapsedChannelsRow(record) || !text) {
+          return '-';
+        }
+        return (
+          <div>
+            <Space spacing={2}>
+              {text
+                ?.split(',')
+                .sort((a, b) => {
+                  if (a === 'default') return -1;
+                  if (b === 'default') return 1;
+                  return a.localeCompare(b);
+                })
+                .map((item, index) => renderGroup(item))}
+            </Space>
+          </div>
+        );
+      },
     },
     {
       key: COLUMN_KEYS.TYPE,
       title: t('类型'),
       dataIndex: 'type',
       render: (text, record, index) => {
+        if (isCollapsedChannelsRow(record)) {
+          return <>{renderCollapsedType(t)}</>;
+        }
         if (record.children === undefined) {
           return <>{renderType(text, record, t)}</>;
         } else {
@@ -493,6 +527,18 @@ export const getChannelsColumns = ({
       title: t('状态'),
       dataIndex: 'status',
       render: (text, record, index) => {
+        if (isCollapsedChannelsRow(record)) {
+          return (
+            <Space spacing={4} wrap>
+              <Tag color='green' shape='circle'>
+                {t('已启用')} {record.collapsed_enabled_count || 0}
+              </Tag>
+              <Tag color='yellow' shape='circle'>
+                {t('自动禁用')} {record.collapsed_auto_disabled_count || 0}
+              </Tag>
+            </Space>
+          );
+        }
         if (text === 3) {
           if (record.other_info === '') {
             record.other_info = '{}';
@@ -562,6 +608,9 @@ export const getChannelsColumns = ({
             </div>
           );
         } else {
+          if (isCollapsedChannelsRow(record)) {
+            return '-';
+          }
           return (
             <Tooltip content={t('已用额度')}>
               <Tag color='white' type='ghost' shape='circle'>
@@ -583,6 +632,7 @@ export const getChannelsColumns = ({
               <InputNumber
                 style={{ width: 70 }}
                 name='priority'
+                onClick={(e) => e.stopPropagation()}
                 onBlur={(e) => {
                   manageChannel(record.id, 'priority', record, e.target.value);
                 }}
@@ -595,11 +645,15 @@ export const getChannelsColumns = ({
             </div>
           );
         } else {
+          if (isCollapsedChannelsRow(record)) {
+            return '-';
+          }
           return (
             <InputNumber
               style={{ width: 70 }}
               name='priority'
               keepFocus={true}
+              onClick={(e) => e.stopPropagation()}
               onBlur={(e) => {
                 Modal.warning({
                   title: t('修改子渠道优先级'),
@@ -638,6 +692,7 @@ export const getChannelsColumns = ({
               <InputNumber
                 style={{ width: 70 }}
                 name='weight'
+                onClick={(e) => e.stopPropagation()}
                 onBlur={(e) => {
                   manageChannel(record.id, 'weight', record, e.target.value);
                 }}
@@ -650,11 +705,15 @@ export const getChannelsColumns = ({
             </div>
           );
         } else {
+          if (isCollapsedChannelsRow(record)) {
+            return '-';
+          }
           return (
             <InputNumber
               style={{ width: 70 }}
               name='weight'
               keepFocus={true}
+              onClick={(e) => e.stopPropagation()}
               onBlur={(e) => {
                 Modal.warning({
                   title: t('修改子渠道权重'),
@@ -691,6 +750,18 @@ export const getChannelsColumns = ({
         if (record.children === undefined) {
           const upstreamUpdateMeta = getUpstreamUpdateMeta(record);
           const moreMenuItems = [
+            {
+              node: 'item',
+              name: record.collapsed ? t('取消折叠') : t('折叠'),
+              type: 'tertiary',
+              onClick: () => {
+                manageChannel(
+                  record.id,
+                  record.collapsed ? 'expand' : 'collapse',
+                  record,
+                );
+              },
+            },
             {
               node: 'item',
               name: t('删除'),
@@ -774,7 +845,7 @@ export const getChannelsColumns = ({
           }
 
           return (
-            <Space wrap>
+            <Space wrap onClick={(e) => e.stopPropagation()}>
               <SplitButtonGroup
                 className='overflow-hidden'
                 aria-label={t('测试单个渠道操作项目组')}
@@ -870,9 +941,16 @@ export const getChannelsColumns = ({
             </Space>
           );
         } else {
+          if (isCollapsedChannelsRow(record)) {
+            return (
+              <Tag color='cyan' type='light' shape='circle'>
+                {t('点击展开')}
+              </Tag>
+            );
+          }
           // 标签操作按钮
           return (
-            <Space wrap>
+            <Space wrap onClick={(e) => e.stopPropagation()}>
               <Button
                 type='tertiary'
                 size='small'

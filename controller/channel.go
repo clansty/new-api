@@ -19,6 +19,7 @@ import (
 	"github.com/QuantumNous/new-api/service"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 type OpenAIModel struct {
@@ -71,6 +72,7 @@ func clearChannelInfo(channel *model.Channel) {
 func GetAllChannels(c *gin.Context) {
 	pageInfo := common.GetPageQuery(c)
 	channelData := make([]*model.Channel, 0)
+	collapsedChannelData := make([]*model.Channel, 0)
 	idSort, _ := strconv.ParseBool(c.Query("id_sort"))
 	enableTagMode, _ := strconv.ParseBool(c.Query("tag_mode"))
 	statusParam := c.Query("status")
@@ -119,32 +121,44 @@ func GetAllChannels(c *gin.Context) {
 		}
 		total, _ = model.CountAllTags()
 	} else {
-		baseQuery := model.DB.Model(&model.Channel{})
-		if typeFilter >= 0 {
-			baseQuery = baseQuery.Where("type = ?", typeFilter)
-		}
-		if statusFilter == common.ChannelStatusEnabled {
-			baseQuery = baseQuery.Where("status = ?", common.ChannelStatusEnabled)
-		} else if statusFilter == 0 {
-			baseQuery = baseQuery.Where("status != ?", common.ChannelStatusEnabled)
+		buildBaseQuery := func() *gorm.DB {
+			baseQuery := model.DB.Model(&model.Channel{})
+			if typeFilter >= 0 {
+				baseQuery = baseQuery.Where("type = ?", typeFilter)
+			}
+			if statusFilter == common.ChannelStatusEnabled {
+				baseQuery = baseQuery.Where("status = ?", common.ChannelStatusEnabled)
+			} else if statusFilter == 0 {
+				baseQuery = baseQuery.Where("status != ?", common.ChannelStatusEnabled)
+			}
+			return baseQuery
 		}
 
-		baseQuery.Count(&total)
+		buildBaseQuery().Where("collapsed = ?", false).Count(&total)
 
 		order := "priority desc"
 		if idSort {
 			order = "id desc"
 		}
 
-		err := baseQuery.Order(order).Limit(pageInfo.GetPageSize()).Offset(pageInfo.GetStartIdx()).Omit("key").Find(&channelData).Error
+		err := buildBaseQuery().Where("collapsed = ?", false).Order(order).Limit(pageInfo.GetPageSize()).Offset(pageInfo.GetStartIdx()).Omit("key").Find(&channelData).Error
 		if err != nil {
 			common.SysError("failed to get channels: " + err.Error())
 			c.JSON(http.StatusOK, gin.H{"success": false, "message": "获取渠道列表失败，请稍后重试"})
 			return
 		}
+		err = buildBaseQuery().Where("collapsed = ?", true).Order(order).Omit("key").Find(&collapsedChannelData).Error
+		if err != nil {
+			common.SysError("failed to get collapsed channels: " + err.Error())
+			c.JSON(http.StatusOK, gin.H{"success": false, "message": "获取折叠渠道失败，请稍后重试"})
+			return
+		}
 	}
 
 	for _, datum := range channelData {
+		clearChannelInfo(datum)
+	}
+	for _, datum := range collapsedChannelData {
 		clearChannelInfo(datum)
 	}
 
@@ -164,13 +178,13 @@ func GetAllChannels(c *gin.Context) {
 		typeCounts[r.Type] = r.Count
 	}
 	common.ApiSuccess(c, gin.H{
-		"items":       channelData,
-		"total":       total,
-		"page":        pageInfo.GetPage(),
-		"page_size":   pageInfo.GetPageSize(),
-		"type_counts": typeCounts,
+		"items":           channelData,
+		"collapsed_items": collapsedChannelData,
+		"total":           total,
+		"page":            pageInfo.GetPage(),
+		"page_size":       pageInfo.GetPageSize(),
+		"type_counts":     typeCounts,
 	})
-	return
 }
 
 func buildFetchModelsHeaders(channel *model.Channel, key string) (http.Header, error) {
@@ -254,6 +268,7 @@ func SearchChannels(c *gin.Context) {
 	idSort, _ := strconv.ParseBool(c.Query("id_sort"))
 	enableTagMode, _ := strconv.ParseBool(c.Query("tag_mode"))
 	channelData := make([]*model.Channel, 0)
+	collapsedChannelData := make([]*model.Channel, 0)
 	if enableTagMode {
 		tags, err := model.SearchTags(keyword, group, modelKeyword, idSort)
 		if err != nil {
@@ -321,6 +336,18 @@ func SearchChannels(c *gin.Context) {
 		channelData = filtered
 	}
 
+	if !enableTagMode {
+		visibleChannels := make([]*model.Channel, 0, len(channelData))
+		for _, ch := range channelData {
+			if ch.Collapsed {
+				collapsedChannelData = append(collapsedChannelData, ch)
+				continue
+			}
+			visibleChannels = append(visibleChannels, ch)
+		}
+		channelData = visibleChannels
+	}
+
 	page, _ := strconv.Atoi(c.DefaultQuery("p", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
 	if page < 1 {
@@ -345,17 +372,20 @@ func SearchChannels(c *gin.Context) {
 	for _, datum := range pagedData {
 		clearChannelInfo(datum)
 	}
+	for _, datum := range collapsedChannelData {
+		clearChannelInfo(datum)
+	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",
 		"data": gin.H{
-			"items":       pagedData,
-			"total":       total,
-			"type_counts": typeCounts,
+			"items":           pagedData,
+			"collapsed_items": collapsedChannelData,
+			"total":           total,
+			"type_counts":     typeCounts,
 		},
 	})
-	return
 }
 
 func GetChannel(c *gin.Context) {
@@ -550,7 +580,7 @@ func getVertexArrayKeys(keys string) ([]string, error) {
 		case string:
 			keyStr = strings.TrimSpace(v)
 		default:
-			bytes, err := json.Marshal(v)
+			bytes, err := common.Marshal(v)
 			if err != nil {
 				return nil, fmt.Errorf("Vertex AI key JSON 编码失败: %w", err)
 			}
@@ -808,8 +838,9 @@ func EditTagChannels(c *gin.Context) {
 }
 
 type ChannelBatch struct {
-	Ids []int   `json:"ids"`
-	Tag *string `json:"tag"`
+	Ids       []int   `json:"ids"`
+	Tag       *string `json:"tag"`
+	Collapsed *bool   `json:"collapsed"`
 }
 
 func DeleteChannelBatch(c *gin.Context) {
@@ -833,7 +864,29 @@ func DeleteChannelBatch(c *gin.Context) {
 		"message": "",
 		"data":    len(channelBatch.Ids),
 	})
-	return
+}
+
+func BatchSetChannelCollapse(c *gin.Context) {
+	channelBatch := ChannelBatch{}
+	err := c.ShouldBindJSON(&channelBatch)
+	if err != nil || len(channelBatch.Ids) == 0 || channelBatch.Collapsed == nil {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": "参数错误",
+		})
+		return
+	}
+	err = model.BatchSetChannelCollapse(channelBatch.Ids, *channelBatch.Collapsed)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	model.InitChannelCache()
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "",
+		"data":    len(channelBatch.Ids),
+	})
 }
 
 type PatchChannel struct {
@@ -889,7 +942,7 @@ func UpdateChannel(c *gin.Context) {
 				if strings.HasPrefix(strings.TrimSpace(originChannel.Key), "[") {
 					// JSON数组格式
 					var arr []json.RawMessage
-					if err := json.Unmarshal([]byte(strings.TrimSpace(originChannel.Key)), &arr); err == nil {
+					if err := common.Unmarshal([]byte(strings.TrimSpace(originChannel.Key)), &arr); err == nil {
 						existingKeys = make([]string, len(arr))
 						for i, v := range arr {
 							existingKeys[i] = string(v)
@@ -1074,7 +1127,7 @@ func FetchModels(c *gin.Context) {
 		} `json:"data"`
 	}
 
-	if err := json.NewDecoder(response.Body).Decode(&result); err != nil {
+	if err := common.DecodeJson(response.Body, &result); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
 			"message": err.Error(),
@@ -1820,7 +1873,7 @@ func OllamaPullModelStream(c *gin.Context) {
 
 	// 创建进度回调函数
 	progressCallback := func(progress ollama.OllamaPullResponse) {
-		data, _ := json.Marshal(progress)
+		data, _ := common.Marshal(progress)
 		fmt.Fprintf(c.Writer, "data: %s\n\n", string(data))
 		c.Writer.Flush()
 	}
@@ -1829,12 +1882,12 @@ func OllamaPullModelStream(c *gin.Context) {
 	err = ollama.PullOllamaModelStream(baseURL, key, req.ModelName, progressCallback)
 
 	if err != nil {
-		errorData, _ := json.Marshal(gin.H{
+		errorData, _ := common.Marshal(gin.H{
 			"error": err.Error(),
 		})
 		fmt.Fprintf(c.Writer, "data: %s\n\n", string(errorData))
 	} else {
-		successData, _ := json.Marshal(gin.H{
+		successData, _ := common.Marshal(gin.H{
 			"message": fmt.Sprintf("Model %s pulled successfully", req.ModelName),
 		})
 		fmt.Fprintf(c.Writer, "data: %s\n\n", string(successData))

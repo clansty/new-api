@@ -37,6 +37,7 @@ import { useIsMobile } from '../common/useIsMobile';
 import { useTableCompactMode } from '../common/useTableCompactMode';
 import { useChannelUpstreamUpdates } from './useChannelUpstreamUpdates';
 import { parseUpstreamUpdateMeta } from './upstreamUpdateUtils';
+import { buildChannelRows } from './channelCollapseRows';
 import { Modal, Button } from '@douyinfe/semi-ui';
 import { openCodexUsageModal } from '../../components/table/channels/modals/CodexUsageModal';
 
@@ -232,78 +233,19 @@ export const useChannelsData = () => {
   };
 
   // Data formatting
-  const setChannelFormat = (channels, enableTagMode) => {
-    let channelDates = [];
-    let channelTags = {};
-
-    for (let i = 0; i < channels.length; i++) {
-      channels[i].upstreamUpdateMeta = parseUpstreamUpdateMeta(
-        channels[i].settings,
+  const setChannelFormat = (
+    channels,
+    enableTagMode,
+    collapsedChannels = [],
+  ) => {
+    const allChannels = [...collapsedChannels, ...channels];
+    for (let i = 0; i < allChannels.length; i++) {
+      allChannels[i].upstreamUpdateMeta = parseUpstreamUpdateMeta(
+        allChannels[i].settings,
       );
-      channels[i].key = '' + channels[i].id;
-      if (!enableTagMode) {
-        channelDates.push(channels[i]);
-      } else {
-        let tag = channels[i].tag ? channels[i].tag : '';
-        let tagIndex = channelTags[tag];
-        let tagChannelDates = undefined;
-
-        if (tagIndex === undefined) {
-          channelTags[tag] = 1;
-          tagChannelDates = {
-            key: tag,
-            id: tag,
-            tag: tag,
-            name: '标签：' + tag,
-            group: '',
-            used_quota: 0,
-            response_time: 0,
-            priority: -1,
-            weight: -1,
-          };
-          tagChannelDates.children = [];
-          channelDates.push(tagChannelDates);
-        } else {
-          tagChannelDates = channelDates.find((item) => item.key === tag);
-        }
-
-        if (tagChannelDates.priority === -1) {
-          tagChannelDates.priority = channels[i].priority;
-        } else {
-          if (tagChannelDates.priority !== channels[i].priority) {
-            tagChannelDates.priority = '';
-          }
-        }
-
-        if (tagChannelDates.weight === -1) {
-          tagChannelDates.weight = channels[i].weight;
-        } else {
-          if (tagChannelDates.weight !== channels[i].weight) {
-            tagChannelDates.weight = '';
-          }
-        }
-
-        if (tagChannelDates.group === '') {
-          tagChannelDates.group = channels[i].group;
-        } else {
-          let channelGroupsStr = channels[i].group;
-          channelGroupsStr.split(',').forEach((item, index) => {
-            if (tagChannelDates.group.indexOf(item) === -1) {
-              tagChannelDates.group += ',' + item;
-            }
-          });
-        }
-
-        tagChannelDates.children.push(channels[i]);
-        if (channels[i].status === 1) {
-          tagChannelDates.status = 1;
-        }
-        tagChannelDates.used_quota += channels[i].used_quota;
-        tagChannelDates.response_time += channels[i].response_time;
-        tagChannelDates.response_time = tagChannelDates.response_time / 2;
-      }
+      allChannels[i].key = '' + allChannels[i].id;
     }
-    setChannels(channelDates);
+    setChannels(buildChannelRows(channels, enableTagMode, t, collapsedChannels));
   };
 
   // Get form values helper
@@ -356,7 +298,7 @@ export const useChannelsData = () => {
 
     const { success, message, data } = res.data;
     if (success) {
-      const { items, total, type_counts } = data;
+      const { items, collapsed_items, total, type_counts } = data;
       if (type_counts) {
         const sumAll = Object.values(type_counts).reduce(
           (acc, v) => acc + v,
@@ -364,7 +306,7 @@ export const useChannelsData = () => {
         );
         setTypeCounts({ ...type_counts, all: sumAll });
       }
-      setChannelFormat(items, enableTagMode);
+      setChannelFormat(items, enableTagMode, collapsed_items || []);
       setChannelCount(total);
     } else {
       showError(message);
@@ -403,13 +345,18 @@ export const useChannelsData = () => {
       );
       const { success, message, data } = res.data;
       if (success) {
-        const { items = [], total = 0, type_counts = {} } = data;
+        const {
+          items = [],
+          collapsed_items = [],
+          total = 0,
+          type_counts = {},
+        } = data;
         const sumAll = Object.values(type_counts).reduce(
           (acc, v) => acc + v,
           0,
         );
         setTypeCounts({ ...type_counts, all: sumAll });
-        setChannelFormat(items, enableTagMode);
+        setChannelFormat(items, enableTagMode, collapsed_items);
         setChannelCount(total);
         setActivePage(page);
       } else {
@@ -471,12 +418,28 @@ export const useChannelsData = () => {
         data.channel_info.multi_key_status_list = {};
         res = await API.put('/api/channel/', data);
         break;
+      case 'collapse':
+        res = await API.post('/api/channel/batch/collapse', {
+          ids: [id],
+          collapsed: true,
+        });
+        break;
+      case 'expand':
+        res = await API.post('/api/channel/batch/collapse', {
+          ids: [id],
+          collapsed: false,
+        });
+        break;
     }
     const { success, message } = res.data;
     if (success) {
       showSuccess(t('操作成功完成！'));
       let channel = res.data.data;
       let newChannels = [...channels];
+      if (action === 'collapse' || action === 'expand') {
+        await refresh();
+        return;
+      }
       if (action !== 'delete') {
         record.status = channel.status;
       }
@@ -668,8 +631,26 @@ export const useChannelsData = () => {
   };
 
   // Batch operations
+  const getSelectedChannelIds = () => {
+    const idSet = new Set();
+    selectedChannels.forEach((channel) => {
+      if (Number.isInteger(channel.id)) {
+        idSet.add(channel.id);
+      }
+      if (Array.isArray(channel.children)) {
+        channel.children.forEach((child) => {
+          if (Number.isInteger(child.id)) {
+            idSet.add(child.id);
+          }
+        });
+      }
+    });
+    return Array.from(idSet);
+  };
+
   const batchSetChannelTag = async () => {
-    if (selectedChannels.length === 0) {
+    const ids = getSelectedChannelIds();
+    if (ids.length === 0) {
       showError(t('请先选择要设置标签的渠道！'));
       return;
     }
@@ -677,7 +658,6 @@ export const useChannelsData = () => {
       showError(t('标签不能为空！'));
       return;
     }
-    let ids = selectedChannels.map((channel) => channel.id);
     const res = await API.post('/api/channel/batch/tag', {
       ids: ids,
       tag: batchSetTagValue === '' ? null : batchSetTagValue,
@@ -694,15 +674,12 @@ export const useChannelsData = () => {
   };
 
   const batchDeleteChannels = async () => {
-    if (selectedChannels.length === 0) {
+    const ids = getSelectedChannelIds();
+    if (ids.length === 0) {
       showError(t('请先选择要删除的通道！'));
       return;
     }
     setLoading(true);
-    let ids = [];
-    selectedChannels.forEach((channel) => {
-      ids.push(channel.id);
-    });
     const res = await API.post(`/api/channel/batch`, { ids: ids });
     const { success, message, data } = res.data;
     if (success) {
@@ -717,6 +694,28 @@ export const useChannelsData = () => {
       showError(message);
     }
     setLoading(false);
+  };
+
+  const batchSetChannelCollapse = async (collapsed) => {
+    const ids = getSelectedChannelIds();
+    if (ids.length === 0) {
+      showError(t('请先选择要操作的渠道！'));
+      return;
+    }
+    const res = await API.post('/api/channel/batch/collapse', {
+      ids: ids,
+      collapsed: collapsed,
+    });
+    const { success, message, data } = res.data;
+    if (success) {
+      const template = collapsed
+        ? t('已折叠 ${data} 个渠道！')
+        : t('已取消折叠 ${data} 个渠道！');
+      showSuccess(template.replace('${data}', data));
+      await refresh();
+    } else {
+      showError(message);
+    }
   };
 
   // Channel operations
@@ -1229,6 +1228,7 @@ export const useChannelsData = () => {
     handleRow,
     batchSetChannelTag,
     batchDeleteChannels,
+    batchSetChannelCollapse,
     testAllChannels,
     deleteAllDisabledChannels,
     updateAllChannelsBalance,

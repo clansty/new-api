@@ -132,58 +132,115 @@ const CardTable = ({
 
   const isEmpty = !showSkeleton && (!dataSource || dataSource.length === 0);
 
+  const isColumnVisible = (col) => {
+    if (tableProps?.visibleColumns && col.key) {
+      return tableProps.visibleColumns[col.key];
+    }
+    return true;
+  };
+
+  const renderMobileFields = (record, index) =>
+    columns.map((col, colIdx) => {
+      if (!isColumnVisible(col)) {
+        return null;
+      }
+
+      const title = col.title;
+      const cellContent = col.render
+        ? col.render(record[col.dataIndex], record, index)
+        : record[col.dataIndex];
+
+      if (!title) {
+        return (
+          <div key={col.key || colIdx} className='mt-2 flex justify-end'>
+            {cellContent}
+          </div>
+        );
+      }
+
+      return (
+        <div
+          key={col.key || colIdx}
+          className='flex justify-between items-start py-1 border-b last:border-b-0 border-dashed'
+          style={{ borderColor: 'var(--semi-color-border)' }}
+        >
+          <span className='font-medium text-gray-600 mr-2 whitespace-nowrap select-none'>
+            {title}
+          </span>
+          <div className='flex-1 break-all flex justify-end items-center gap-1'>
+            {cellContent !== undefined && cellContent !== null
+              ? cellContent
+              : '-'}
+          </div>
+        </div>
+      );
+    });
+
   const MobileRowCard = ({ record, index }) => {
     const [showDetails, setShowDetails] = useState(false);
     const rowKeyVal = getRowKey(record, index);
+    const rowProps = tableProps.onRow?.(record, index) || {};
     const isMobileExpandControlled = Array.isArray(mobileExpandedRowKeys);
     const detailsVisible = isMobileExpandControlled
       ? mobileExpandedRowKeys.includes(rowKeyVal)
       : showDetails;
+    const childRows = Array.isArray(record.children) ? record.children : [];
+    const hasExpandedRowRender =
+      typeof tableProps.expandedRowRender === 'function';
 
     const hasDetails =
-      tableProps.expandedRowRender &&
+      (hasExpandedRowRender || childRows.length > 0) &&
       (!tableProps.rowExpandable || tableProps.rowExpandable(record));
 
-    return (
-      <Card key={rowKeyVal} className='!rounded-2xl shadow-sm'>
-        {columns.map((col, colIdx) => {
-          if (
-            tableProps?.visibleColumns &&
-            !tableProps.visibleColumns[col.key]
-          ) {
-            return null;
-          }
+    const toggleDetails = (e) => {
+      const nextShowDetails = !detailsVisible;
+      if (!isMobileExpandControlled) {
+        setShowDetails(nextShowDetails);
+      }
+      onMobileRowExpandChange?.(rowKeyVal, nextShowDetails, record);
+    };
 
-          const title = col.title;
-          const cellContent = col.render
-            ? col.render(record[col.dataIndex], record, index)
-            : record[col.dataIndex];
+    const handleCardClick = (e) => {
+      rowProps.onClick?.(e);
+      if (
+        tableProps.expandRowByClick &&
+        hasDetails &&
+        !e.isPropagationStopped?.()
+      ) {
+        toggleDetails(e);
+      }
+    };
 
-          if (!title) {
-            return (
-              <div key={col.key || colIdx} className='mt-2 flex justify-end'>
-                {cellContent}
-              </div>
-            );
-          }
-
-          return (
+    const renderDetails = () => {
+      if (hasExpandedRowRender) {
+        return tableProps.expandedRowRender(record, index);
+      }
+      return (
+        <div className='flex flex-col gap-2'>
+          {childRows.map((child, childIndex) => (
             <div
-              key={col.key || colIdx}
-              className='flex justify-between items-start py-1 border-b last:border-b-0 border-dashed'
-              style={{ borderColor: 'var(--semi-color-border)' }}
+              key={getRowKey(child, childIndex)}
+              className='rounded-lg border p-2'
+              style={{
+                borderColor: 'var(--semi-color-border)',
+                background: 'var(--semi-color-fill-0)',
+              }}
             >
-              <span className='font-medium text-gray-600 mr-2 whitespace-nowrap select-none'>
-                {title}
-              </span>
-              <div className='flex-1 break-all flex justify-end items-center gap-1'>
-                {cellContent !== undefined && cellContent !== null
-                  ? cellContent
-                  : '-'}
-              </div>
+              {renderMobileFields(child, childIndex)}
             </div>
-          );
-        })}
+          ))}
+        </div>
+      );
+    };
+
+    return (
+      <Card
+        key={rowKeyVal}
+        className={`!rounded-2xl shadow-sm ${rowProps.className || ''}`}
+        style={rowProps.style}
+        onClick={handleCardClick}
+      >
+        {renderMobileFields(record, index)}
 
         {hasDetails && (
           <>
@@ -194,19 +251,13 @@ const CardTable = ({
               icon={detailsVisible ? <IconChevronUp /> : <IconChevronDown />}
               onClick={(e) => {
                 e.stopPropagation();
-                const nextShowDetails = !detailsVisible;
-                if (!isMobileExpandControlled) {
-                  setShowDetails(nextShowDetails);
-                }
-                onMobileRowExpandChange?.(rowKeyVal, nextShowDetails, record);
+                toggleDetails(e);
               }}
             >
               {detailsVisible ? t('收起') : t('详情')}
             </Button>
-            <Collapsible isOpen={detailsVisible} keepDOM>
-              <div className='pt-2'>
-                {tableProps.expandedRowRender(record, index)}
-              </div>
+            <Collapsible isOpen={detailsVisible}>
+              <div className='pt-2'>{renderDetails()}</div>
             </Collapsible>
           </>
         )}

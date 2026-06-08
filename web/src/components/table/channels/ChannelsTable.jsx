@@ -147,6 +147,7 @@ const ChannelsTable = (channelsData) => {
       }}
       hidePagination={true}
       expandAllRows={false}
+      expandRowByClick={true}
       onRow={handleRow}
       rowSelection={
         enableBatchDelete

@@ -31,6 +31,7 @@ import CompactModeToggle from '../../common/ui/CompactModeToggle';
 const ChannelsActions = ({
   enableBatchDelete,
   batchDeleteChannels,
+  batchSetChannelCollapse,
   setShowBatchSetTag,
   testAllChannels,
   fixChannelsAbilities,
@@ -95,6 +96,28 @@ const ChannelsActions = ({
             trigger='click'
             render={
               <Dropdown.Menu>
+                <Dropdown.Item>
+                  <Button
+                    size='small'
+                    type='tertiary'
+                    className='w-full'
+                    disabled={!enableBatchDelete}
+                    onClick={() => batchSetChannelCollapse(true)}
+                  >
+                    {t('批量折叠')}
+                  </Button>
+                </Dropdown.Item>
+                <Dropdown.Item>
+                  <Button
+                    size='small'
+                    type='tertiary'
+                    className='w-full'
+                    disabled={!enableBatchDelete}
+                    onClick={() => batchSetChannelCollapse(false)}
+                  >
+                    {t('批量取消折叠')}
+                  </Button>
+                </Dropdown.Item>
                 <Dropdown.Item>
                   <Button
                     size='small'
