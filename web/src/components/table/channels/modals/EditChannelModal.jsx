@@ -218,6 +218,7 @@ const EditChannelModal = (props) => {
     allow_include_obfuscation: false,
     allow_inference_geo: false,
     allow_speed: false,
+    claude_cache_read_as_cache_creation: false,
     claude_beta_query: false,
     upstream_model_update_check_enabled: false,
     upstream_model_update_auto_sync_enabled: false,
@@ -924,6 +925,8 @@ const EditChannelModal = (props) => {
           data.allow_inference_geo =
             parsedSettings.allow_inference_geo || false;
           data.allow_speed = parsedSettings.allow_speed || false;
+          data.claude_cache_read_as_cache_creation =
+            parsedSettings.claude_cache_read_as_cache_creation || false;
           data.claude_beta_query = parsedSettings.claude_beta_query || false;
           data.upstream_model_update_check_enabled =
             parsedSettings.upstream_model_update_check_enabled === true;
@@ -1816,6 +1819,8 @@ const EditChannelModal = (props) => {
       if (localInputs.type === 14) {
         settings.allow_inference_geo = localInputs.allow_inference_geo === true;
         settings.allow_speed = localInputs.allow_speed === true;
+        settings.claude_cache_read_as_cache_creation =
+          localInputs.claude_cache_read_as_cache_creation === true;
         settings.claude_beta_query = localInputs.claude_beta_query === true;
       }
     }
@@ -2535,6 +2540,10 @@ const EditChannelModal = (props) => {
 
                   {inputs.type === 14 && (
                     <Form.Switch field='claude_beta_query' label={t('Claude 强制 beta=true')} checkedText={t('开')} uncheckedText={t('关')} onChange={(value) => handleChannelOtherSettingsChange('claude_beta_query', value)} extraText={t('开启后，该渠道请求 Claude 时将强制追加 ?beta=true（无需客户端手动传参）')} />
+                  )}
+
+                  {inputs.type === 14 && (
+                    <Form.Switch field='claude_cache_read_as_cache_creation' label={t('不要缓存')} checkedText={t('开')} uncheckedText={t('关')} onChange={(value) => handleChannelOtherSettingsChange('claude_cache_read_as_cache_creation', value)} extraText={t('开启后，Anthropic 上游返回的缓存读取 tokens 会合并到缓存写入 tokens，返回下游和计费都按缓存写入处理')} />
                   )}
 
                   {inputs.type === 1 && (

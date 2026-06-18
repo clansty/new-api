@@ -3729,6 +3729,8 @@
     "ChatCompletions→Responses 兼容配置": "ChatCompletions→Responses Compatibility Configuration",
     "ChatCompletions→Responses 兼容配置（Beta）": "ChatCompletions→Responses Compatibility (Beta)",
     "Claude 强制 beta=true": "Claude Force beta=true",
+    "不要缓存": "No cache",
+    "开启后，Anthropic 上游返回的缓存读取 tokens 会合并到缓存写入 tokens，返回下游和计费都按缓存写入处理": "When enabled, cache read tokens returned by Anthropic upstreams are merged into cache write tokens, and both downstream responses and billing treat them as cache writes.",
     "Claude会在原有请求头基础上追加这些值，不会覆盖已有同名请求头；重复值会自动忽略。": "Claude appends these values on top of existing request headers. Existing headers are not overwritten, and duplicate values are ignored automatically.",
     "Claude请求头覆盖": "Claude request header override",
     "Claude请求头追加": "Claude request header append",

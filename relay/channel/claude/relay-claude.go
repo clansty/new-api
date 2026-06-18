@@ -589,12 +589,12 @@ func ResponseClaude2OpenAI(claudeResponse *dto.ClaudeResponse) *dto.OpenAITextRe
 }
 
 type ClaudeResponseInfo struct {
-	ResponseId    string
-	Created       int64
-	Model         string
-	ResponseText  strings.Builder
-	Usage         *dto.Usage
-	Done          bool
+	ResponseId     string
+	Created        int64
+	Model          string
+	ResponseText   strings.Builder
+	Usage          *dto.Usage
+	Done           bool
 	ResponsesState *ClaudeResponsesStreamState
 }
 
@@ -656,6 +656,31 @@ func buildOpenAIStyleUsageFromClaudeUsage(usage *dto.Usage) dto.Usage {
 	return clone
 }
 
+func shouldConvertClaudeCacheReadToCreation(info *relaycommon.RelayInfo) bool {
+	if info == nil || info.ChannelMeta == nil {
+		return false
+	}
+	return info.ChannelOtherSettings.ClaudeCacheReadAsCacheCreation
+}
+
+func convertClaudeUsageCacheReadToCreation(usage *dto.ClaudeUsage) {
+	if usage == nil || usage.CacheReadInputTokens <= 0 {
+		return
+	}
+	cacheReadInputTokens := usage.CacheReadInputTokens
+	usage.CacheCreationInputTokens += usage.CacheReadInputTokens
+	usage.CacheReadInputTokens = 0
+	if usage.CacheCreation != nil {
+		usage.CacheCreation.Ephemeral5mInputTokens += cacheReadInputTokens
+	}
+}
+
+func normalizeClaudeResponseUsageForChannel(usage *dto.ClaudeUsage, info *relaycommon.RelayInfo) {
+	if shouldConvertClaudeCacheReadToCreation(info) {
+		convertClaudeUsageCacheReadToCreation(usage)
+	}
+}
+
 func buildMessageDeltaPatchUsage(claudeResponse *dto.ClaudeResponse, claudeInfo *ClaudeResponseInfo) *dto.ClaudeUsage {
 	usage := &dto.ClaudeUsage{}
 	if claudeResponse != nil && claudeResponse.Usage != nil {
@@ -710,23 +735,53 @@ func shouldSkipClaudeMessageDeltaUsagePatch(info *relaycommon.RelayInfo) bool {
 }
 
 func patchClaudeMessageDeltaUsageData(data string, usage *dto.ClaudeUsage) string {
+	return patchClaudeUsageData(data, "usage", usage)
+}
+
+func patchClaudeUsageData(data string, usagePath string, usage *dto.ClaudeUsage) string {
 	if data == "" || usage == nil {
 		return data
 	}
 
-	data = setMessageDeltaUsageInt(data, "usage.input_tokens", usage.InputTokens)
-	data = setMessageDeltaUsageInt(data, "usage.cache_read_input_tokens", usage.CacheReadInputTokens)
-	data = setMessageDeltaUsageInt(data, "usage.cache_creation_input_tokens", usage.CacheCreationInputTokens)
+	data = setMessageDeltaUsageIntIfMissing(data, usagePath+".input_tokens", usage.InputTokens)
+	if usage.CacheReadInputTokens > 0 {
+		data = setMessageDeltaUsageIntIfMissing(data, usagePath+".cache_read_input_tokens", usage.CacheReadInputTokens)
+	} else {
+		data = deleteMessageDeltaUsagePath(data, usagePath+".cache_read_input_tokens")
+	}
+	data = setMessageDeltaUsageInt(data, usagePath+".cache_creation_input_tokens", usage.CacheCreationInputTokens)
 
 	if usage.CacheCreation != nil {
-		data = setMessageDeltaUsageInt(data, "usage.cache_creation.ephemeral_5m_input_tokens", usage.CacheCreation.Ephemeral5mInputTokens)
-		data = setMessageDeltaUsageInt(data, "usage.cache_creation.ephemeral_1h_input_tokens", usage.CacheCreation.Ephemeral1hInputTokens)
+		data = setMessageDeltaUsageInt(data, usagePath+".cache_creation.ephemeral_5m_input_tokens", usage.CacheCreation.Ephemeral5mInputTokens)
+		data = setMessageDeltaUsageInt(data, usagePath+".cache_creation.ephemeral_1h_input_tokens", usage.CacheCreation.Ephemeral1hInputTokens)
 	}
 
 	return data
 }
 
-func setMessageDeltaUsageInt(data string, path string, localValue int) string {
+func setMessageDeltaUsageInt(data string, path string, value int) string {
+	if value <= 0 {
+		return data
+	}
+	patchedData, err := sjson.Set(data, path, value)
+	if err != nil {
+		return data
+	}
+	return patchedData
+}
+
+func deleteMessageDeltaUsagePath(data string, path string) string {
+	if !gjson.Get(data, path).Exists() {
+		return data
+	}
+	patchedData, err := sjson.Delete(data, path)
+	if err != nil {
+		return data
+	}
+	return patchedData
+}
+
+func setMessageDeltaUsageIntIfMissing(data string, path string, localValue int) string {
 	if localValue <= 0 {
 		return data
 	}
@@ -743,7 +798,7 @@ func setMessageDeltaUsageInt(data string, path string, localValue int) string {
 	return patchedData
 }
 
-func FormatClaudeResponseInfo(claudeResponse *dto.ClaudeResponse, oaiResponse *dto.ChatCompletionsStreamResponse, claudeInfo *ClaudeResponseInfo) bool {
+func FormatClaudeResponseInfo(claudeResponse *dto.ClaudeResponse, oaiResponse *dto.ChatCompletionsStreamResponse, claudeInfo *ClaudeResponseInfo, info *relaycommon.RelayInfo) bool {
 	if claudeInfo == nil {
 		return false
 	}
@@ -758,6 +813,7 @@ func FormatClaudeResponseInfo(claudeResponse *dto.ClaudeResponse, oaiResponse *d
 
 		// message_start, 获取usage
 		if claudeResponse.Message != nil && claudeResponse.Message.Usage != nil {
+			normalizeClaudeResponseUsageForChannel(claudeResponse.Message.Usage, info)
 			claudeInfo.Usage.PromptTokens = claudeResponse.Message.Usage.InputTokens
 			claudeInfo.Usage.UsageSemantic = "anthropic"
 			claudeInfo.Usage.PromptTokensDetails.CachedTokens = claudeResponse.Message.Usage.CacheReadInputTokens
@@ -778,6 +834,7 @@ func FormatClaudeResponseInfo(claudeResponse *dto.ClaudeResponse, oaiResponse *d
 	} else if claudeResponse.Type == "message_delta" {
 		// 最终的usage获取
 		if claudeResponse.Usage != nil {
+			normalizeClaudeResponseUsageForChannel(claudeResponse.Usage, info)
 			claudeInfo.Usage.UsageSemantic = "anthropic"
 			if claudeResponse.Usage.InputTokens > 0 {
 				// 不叠加，只取最新的
@@ -832,14 +889,20 @@ func HandleStreamResponseData(c *gin.Context, info *relaycommon.RelayInfo, claud
 		maybeMarkClaudeRefusal(c, *claudeResponse.Delta.StopReason)
 	}
 	if info.RelayFormat == types.RelayFormatClaude {
-		FormatClaudeResponseInfo(&claudeResponse, nil, claudeInfo)
+		FormatClaudeResponseInfo(&claudeResponse, nil, claudeInfo, info)
 
 		if claudeResponse.Type == "message_start" {
 			// message_start, 获取usage
 			if claudeResponse.Message != nil {
 				info.UpstreamModelName = claudeResponse.Message.Model
 			}
+			if shouldConvertClaudeCacheReadToCreation(info) && claudeResponse.Message != nil && claudeResponse.Message.Usage != nil {
+				data = patchClaudeUsageData(data, "message.usage", claudeResponse.Message.Usage)
+			}
 		} else if claudeResponse.Type == "message_delta" {
+			if shouldConvertClaudeCacheReadToCreation(info) && claudeResponse.Usage != nil {
+				data = patchClaudeMessageDeltaUsageData(data, claudeResponse.Usage)
+			}
 			// 确保 message_delta 的 usage 包含完整的 input_tokens 和 cache 相关字段
 			// 解决 AWS Bedrock 等上游返回的 message_delta 缺少这些字段的问题
 			if !shouldSkipClaudeMessageDeltaUsagePatch(info) {
@@ -850,7 +913,7 @@ func HandleStreamResponseData(c *gin.Context, info *relaycommon.RelayInfo, claud
 	} else if info.RelayFormat == types.RelayFormatOpenAI {
 		response := StreamResponseClaude2OpenAI(&claudeResponse)
 
-		if !FormatClaudeResponseInfo(&claudeResponse, response, claudeInfo) {
+		if !FormatClaudeResponseInfo(&claudeResponse, response, claudeInfo, info) {
 			return nil
 		}
 
@@ -859,7 +922,7 @@ func HandleStreamResponseData(c *gin.Context, info *relaycommon.RelayInfo, claud
 			logger.LogError(c, "send_stream_response_failed: "+err.Error())
 		}
 	} else if info.RelayFormat == types.RelayFormatOpenAIResponses {
-		FormatClaudeResponseInfo(&claudeResponse, nil, claudeInfo)
+		FormatClaudeResponseInfo(&claudeResponse, nil, claudeInfo, info)
 		if claudeInfo.ResponsesState == nil {
 			claudeInfo.ResponsesState = NewClaudeResponsesStreamState(info.UpstreamModelName)
 			claudeInfo.ResponsesState.CreatedAt = claudeInfo.Created
@@ -971,6 +1034,7 @@ func HandleClaudeResponseData(c *gin.Context, info *relaycommon.RelayInfo, claud
 		claudeInfo.Usage = &dto.Usage{}
 	}
 	if claudeResponse.Usage != nil {
+		normalizeClaudeResponseUsageForChannel(claudeResponse.Usage, info)
 		claudeInfo.Usage.PromptTokens = claudeResponse.Usage.InputTokens
 		claudeInfo.Usage.CompletionTokens = claudeResponse.Usage.OutputTokens
 		claudeInfo.Usage.TotalTokens = claudeResponse.Usage.InputTokens + claudeResponse.Usage.OutputTokens
@@ -985,18 +1049,22 @@ func HandleClaudeResponseData(c *gin.Context, info *relaycommon.RelayInfo, claud
 	case types.RelayFormatOpenAI:
 		openaiResponse := ResponseClaude2OpenAI(&claudeResponse)
 		openaiResponse.Usage = buildOpenAIStyleUsageFromClaudeUsage(claudeInfo.Usage)
-		responseData, err = json.Marshal(openaiResponse)
+		responseData, err = common.Marshal(openaiResponse)
 		if err != nil {
 			return types.NewError(err, types.ErrorCodeBadResponseBody)
 		}
 	case types.RelayFormatClaude:
-		responseData = data
+		if shouldConvertClaudeCacheReadToCreation(info) {
+			responseData = []byte(patchClaudeUsageData(string(data), "usage", claudeResponse.Usage))
+		} else {
+			responseData = data
+		}
 	case types.RelayFormatOpenAIResponses:
 		responsesResp := ConvertClaudeResponseToResponses(&claudeResponse, getResponsesCustomToolNames(c), getResponsesNamespaceMap(c))
 		if claudeInfo.Created > 0 {
 			responsesResp.CreatedAt = int(claudeInfo.Created)
 		}
-		responseData, err = json.Marshal(responsesResp)
+		responseData, err = common.Marshal(responsesResp)
 		if err != nil {
 			return types.NewError(err, types.ErrorCodeBadResponseBody)
 		}

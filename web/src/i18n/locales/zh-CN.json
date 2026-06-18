@@ -3708,6 +3708,8 @@
     "ChatCompletions→Responses 兼容配置": "ChatCompletions→Responses 兼容配置",
     "ChatCompletions→Responses 兼容配置（Beta）": "ChatCompletions→Responses 兼容配置（Beta）",
     "Claude 强制 beta=true": "Claude 强制 beta=true",
+    "不要缓存": "不要缓存",
+    "开启后，Anthropic 上游返回的缓存读取 tokens 会合并到缓存写入 tokens，返回下游和计费都按缓存写入处理": "开启后，Anthropic 上游返回的缓存读取 tokens 会合并到缓存写入 tokens，返回下游和计费都按缓存写入处理",
     "Claude会在原有请求头基础上追加这些值，不会覆盖已有同名请求头；重复值会自动忽略。": "Claude会在原有请求头基础上追加这些值，不会覆盖已有同名请求头；重复值会自动忽略。",
     "Claude请求头覆盖": "Claude请求头覆盖",
     "Claude请求头追加": "Claude请求头追加",

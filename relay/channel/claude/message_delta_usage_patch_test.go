@@ -45,6 +45,46 @@ func TestPatchClaudeMessageDeltaUsageDataZeroValueChecks(t *testing.T) {
 	assert.False(t, gjson.Get(patchedData, "usage.cache_creation_input_tokens").Exists())
 }
 
+func TestPatchClaudeMessageDeltaUsageDataDeletesCacheReadWhenConverted(t *testing.T) {
+	originalData := `{"type":"message_delta","usage":{"output_tokens":53,"cache_read_input_tokens":30,"cache_creation_input_tokens":50}}`
+	usage := &dto.ClaudeUsage{
+		OutputTokens:             53,
+		CacheCreationInputTokens: 80,
+		CacheReadInputTokens:     0,
+	}
+
+	patchedData := patchClaudeMessageDeltaUsageData(originalData, usage)
+
+	assert.False(t, gjson.Get(patchedData, "usage.cache_read_input_tokens").Exists())
+	require.EqualValues(t, 80, gjson.Get(patchedData, "usage.cache_creation_input_tokens").Int())
+}
+
+func TestPatchClaudeUsageDataConvertsMessageStartUsage(t *testing.T) {
+	originalData := `{"type":"message_start","message":{"usage":{"input_tokens":100,"cache_read_input_tokens":30,"cache_creation_input_tokens":50}}}`
+	usage := &dto.ClaudeUsage{
+		InputTokens:              100,
+		CacheCreationInputTokens: 80,
+	}
+
+	patchedData := patchClaudeUsageData(originalData, "message.usage", usage)
+
+	assert.False(t, gjson.Get(patchedData, "message.usage.cache_read_input_tokens").Exists())
+	require.EqualValues(t, 80, gjson.Get(patchedData, "message.usage.cache_creation_input_tokens").Int())
+}
+
+func TestBuildResponsesUsageUsesConvertedCacheCreation(t *testing.T) {
+	usage := buildResponsesUsage(&dto.ClaudeUsage{
+		InputTokens:              100,
+		OutputTokens:             20,
+		CacheCreationInputTokens: 80,
+	})
+
+	require.NotNil(t, usage)
+	require.NotNil(t, usage.InputTokensDetails)
+	require.EqualValues(t, 0, usage.InputTokensDetails.CachedTokens)
+	require.EqualValues(t, 80, usage.InputTokensDetails.CachedCreationTokens)
+}
+
 func TestShouldSkipClaudeMessageDeltaUsagePatch(t *testing.T) {
 	originGlobalPassThrough := model_setting.GetGlobalSettings().PassThroughRequestEnabled
 	t.Cleanup(func() {

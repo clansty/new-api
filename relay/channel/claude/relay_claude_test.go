@@ -2,11 +2,17 @@ package claude
 
 import (
 	"encoding/base64"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
 	"github.com/QuantumNous/new-api/dto"
+	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/types"
+	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
 )
 
 func TestFormatClaudeResponseInfo_MessageStart(t *testing.T) {
@@ -27,7 +33,7 @@ func TestFormatClaudeResponseInfo_MessageStart(t *testing.T) {
 		},
 	}
 
-	ok := FormatClaudeResponseInfo(claudeResponse, nil, claudeInfo)
+	ok := FormatClaudeResponseInfo(claudeResponse, nil, claudeInfo, nil)
 	if !ok {
 		t.Fatal("expected true")
 	}
@@ -72,7 +78,7 @@ func TestFormatClaudeResponseInfo_MessageDelta_FullUsage(t *testing.T) {
 		},
 	}
 
-	ok := FormatClaudeResponseInfo(claudeResponse, nil, claudeInfo)
+	ok := FormatClaudeResponseInfo(claudeResponse, nil, claudeInfo, nil)
 	if !ok {
 		t.Fatal("expected true")
 	}
@@ -114,7 +120,7 @@ func TestFormatClaudeResponseInfo_MessageDelta_OnlyOutputTokens(t *testing.T) {
 		},
 	}
 
-	ok := FormatClaudeResponseInfo(claudeResponse, nil, claudeInfo)
+	ok := FormatClaudeResponseInfo(claudeResponse, nil, claudeInfo, nil)
 	if !ok {
 		t.Fatal("expected true")
 	}
@@ -146,9 +152,70 @@ func TestFormatClaudeResponseInfo_MessageDelta_OnlyOutputTokens(t *testing.T) {
 	}
 }
 
+func TestFormatClaudeResponseInfoConvertsCacheReadToCreationWhenEnabled(t *testing.T) {
+	relayInfo := &relaycommon.RelayInfo{
+		ChannelMeta: &relaycommon.ChannelMeta{
+			ChannelOtherSettings: dto.ChannelOtherSettings{
+				ClaudeCacheReadAsCacheCreation: true,
+			},
+		},
+	}
+	claudeInfo := &ClaudeResponseInfo{Usage: &dto.Usage{}}
+	claudeResponse := &dto.ClaudeResponse{
+		Type: "message_delta",
+		Usage: &dto.ClaudeUsage{
+			InputTokens:              100,
+			OutputTokens:             20,
+			CacheCreationInputTokens: 50,
+			CacheReadInputTokens:     30,
+			CacheCreation: &dto.ClaudeCacheCreationUsage{
+				Ephemeral5mInputTokens: 10,
+				Ephemeral1hInputTokens: 20,
+			},
+		},
+	}
+
+	ok := FormatClaudeResponseInfo(claudeResponse, nil, claudeInfo, relayInfo)
+
+	require.True(t, ok)
+	require.Equal(t, 0, claudeInfo.Usage.PromptTokensDetails.CachedTokens)
+	require.Equal(t, 80, claudeInfo.Usage.PromptTokensDetails.CachedCreationTokens)
+	require.Equal(t, 40, claudeInfo.Usage.ClaudeCacheCreation5mTokens)
+	require.Equal(t, 20, claudeInfo.Usage.ClaudeCacheCreation1hTokens)
+	require.Equal(t, 0, claudeResponse.Usage.CacheReadInputTokens)
+	require.Equal(t, 80, claudeResponse.Usage.CacheCreationInputTokens)
+}
+
+func TestHandleClaudeResponseDataReturnsConvertedClaudeUsageWhenEnabled(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	relayInfo := &relaycommon.RelayInfo{
+		RelayFormat: types.RelayFormatClaude,
+		ChannelMeta: &relaycommon.ChannelMeta{
+			ChannelOtherSettings: dto.ChannelOtherSettings{
+				ClaudeCacheReadAsCacheCreation: true,
+			},
+		},
+	}
+	claudeInfo := &ClaudeResponseInfo{Usage: &dto.Usage{}}
+	httpResp := &http.Response{StatusCode: http.StatusOK, Header: http.Header{}}
+	data := []byte(`{"id":"msg_123","type":"message","role":"assistant","content":[],"model":"claude-3-5-sonnet","usage":{"input_tokens":100,"cache_creation_input_tokens":50,"cache_read_input_tokens":30,"output_tokens":20}}`)
+
+	err := HandleClaudeResponseData(ctx, relayInfo, claudeInfo, httpResp, data)
+
+	require.Nil(t, err)
+	body := recorder.Body.String()
+	require.False(t, gjson.Get(body, "usage.cache_read_input_tokens").Exists())
+	require.False(t, gjson.Get(body, "usage.claude_cache_creation_5_m_tokens").Exists())
+	require.EqualValues(t, 80, gjson.Get(body, "usage.cache_creation_input_tokens").Int())
+	require.Equal(t, 0, claudeInfo.Usage.PromptTokensDetails.CachedTokens)
+	require.Equal(t, 80, claudeInfo.Usage.PromptTokensDetails.CachedCreationTokens)
+}
+
 func TestFormatClaudeResponseInfo_NilClaudeInfo(t *testing.T) {
 	claudeResponse := &dto.ClaudeResponse{Type: "message_start"}
-	ok := FormatClaudeResponseInfo(claudeResponse, nil, nil)
+	ok := FormatClaudeResponseInfo(claudeResponse, nil, nil, nil)
 	if ok {
 		t.Error("expected false for nil claudeInfo")
 	}
@@ -167,7 +234,7 @@ func TestFormatClaudeResponseInfo_ContentBlockDelta(t *testing.T) {
 		},
 	}
 
-	ok := FormatClaudeResponseInfo(claudeResponse, nil, claudeInfo)
+	ok := FormatClaudeResponseInfo(claudeResponse, nil, claudeInfo, nil)
 	if !ok {
 		t.Fatal("expected true")
 	}

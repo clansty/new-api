@@ -148,6 +148,43 @@ func TestCalculateTextQuotaSummaryUsesAnthropicUsageSemanticFromUpstreamUsage(t 
 	require.Equal(t, 1488, summary.Quota)
 }
 
+func TestCalculateTextQuotaSummaryChargesConvertedClaudeCacheReadAsCacheCreation(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(w)
+	relayInfo := &relaycommon.RelayInfo{
+		FinalRequestRelayFormat: types.RelayFormatClaude,
+		OriginModelName:         "claude-3-7-sonnet",
+		PriceData: types.PriceData{
+			ModelRatio:           1,
+			GroupRatioInfo:       types.GroupRatioInfo{GroupRatio: 1},
+			CompletionRatio:      1,
+			CacheRatio:           0.1,
+			CacheCreationRatio:   1.25,
+			CacheCreation5mRatio: 1.25,
+			CacheCreation1hRatio: 2,
+		},
+	}
+	usage := &dto.Usage{
+		PromptTokens:     100,
+		CompletionTokens: 20,
+		PromptTokensDetails: dto.InputTokenDetails{
+			CachedCreationTokens: 80,
+		},
+		ClaudeCacheCreation5mTokens: 40,
+		ClaudeCacheCreation1hTokens: 20,
+		UsageSemantic:               "anthropic",
+	}
+
+	summary := calculateTextQuotaSummary(ctx, relayInfo, usage)
+
+	require.Equal(t, 235, summary.Quota)
+	require.Equal(t, 0, summary.CacheTokens)
+	require.Equal(t, 80, summary.CacheCreationTokens)
+	require.Equal(t, 40, summary.CacheCreationTokens5m)
+	require.Equal(t, 20, summary.CacheCreationTokens1h)
+}
+
 func TestCacheWriteTokensTotal(t *testing.T) {
 	t.Run("split cache creation", func(t *testing.T) {
 		summary := textQuotaSummary{
