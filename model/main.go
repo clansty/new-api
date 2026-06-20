@@ -18,14 +18,15 @@ import (
 	"gorm.io/gorm"
 )
 
-var commonGroupCol string
-var commonKeyCol string
-var commonTrueVal string
-var commonFalseVal string
+var commonGroupCol = "`group`"
+var commonKeyCol = "`key`"
+var commonTrueVal = "1"
+var commonFalseVal = "0"
 
 // commonLikeOp 是大小写不敏感 LIKE 的方言操作符：
 //   - PostgreSQL: "ILIKE"（原生大小写不敏感）
 //   - MySQL/SQLite: "LIKE"（默认排序规则下本身大小写不敏感）
+//
 // 用于 Search* 系列函数，使搜索在所有支持的数据库上行为一致（不区分大小写）。
 // 注意：MySQL utf8mb4_bin 等 binary 排序规则下 LIKE 仍区分大小写；SQLite 默认仅 ASCII 不区分。
 // 默认值为 "LIKE"，确保 initCol() 未运行的测试场景也能产出合法 SQL。
@@ -83,8 +84,10 @@ func LogExactMatchExpr(column string) string {
 //  3. 最多允许 2 个 %
 //  4. 含 % 时（模糊搜索），去掉 % 后关键词长度必须 >= 2
 //  5. 不含 % 时按精确匹配
+//
 // 调用方使用时需在 SQL 末尾添加 ESCAPE '!'，例如：
-//   "name LIKE ? ESCAPE '!'"
+//
+//	"name LIKE ? ESCAPE '!'"
 func SanitizeLikePattern(input string) (string, error) {
 	// 使用 ! 而非 \ 作为 ESCAPE 字符，避免 MySQL 中反斜杠的字符串转义问题
 	input = strings.ReplaceAll(input, "!", "!!")
@@ -115,6 +118,7 @@ func SanitizeLikePattern(input string) (string, error) {
 //   - 输入无通配符 -> isFuzzy=false，调用方使用 "col = ?"（精确匹配，大小写敏感）
 //   - 输入含 * 或 % -> isFuzzy=true，调用方使用 "col {commonLikeOp/logLikeOp} ? ESCAPE '!'"
 //     （在 PostgreSQL 上为 ILIKE 大小写不敏感；MySQL/SQLite 默认排序规则下 LIKE 本身不区分）
+//
 // 转换规则：
 //  1. 先转义 ! 和 _（! 为 ESCAPE 字符，避免与 LIKE 的 _ 冲突）
 //  2. 把 * 替换为 %

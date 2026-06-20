@@ -1,8 +1,10 @@
 package service
 
 import (
+	"fmt"
 	"time"
 
+	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
 )
 
@@ -22,13 +24,23 @@ type FundingSource interface {
 	Refund() error
 }
 
+type ErrWalletQuotaInsufficient struct {
+	RemainQuota int
+	NeedQuota   int
+}
+
+func (e ErrWalletQuotaInsufficient) Error() string {
+	return fmt.Sprintf("用户额度不足, 剩余额度: %s, 需要额度: %s", logger.FormatQuota(e.RemainQuota), logger.FormatQuota(e.NeedQuota))
+}
+
 // ---------------------------------------------------------------------------
 // WalletFunding — 钱包资金来源实现
 // ---------------------------------------------------------------------------
 
 type WalletFunding struct {
-	userId   int
-	consumed int // 实际预扣的用户额度
+	userId         int
+	allowOverdraft bool
+	consumed       int // 实际预扣的用户额度
 }
 
 func (w *WalletFunding) Source() string { return BillingSourceWallet }
@@ -36,6 +48,15 @@ func (w *WalletFunding) Source() string { return BillingSourceWallet }
 func (w *WalletFunding) PreConsume(amount int) error {
 	if amount <= 0 {
 		return nil
+	}
+	if !w.allowOverdraft {
+		userQuota, err := model.GetUserQuota(w.userId, false)
+		if err != nil {
+			return err
+		}
+		if userQuota-amount < 0 {
+			return ErrWalletQuotaInsufficient{RemainQuota: userQuota, NeedQuota: amount}
+		}
 	}
 	if err := model.DecreaseUserQuota(w.userId, amount, false); err != nil {
 		return err
@@ -49,6 +70,15 @@ func (w *WalletFunding) Settle(delta int) error {
 		return nil
 	}
 	if delta > 0 {
+		if !w.allowOverdraft {
+			userQuota, err := model.GetUserQuota(w.userId, false)
+			if err != nil {
+				return err
+			}
+			if userQuota-delta < 0 {
+				return ErrWalletQuotaInsufficient{RemainQuota: userQuota, NeedQuota: delta}
+			}
+		}
 		return model.DecreaseUserQuota(w.userId, delta, false)
 	}
 	return model.IncreaseUserQuota(w.userId, -delta, false)

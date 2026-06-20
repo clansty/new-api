@@ -92,6 +92,7 @@ const EditUserModal = (props) => {
     email: '',
     quota: 0,
     quota_amount: 0,
+    allow_overdraft: false,
     group: 'default',
     remark: '',
   });
@@ -389,6 +390,18 @@ const EditUserModal = (props) => {
                             {t('调整额度')}
                           </Button>
                         </Form.Slot>
+                      </Col>
+
+                      <Col span={24}>
+                        <Form.Switch
+                          field='allow_overdraft'
+                          label={t('允许透支')}
+                          checkedText={t('开')}
+                          uncheckedText={t('关')}
+                          extraText={t(
+                            '开启后，该用户钱包余额不足时仍可继续请求，余额会扣成负数；令牌额度限制仍然生效',
+                          )}
+                        />
                       </Col>
 
                       <Col span={24}>

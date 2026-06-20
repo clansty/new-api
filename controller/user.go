@@ -424,6 +424,7 @@ func GetSelf(c *gin.Context) {
 		"telegram_id":       user.TelegramId,
 		"group":             user.Group,
 		"quota":             user.Quota,
+		"allow_overdraft":   user.AllowOverdraft,
 		"used_quota":        user.UsedQuota,
 		"request_count":     user.RequestCount,
 		"aff_code":          user.AffCode,
@@ -564,8 +565,7 @@ func GetUserModels(c *gin.Context) {
 }
 
 func UpdateUser(c *gin.Context) {
-	var updatedUser model.User
-	err := json.NewDecoder(c.Request.Body).Decode(&updatedUser)
+	updatedUser, allowOverdraft, err := decodeUpdateUserRequest(c)
 	if err != nil || updatedUser.Id == 0 {
 		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
@@ -591,6 +591,11 @@ func UpdateUser(c *gin.Context) {
 		common.ApiErrorI18n(c, i18n.MsgUserCannotCreateHigherLevel)
 		return
 	}
+	if allowOverdraft == nil {
+		updatedUser.AllowOverdraft = originUser.AllowOverdraft
+	} else {
+		updatedUser.AllowOverdraft = *allowOverdraft
+	}
 	if updatedUser.Password == "$I_LOVE_U" {
 		updatedUser.Password = "" // rollback to what it should be
 	}
@@ -604,6 +609,35 @@ func UpdateUser(c *gin.Context) {
 		"message": "",
 	})
 	return
+}
+
+func decodeUpdateUserRequest(c *gin.Context) (model.User, *bool, error) {
+	var updatedUser model.User
+	storage, err := common.GetBodyStorage(c)
+	if err != nil {
+		return updatedUser, nil, err
+	}
+	body, err := storage.Bytes()
+	if err != nil {
+		return updatedUser, nil, err
+	}
+	if err := common.Unmarshal(body, &updatedUser); err != nil {
+		return updatedUser, nil, err
+	}
+
+	var raw map[string]json.RawMessage
+	if err := common.Unmarshal(body, &raw); err != nil {
+		return updatedUser, nil, err
+	}
+	rawAllowOverdraft, ok := raw["allow_overdraft"]
+	if !ok {
+		return updatedUser, nil, nil
+	}
+	var allowOverdraft bool
+	if err := common.Unmarshal(rawAllowOverdraft, &allowOverdraft); err != nil {
+		return updatedUser, nil, err
+	}
+	return updatedUser, &allowOverdraft, nil
 }
 
 func AdminClearUserBinding(c *gin.Context) {
