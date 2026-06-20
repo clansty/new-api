@@ -32,7 +32,7 @@ export function setStatusData(data) {
   localStorage.setItem('chats', JSON.stringify(data.chats));
   localStorage.setItem(
     'data_export_default_time',
-    data.data_export_default_time,
+    data.data_export_default_time || 'hour',
   );
   localStorage.setItem(
     'default_collapse_sidebar',

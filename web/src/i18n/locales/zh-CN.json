@@ -3916,6 +3916,10 @@
     "自动刷新已暂停": "自动刷新已暂停",
     "暂停": "暂停",
     "hyl2api /user/api/quota": "hyl2api /user/api/quota",
-    "上游为 new-api 或 One API 时选择 OpenAI 兼容接口；上游为 sub2api 时选择 sub2api /v1/usage；上游为 hyl2api 时选择 hyl2api /user/api/quota": "上游为 new-api 或 One API 时选择 OpenAI 兼容接口；上游为 sub2api 时选择 sub2api /v1/usage；上游为 hyl2api 时选择 hyl2api /user/api/quota"
+    "上游为 new-api 或 One API 时选择 OpenAI 兼容接口；上游为 sub2api 时选择 sub2api /v1/usage；上游为 hyl2api 时选择 hyl2api /user/api/quota": "上游为 new-api 或 One API 时选择 OpenAI 兼容接口；上游为 sub2api 时选择 sub2api /v1/usage；上游为 hyl2api 时选择 hyl2api /user/api/quota",
+    "日期浏览": "日期浏览",
+    "前一天": "前一天",
+    "后一天": "后一天",
+    "选择日期": "选择日期"
   }
 }

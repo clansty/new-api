@@ -38,8 +38,13 @@ import {
 } from '../constants/dashboard.constants';
 
 // ========== 时间相关工具函数 ==========
+export const DASHBOARD_DATE_FORMAT = 'yyyy-MM-dd';
+
 export const getDefaultTime = () => {
-  return localStorage.getItem(STORAGE_KEYS.DATA_EXPORT_DEFAULT_TIME) || 'hour';
+  const defaultTime = localStorage.getItem(
+    STORAGE_KEYS.DATA_EXPORT_DEFAULT_TIME,
+  );
+  return DEFAULT_TIME_INTERVALS[defaultTime] ? defaultTime : 'hour';
 };
 
 export const getTimeInterval = (timeType, isSeconds = false) => {
@@ -48,18 +53,71 @@ export const getTimeInterval = (timeType, isSeconds = false) => {
   return isSeconds ? intervals.seconds : intervals.minutes;
 };
 
-export const getInitialTimestamp = () => {
-  const defaultTime = getDefaultTime();
-  const now = new Date().getTime() / 1000;
-
-  switch (defaultTime) {
-    case 'hour':
-      return timestamp2string(now - 86400);
-    case 'week':
-      return timestamp2string(now - 86400 * 30);
-    default:
-      return timestamp2string(now - 86400 * 7);
+export const normalizeDashboardDate = (value) => {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return new Date(value.getFullYear(), value.getMonth(), value.getDate());
   }
+
+  if (Array.isArray(value)) {
+    return normalizeDashboardDate(value[0]);
+  }
+
+  if (typeof value === 'string' || typeof value === 'number') {
+    const date = new Date(value);
+    if (!Number.isNaN(date.getTime())) {
+      return normalizeDashboardDate(date);
+    }
+  }
+
+  return normalizeDashboardDate(new Date());
+};
+
+export const getRollingDashboardTimeRange = () => {
+  const now = Date.now() / 1000;
+  return {
+    start_timestamp: timestamp2string(now - 86400),
+    end_timestamp: timestamp2string(now),
+  };
+};
+
+export const getDashboardDateRange = (date) => {
+  const normalizedDate = normalizeDashboardDate(date);
+  const startDate = new Date(
+    normalizedDate.getFullYear(),
+    normalizedDate.getMonth(),
+    normalizedDate.getDate(),
+    0,
+    0,
+    0,
+    0,
+  );
+  const endDate = new Date(
+    normalizedDate.getFullYear(),
+    normalizedDate.getMonth(),
+    normalizedDate.getDate(),
+    23,
+    59,
+    59,
+    999,
+  );
+
+  return {
+    start_timestamp: timestamp2string(startDate.getTime() / 1000),
+    end_timestamp: timestamp2string(endDate.getTime() / 1000),
+  };
+};
+
+export const shiftDashboardDate = (date, dayOffset) => {
+  const normalizedDate = normalizeDashboardDate(date);
+  return new Date(
+    normalizedDate.getFullYear(),
+    normalizedDate.getMonth(),
+    normalizedDate.getDate() + dayOffset,
+  );
+};
+
+export const getInitialTimestamp = () => {
+  return getRollingDashboardTimeRange().start_timestamp;
 };
 
 // ========== 数据处理工具函数 ==========
@@ -368,6 +426,14 @@ export const generateChartTimePoints = (
   let chartTimePoints = Array.from(
     new Set([...aggregatedData.values()].map((d) => d.time)),
   );
+
+  if (data.length === 0) {
+    const now = Date.now() / 1000;
+    const interval = getTimeInterval(dataExportDefaultTime, true);
+    return Array.from({ length: DEFAULTS.MAX_TREND_POINTS }, (_, i) =>
+      timestamp2string1(now - (6 - i) * interval, dataExportDefaultTime),
+    );
+  }
 
   if (chartTimePoints.length < DEFAULTS.MAX_TREND_POINTS) {
     const lastTime = Math.max(...data.map((item) => item.created_at));

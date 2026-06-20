@@ -17,8 +17,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React, { useContext, useEffect, useRef } from 'react';
-import { getRelativeTime } from '../../helpers';
+import React, { useCallback, useContext, useEffect, useRef } from 'react';
+import { getRelativeTime } from '../../helpers/utils';
 import { UserContext } from '../../context/User';
 import { StatusContext } from '../../context/Status';
 
@@ -86,39 +86,53 @@ const Dashboard = () => {
   );
 
   // ========== 数据处理 ==========
-  const loadUserData = async () => {
+  const loadUserData = useCallback(async () => {
     if (dashboardData.isAdminUser) {
       const userData = await dashboardData.loadUserQuotaData();
-      if (userData && userData.length > 0) {
-        dashboardCharts.updateUserChartData(userData);
-      }
+      dashboardCharts.updateUserChartData(userData || []);
     }
-  };
+  }, [
+    dashboardData.isAdminUser,
+    dashboardData.loadUserQuotaData,
+    dashboardCharts.updateUserChartData,
+  ]);
 
-  const initChart = async () => {
-    dashboardData.loadTokenStats();
-    dashboardData.loadChannelStats();
-    await dashboardData.loadQuotaData().then((data) => {
-      if (data && data.length > 0) {
-        dashboardCharts.updateChartData(data);
+  const reloadDashboardCharts = useCallback(
+    async ({ includeUptime = false } = {}) => {
+      dashboardData.loadTokenStats();
+      dashboardData.loadChannelStats();
+      const data = await dashboardData.loadQuotaData();
+      dashboardCharts.updateChartData(data || []);
+      await loadUserData();
+      if (includeUptime) {
+        await dashboardData.loadUptimeData();
       }
-    });
-    await loadUserData();
-    await dashboardData.loadUptimeData();
-  };
+    },
+    [
+      dashboardData.loadTokenStats,
+      dashboardData.loadChannelStats,
+      dashboardData.loadQuotaData,
+      dashboardData.loadUptimeData,
+      dashboardCharts.updateChartData,
+      loadUserData,
+    ],
+  );
+  const reloadDashboardChartsRef = useRef(reloadDashboardCharts);
 
-  const handleRefresh = async () => {
+  const handleRefresh = useCallback(async () => {
     const data = await dashboardData.refresh();
-    if (data && data.length > 0) {
-      dashboardCharts.updateChartData(data);
-    }
+    dashboardCharts.updateChartData(data || []);
     await loadUserData();
-  };
+  }, [dashboardData.refresh, dashboardCharts.updateChartData, loadUserData]);
 
-  const handleSearchConfirm = async () => {
+  const handleSearchConfirm = useCallback(async () => {
     await dashboardData.handleSearchConfirm(dashboardCharts.updateChartData);
     await loadUserData();
-  };
+  }, [
+    dashboardData.handleSearchConfirm,
+    dashboardCharts.updateChartData,
+    loadUserData,
+  ]);
 
   // ========== 数据准备 ==========
   const apiInfoData = statusState?.status?.api_info || [];
@@ -149,36 +163,32 @@ const Dashboard = () => {
   );
 
   // ========== Effects ==========
-  const isFirstRender = useRef(true);
+  const initializedCharts = useRef(false);
 
   useEffect(() => {
-    if (isFirstRender.current) {
-      isFirstRender.current = false;
+    reloadDashboardChartsRef.current = reloadDashboardCharts;
+  }, [reloadDashboardCharts]);
+
+  useEffect(() => {
+    if (!initializedCharts.current) {
+      initializedCharts.current = true;
+      reloadDashboardChartsRef.current({ includeUptime: true });
       return;
     }
-    dashboardData.loadTokenStats();
-    dashboardData.loadQuotaData().then((data) => {
-      if (data && data.length > 0) {
-        dashboardCharts.updateChartData(data);
-      }
-    });
-  }, [dashboardData.showAllTokens]);
+    reloadDashboardChartsRef.current();
+  }, [dashboardData.timeRangeRevision]);
 
   useEffect(() => {
-    if (dashboardData.tokenStatsData && dashboardData.tokenStatsData.length > 0) {
+    if (dashboardData.tokenStatsData) {
       dashboardCharts.updateTokenChartData(dashboardData.tokenStatsData);
     }
-  }, [dashboardData.tokenStatsData]);
+  }, [dashboardData.tokenStatsData, dashboardCharts.updateTokenChartData]);
 
   useEffect(() => {
-    if (dashboardData.channelStatsData && dashboardData.channelStatsData.length > 0) {
+    if (dashboardData.channelStatsData) {
       dashboardCharts.updateChannelChartData(dashboardData.channelStatsData);
     }
-  }, [dashboardData.channelStatsData]);
-
-  useEffect(() => {
-    initChart();
-  }, []);
+  }, [dashboardData.channelStatsData, dashboardCharts.updateChannelChartData]);
 
   return (
     <div className='h-full'>
@@ -188,6 +198,11 @@ const Dashboard = () => {
         showSearchModal={dashboardData.showSearchModal}
         refresh={handleRefresh}
         loading={dashboardData.loading}
+        dateBrowseEnabled={dashboardData.dateBrowseEnabled}
+        selectedDate={dashboardData.selectedDate}
+        toggleDateBrowse={dashboardData.toggleDateBrowse}
+        changeBrowseDate={dashboardData.changeBrowseDate}
+        shiftBrowseDate={dashboardData.shiftBrowseDate}
         t={dashboardData.t}
       />
 

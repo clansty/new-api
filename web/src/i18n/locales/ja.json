@@ -3803,6 +3803,10 @@
     "自动刷新已暂停": "自動更新は一時停止中",
     "暂停": "一時停止",
     "hyl2api /user/api/quota": "hyl2api /user/api/quota",
-    "上游为 new-api 或 One API 时选择 OpenAI 兼容接口；上游为 sub2api 时选择 sub2api /v1/usage；上游为 hyl2api 时选择 hyl2api /user/api/quota": "上流が new-api または One API の場合は OpenAI互換API を選択し、sub2api の場合は sub2api /v1/usage、hyl2api の場合は hyl2api /user/api/quota を選択してください"
+    "上游为 new-api 或 One API 时选择 OpenAI 兼容接口；上游为 sub2api 时选择 sub2api /v1/usage；上游为 hyl2api 时选择 hyl2api /user/api/quota": "上流が new-api または One API の場合は OpenAI互換API を選択し、sub2api の場合は sub2api /v1/usage、hyl2api の場合は hyl2api /user/api/quota を選択してください",
+    "日期浏览": "日付で表示",
+    "前一天": "前日",
+    "后一天": "翌日",
+    "选择日期": "日付を選択"
   }
 }

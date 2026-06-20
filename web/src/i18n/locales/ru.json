@@ -3854,6 +3854,10 @@
     "自动刷新已暂停": "Автообновление приостановлено",
     "暂停": "Пауза",
     "hyl2api /user/api/quota": "hyl2api /user/api/quota",
-    "上游为 new-api 或 One API 时选择 OpenAI 兼容接口；上游为 sub2api 时选择 sub2api /v1/usage；上游为 hyl2api 时选择 hyl2api /user/api/quota": "Выберите OpenAI-совместимый API для upstream new-api или One API; выберите sub2api /v1/usage для upstream sub2api; выберите hyl2api /user/api/quota для upstream hyl2api"
+    "上游为 new-api 或 One API 时选择 OpenAI 兼容接口；上游为 sub2api 时选择 sub2api /v1/usage；上游为 hyl2api 时选择 hyl2api /user/api/quota": "Выберите OpenAI-совместимый API для upstream new-api или One API; выберите sub2api /v1/usage для upstream sub2api; выберите hyl2api /user/api/quota для upstream hyl2api",
+    "日期浏览": "Просмотр по дате",
+    "前一天": "Предыдущий день",
+    "后一天": "Следующий день",
+    "选择日期": "Выбрать дату"
   }
 }

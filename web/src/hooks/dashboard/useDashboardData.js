@@ -20,8 +20,15 @@ For commercial licensing, please contact support@quantumnous.com
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { API, isAdmin, showError, timestamp2string } from '../../helpers';
-import { getDefaultTime, getInitialTimestamp } from '../../helpers/dashboard';
+import { API, isAdmin, showError } from '../../helpers';
+import {
+  getDashboardDateRange,
+  getDefaultTime,
+  getInitialTimestamp,
+  getRollingDashboardTimeRange,
+  normalizeDashboardDate,
+  shiftDashboardDate,
+} from '../../helpers/dashboard';
 import { TIME_OPTIONS } from '../../constants/dashboard.constants';
 import { useIsMobile } from '../common/useIsMobile';
 import { useMinimumLoadingTime } from '../common/useMinimumLoadingTime';
@@ -37,6 +44,11 @@ export const useDashboardData = (userState, userDispatch, statusState) => {
   const [greetingVisible, setGreetingVisible] = useState(false);
   const [searchModalVisible, setSearchModalVisible] = useState(false);
   const showLoading = useMinimumLoadingTime(loading);
+  const [dateBrowseEnabled, setDateBrowseEnabled] = useState(false);
+  const [selectedDate, setSelectedDate] = useState(() =>
+    normalizeDashboardDate(new Date()),
+  );
+  const [timeRangeRevision, setTimeRangeRevision] = useState(0);
 
   // ========== 输入状态 ==========
   const [inputs, setInputs] = useState({
@@ -44,7 +56,7 @@ export const useDashboardData = (userState, userDispatch, statusState) => {
     token_name: '',
     model_name: '',
     start_timestamp: getInitialTimestamp(),
-    end_timestamp: timestamp2string(new Date().getTime() / 1000 + 3600),
+    end_timestamp: getRollingDashboardTimeRange().end_timestamp,
     channel: '',
     data_export_default_time: '',
   });
@@ -90,8 +102,6 @@ export const useDashboardData = (userState, userDispatch, statusState) => {
   const [uptimeLoading, setUptimeLoading] = useState(false);
   const [activeUptimeTab, setActiveUptimeTab] = useState('');
 
-  // ========== 常量 ==========
-  const now = new Date();
   const isAdminUser = isAdmin();
 
   // ========== Panel enable flags ==========
@@ -156,10 +166,51 @@ export const useDashboardData = (userState, userDispatch, statusState) => {
     if (name === 'show_all_tokens') {
       setShowAllTokens(value);
       localStorage.setItem('dashboard_show_all_tokens', value.toString());
+      setTimeRangeRevision((revision) => revision + 1);
       return;
     }
     setInputs((inputs) => ({ ...inputs, [name]: value }));
   }, []);
+
+  const applyRollingRange = useCallback(() => {
+    const range = getRollingDashboardTimeRange();
+    setInputs((inputs) => ({ ...inputs, ...range }));
+    setTimeRangeRevision((revision) => revision + 1);
+  }, []);
+
+  const applyDateRange = useCallback((date) => {
+    const normalizedDate = normalizeDashboardDate(date);
+    const range = getDashboardDateRange(normalizedDate);
+    setSelectedDate(normalizedDate);
+    setInputs((inputs) => ({ ...inputs, ...range }));
+    setTimeRangeRevision((revision) => revision + 1);
+  }, []);
+
+  const toggleDateBrowse = useCallback(
+    (enabled) => {
+      setDateBrowseEnabled(enabled);
+      if (enabled) {
+        applyDateRange(selectedDate);
+        return;
+      }
+      applyRollingRange();
+    },
+    [applyDateRange, applyRollingRange, selectedDate],
+  );
+
+  const changeBrowseDate = useCallback(
+    (date) => {
+      applyDateRange(date);
+    },
+    [applyDateRange],
+  );
+
+  const shiftBrowseDate = useCallback(
+    (dayOffset) => {
+      applyDateRange(shiftDashboardDate(selectedDate, dayOffset));
+    },
+    [applyDateRange, selectedDate],
+  );
 
   const showSearchModal = useCallback(() => {
     setSearchModalVisible(true);
@@ -195,7 +246,7 @@ export const useDashboardData = (userState, userDispatch, statusState) => {
             count: 0,
             model_name: '无数据',
             quota: 0,
-            created_at: now.getTime() / 1000,
+            created_at: localStartTimestamp,
           });
         }
         data.sort((a, b) => a.created_at - b.created_at);
@@ -207,7 +258,7 @@ export const useDashboardData = (userState, userDispatch, statusState) => {
     } finally {
       setLoading(false);
     }
-  }, [inputs, dataExportDefaultTime, isAdminUser, showAllTokens, now]);
+  }, [inputs, dataExportDefaultTime, isAdminUser, showAllTokens]);
 
   const loadUptimeData = useCallback(async () => {
     setUptimeLoading(true);
@@ -342,6 +393,9 @@ export const useDashboardData = (userState, userDispatch, statusState) => {
     loading: showLoading,
     greetingVisible,
     searchModalVisible,
+    dateBrowseEnabled,
+    selectedDate,
+    timeRangeRevision,
 
     // 输入状态
     inputs,
@@ -394,6 +448,9 @@ export const useDashboardData = (userState, userDispatch, statusState) => {
 
     // 函数
     handleInputChange,
+    toggleDateBrowse,
+    changeBrowseDate,
+    shiftBrowseDate,
     showSearchModal,
     handleCloseModal,
     loadQuotaData,
