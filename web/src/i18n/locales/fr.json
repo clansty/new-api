@@ -452,6 +452,7 @@
     "当前 Ollama 版本为 ${version}": "Current Ollama version is ${version}",
     "当前版本": "Version actuelle",
     "当前编辑": "En cours d'édition",
+    "当前并发": "Concurrence actuelle",
     "当前参数覆盖不是合法的 JSON": "Le remplacement de paramètres actuel n'est pas un JSON valide",
     "当前查看的分组为：{{group}}，倍率为：{{ratio}}": "Groupe actuel : {{group}}, ratio : {{ratio}}",
     "当前额度": "Quota actuel",

@@ -121,6 +121,8 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		newAPIError = types.NewError(err, types.ErrorCodeGenRelayInfoFailed)
 		return
 	}
+	finishUserInflight := service.BeginUserInflight(relayInfo.UserId)
+	defer finishUserInflight()
 
 	needSensitiveCheck := setting.ShouldCheckPromptSensitive()
 	needCountToken := constant.CountToken
@@ -208,16 +210,21 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		}
 		c.Request.Body = io.NopCloser(bodyStorage)
 
-		switch relayFormat {
-		case types.RelayFormatOpenAIRealtime:
-			newAPIError = relay.WssHelper(c, relayInfo)
-		case types.RelayFormatClaude:
-			newAPIError = relay.ClaudeHelper(c, relayInfo)
-		case types.RelayFormatGemini:
-			newAPIError = geminiRelayHandler(c, relayInfo)
-		default:
-			newAPIError = relayHandler(c, relayInfo)
-		}
+		func() {
+			finishChannelInflight := service.BeginChannelInflight(channel.Id)
+			defer finishChannelInflight()
+
+			switch relayFormat {
+			case types.RelayFormatOpenAIRealtime:
+				newAPIError = relay.WssHelper(c, relayInfo)
+			case types.RelayFormatClaude:
+				newAPIError = relay.ClaudeHelper(c, relayInfo)
+			case types.RelayFormatGemini:
+				newAPIError = geminiRelayHandler(c, relayInfo)
+			default:
+				newAPIError = relayHandler(c, relayInfo)
+			}
+		}()
 
 		if newAPIError == nil {
 			relayInfo.LastError = nil
@@ -405,6 +412,8 @@ func RelayMidjourney(c *gin.Context) {
 		})
 		return
 	}
+	finishUserInflight := service.BeginUserInflight(relayInfo.UserId)
+	defer finishUserInflight()
 
 	var mjErr *dto.MidjourneyResponse
 	switch relayInfo.RelayMode {
@@ -415,7 +424,11 @@ func RelayMidjourney(c *gin.Context) {
 	case relayconstant.RelayModeMidjourneyTaskImageSeed:
 		mjErr = relay.RelayMidjourneyTaskImageSeed(c)
 	case relayconstant.RelayModeSwapFace:
-		mjErr = relay.RelaySwapFace(c, relayInfo)
+		func() {
+			finishChannelInflight := service.BeginChannelInflight(c.GetInt("channel_id"))
+			defer finishChannelInflight()
+			mjErr = relay.RelaySwapFace(c, relayInfo)
+		}()
 	default:
 		mjErr = relay.RelayMidjourneySubmit(c, relayInfo)
 	}
@@ -471,6 +484,8 @@ func RelayTaskFetch(c *gin.Context) {
 		})
 		return
 	}
+	finishUserInflight := service.BeginUserInflight(relayInfo.UserId)
+	defer finishUserInflight()
 	if taskErr := relay.RelayTaskFetch(c, relayInfo.RelayMode); taskErr != nil {
 		respondTaskError(c, taskErr)
 	}
@@ -486,6 +501,8 @@ func RelayTask(c *gin.Context) {
 		})
 		return
 	}
+	finishUserInflight := service.BeginUserInflight(relayInfo.UserId)
+	defer finishUserInflight()
 
 	if taskErr := relay.ResolveOriginTask(c, relayInfo); taskErr != nil {
 		respondTaskError(c, taskErr)
@@ -540,7 +557,11 @@ func RelayTask(c *gin.Context) {
 		}
 		c.Request.Body = io.NopCloser(bodyStorage)
 
-		result, taskErr = relay.RelayTaskSubmit(c, relayInfo)
+		func() {
+			finishChannelInflight := service.BeginChannelInflight(channel.Id)
+			defer finishChannelInflight()
+			result, taskErr = relay.RelayTaskSubmit(c, relayInfo)
+		}()
 		if taskErr == nil {
 			break
 		}

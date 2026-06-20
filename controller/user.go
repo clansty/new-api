@@ -246,6 +246,7 @@ func GetAllUsers(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	attachUserInflightCounts(users)
 
 	pageInfo.SetTotal(int(total))
 	pageInfo.SetItems(users)
@@ -263,11 +264,21 @@ func SearchUsers(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	attachUserInflightCounts(users)
 
 	pageInfo.SetTotal(int(total))
 	pageInfo.SetItems(users)
 	common.ApiSuccess(c, pageInfo)
 	return
+}
+
+func attachUserInflightCounts(users []*model.User) {
+	for _, user := range users {
+		if user == nil {
+			continue
+		}
+		user.InflightCount = service.GetUserInflightCount(user.Id)
+	}
 }
 
 func GetUser(c *gin.Context) {

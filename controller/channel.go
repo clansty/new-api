@@ -161,6 +161,8 @@ func GetAllChannels(c *gin.Context) {
 	for _, datum := range collapsedChannelData {
 		clearChannelInfo(datum)
 	}
+	attachChannelInflightCounts(channelData)
+	attachChannelInflightCounts(collapsedChannelData)
 
 	countQuery := model.DB.Model(&model.Channel{})
 	if statusFilter == common.ChannelStatusEnabled {
@@ -375,6 +377,8 @@ func SearchChannels(c *gin.Context) {
 	for _, datum := range collapsedChannelData {
 		clearChannelInfo(datum)
 	}
+	attachChannelInflightCounts(pagedData)
+	attachChannelInflightCounts(collapsedChannelData)
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
@@ -408,6 +412,15 @@ func GetChannel(c *gin.Context) {
 		"data":    channel,
 	})
 	return
+}
+
+func attachChannelInflightCounts(channels []*model.Channel) {
+	for _, channel := range channels {
+		if channel == nil {
+			continue
+		}
+		channel.InflightCount = service.GetChannelInflightCount(channel.Id)
+	}
 }
 
 // GetChannelKey 获取渠道密钥（需要通过安全验证中间件）

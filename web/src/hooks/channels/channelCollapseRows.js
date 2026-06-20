@@ -5,7 +5,9 @@ export const isCollapsedChannelsRow = (record) => {
 };
 
 const createCollapsedChannelsRow = (channels, t) => {
-  const enabledCount = channels.filter((channel) => channel.status === 1).length;
+  const enabledCount = channels.filter(
+    (channel) => channel.status === 1,
+  ).length;
   const autoDisabledCount = channels.filter(
     (channel) => channel.status === 3,
   ).length;
@@ -17,6 +19,10 @@ const createCollapsedChannelsRow = (channels, t) => {
     group: '',
     used_quota: channels.reduce(
       (total, channel) => total + (channel.used_quota || 0),
+      0,
+    ),
+    inflight_count: channels.reduce(
+      (total, channel) => total + (Number(channel.inflight_count) || 0),
       0,
     ),
     response_time: 0,
@@ -97,6 +103,9 @@ export const buildChannelRows = (
       tagChannelRow.status = 1;
     }
     tagChannelRow.used_quota += channel.used_quota;
+    tagChannelRow.inflight_count =
+      (Number(tagChannelRow.inflight_count) || 0) +
+      (Number(channel.inflight_count) || 0);
     tagChannelRow.response_time += channel.response_time;
     tagChannelRow.response_time = tagChannelRow.response_time / 2;
   }

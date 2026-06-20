@@ -137,6 +137,7 @@ export const useChannelsData = () => {
     GROUP: 'group',
     TYPE: 'type',
     STATUS: 'status',
+    INFLIGHT: 'inflight',
     RESPONSE_TIME: 'response_time',
     BALANCE: 'balance',
     PRIORITY: 'priority',
@@ -177,6 +178,7 @@ export const useChannelsData = () => {
       [COLUMN_KEYS.GROUP]: true,
       [COLUMN_KEYS.TYPE]: true,
       [COLUMN_KEYS.STATUS]: true,
+      [COLUMN_KEYS.INFLIGHT]: true,
       [COLUMN_KEYS.RESPONSE_TIME]: true,
       [COLUMN_KEYS.BALANCE]: true,
       [COLUMN_KEYS.PRIORITY]: true,
@@ -245,7 +247,9 @@ export const useChannelsData = () => {
       );
       allChannels[i].key = '' + allChannels[i].id;
     }
-    setChannels(buildChannelRows(channels, enableTagMode, t, collapsedChannels));
+    setChannels(
+      buildChannelRows(channels, enableTagMode, t, collapsedChannels),
+    );
   };
 
   // Get form values helper

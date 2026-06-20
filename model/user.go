@@ -54,6 +54,7 @@ type User struct {
 	CreatedAt        int64          `json:"created_at" gorm:"autoCreateTime;column:created_at"`
 	LastLoginAt      int64          `json:"last_login_at" gorm:"default:0;column:last_login_at"`
 	PinnedTime       int64          `json:"pinned_time" gorm:"type:bigint;not null;default:0;column:pinned_time;index"`
+	InflightCount    int            `json:"inflight_count" gorm:"-"`
 }
 
 func (user *User) ToBaseUser() *UserBase {

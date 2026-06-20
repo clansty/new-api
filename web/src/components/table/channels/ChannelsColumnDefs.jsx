@@ -157,6 +157,18 @@ const renderCollapsedType = (t) => {
   );
 };
 
+const renderInflightCount = (count) => {
+  const value = Number(count) || 0;
+  if (value <= 0) {
+    return <span>{value}</span>;
+  }
+  return (
+    <Tag color='yellow' type='light' shape='circle'>
+      {value}
+    </Tag>
+  );
+};
+
 const renderStatus = (status, channelInfo = undefined, t) => {
   if (channelInfo) {
     if (channelInfo.is_multi_key) {
@@ -561,6 +573,12 @@ export const getChannelsColumns = ({
           return renderStatus(text, record.channel_info, t);
         }
       },
+    },
+    {
+      key: COLUMN_KEYS.INFLIGHT,
+      title: t('当前并发'),
+      dataIndex: 'inflight_count',
+      render: renderInflightCount,
     },
     {
       key: COLUMN_KEYS.RESPONSE_TIME,

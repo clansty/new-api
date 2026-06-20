@@ -39,6 +39,18 @@ import UserAvatar from '../../common/UserAvatar';
 
 const renderTimestamp = (text) => (text ? timestamp2string(text) : '-');
 
+const renderInflightCount = (count) => {
+  const value = Number(count) || 0;
+  if (value <= 0) {
+    return <span>{value}</span>;
+  }
+  return (
+    <Tag color='yellow' type='light' shape='circle'>
+      {value}
+    </Tag>
+  );
+};
+
 /**
  * Render user role
  */
@@ -77,11 +89,7 @@ const renderRole = (role, t) => {
 const renderUsername = (text, record) => {
   const remark = record.remark;
   const avatar = (
-    <UserAvatar
-      size='extra-small'
-      oidcId={record.oidc_id}
-      username={text}
-    />
+    <UserAvatar size='extra-small' oidcId={record.oidc_id} username={text} />
   );
   if (!remark) {
     return (
@@ -362,6 +370,11 @@ export const getUsersColumns = ({
       title: t('剩余额度/总额度'),
       key: 'quota_usage',
       render: (text, record) => renderQuotaUsage(text, record, t),
+    },
+    {
+      title: t('当前并发'),
+      dataIndex: 'inflight_count',
+      render: renderInflightCount,
     },
     {
       title: t('分组'),

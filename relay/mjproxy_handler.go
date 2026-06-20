@@ -493,6 +493,8 @@ func RelayMidjourneySubmit(c *gin.Context, relayInfo *relaycommon.RelayInfo) *dt
 	requestURL := getMjRequestPath(c.Request.URL.String())
 
 	baseURL := c.GetString("base_url")
+	finishChannelInflight := service.BeginChannelInflight(c.GetInt("channel_id"))
+	defer finishChannelInflight()
 
 	//midjRequest.NotifyHook = "http://127.0.0.1:3000/mj/notify"
 
