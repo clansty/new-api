@@ -9,11 +9,13 @@ type ChannelAffinityKeySource struct {
 }
 
 type ChannelAffinityRule struct {
-	Name             string                     `json:"name"`
-	ModelRegex       []string                   `json:"model_regex"`
-	PathRegex        []string                   `json:"path_regex"`
-	UserAgentInclude []string                   `json:"user_agent_include,omitempty"`
-	KeySources       []ChannelAffinityKeySource `json:"key_sources"`
+	Name             string   `json:"name"`
+	ModelRegex       []string `json:"model_regex"`
+	PathRegex        []string `json:"path_regex"`
+	UserAgentInclude []string `json:"user_agent_include,omitempty"`
+	// UsingGroupInclude 为空时规则对所有分组生效；非空时仅当请求实际使用分组(usingGroup)在列表内才命中
+	UsingGroupInclude []string                   `json:"using_group_include,omitempty"`
+	KeySources        []ChannelAffinityKeySource `json:"key_sources"`
 
 	ValueRegex string `json:"value_regex"`
 	TTLSeconds int    `json:"ttl_seconds"`

@@ -91,6 +91,7 @@ const RULES_JSON_PLACEHOLDER = `[
     "model_regex": ["^gpt-.*$"],
     "path_regex": ["/v1/chat/completions"],
     "user_agent_include": ["curl", "PostmanRuntime"],
+    "using_group_include": ["vip"],
     "key_sources": [
       { "type": "gjson", "path": "metadata.conversation_id" },
       { "type": "context_string", "key": "conversation_id" }
@@ -116,6 +117,15 @@ const normalizeStringList = (text) => {
     .map((s) => s.trim())
     .filter((s) => s.length > 0);
 };
+
+const normalizeGroupList = (list) =>
+  Array.from(
+    new Set(
+      (Array.isArray(list) ? list : [])
+        .map((s) => (typeof s === 'string' ? s.trim() : ''))
+        .filter((s) => s.length > 0),
+    ),
+  );
 
 const stringifyPretty = (v) => JSON.stringify(v, null, 2);
 const stringifyCompact = (v) => JSON.stringify(v);
@@ -202,6 +212,7 @@ const buildChannelAffinityRulePayload = ({
   pathRegex,
   keySources,
   userAgentInclude,
+  usingGroupInclude,
   paramOverrideTemplate,
 }) => ({
   id: isEdit ? editingRuleId : rulesLength,
@@ -220,6 +231,9 @@ const buildChannelAffinityRulePayload = ({
     : {}),
   ...(userAgentInclude.length > 0
     ? { user_agent_include: userAgentInclude }
+    : {}),
+  ...(usingGroupInclude.length > 0
+    ? { using_group_include: usingGroupInclude }
     : {}),
   ...(paramOverrideTemplate
     ? { param_override_template: paramOverrideTemplate }
@@ -254,6 +268,7 @@ export default function SettingsChannelAffinity(props) {
   const prevEditModeRef = useRef(editMode);
 
   const [rules, setRules] = useState([]);
+  const [groupOptions, setGroupOptions] = useState([]);
   const [modalVisible, setModalVisible] = useState(false);
   const [editingRule, setEditingRule] = useState(null);
   const [isEdit, setIsEdit] = useState(false);
@@ -277,6 +292,9 @@ export default function SettingsChannelAffinity(props) {
       model_regex_text: (r.model_regex || []).join('\n'),
       path_regex_text: (r.path_regex || []).join('\n'),
       user_agent_include_text: (r.user_agent_include || []).join('\n'),
+      using_group_include: Array.isArray(r.using_group_include)
+        ? r.using_group_include
+        : [],
       value_regex: r.value_regex || '',
       ttl_seconds: Number(r.ttl_seconds || 0),
       skip_retry_on_failure: !!r.skip_retry_on_failure,
@@ -375,6 +393,18 @@ export default function SettingsChannelAffinity(props) {
       footer: null,
       width: 760,
     });
+  };
+
+  const fetchGroups = async () => {
+    try {
+      const res = await API.get('/api/group/');
+      const { success, data } = res.data;
+      if (success && Array.isArray(data)) {
+        setGroupOptions(data.map((group) => ({ label: group, value: group })));
+      }
+    } catch (e) {
+      showError(t('获取分组失败'));
+    }
   };
 
   const refreshCacheStats = async () => {
@@ -553,6 +583,20 @@ export default function SettingsChannelAffinity(props) {
           : '-',
     },
     {
+      title: t('限定分组'),
+      dataIndex: 'using_group_include',
+      render: (list) =>
+        (list || []).length > 0 ? (
+          (list || []).slice(0, 3).map((v, idx) => (
+            <Tag key={`${v}-${idx}`} color='blue' style={{ marginRight: 4 }}>
+              {v}
+            </Tag>
+          ))
+        ) : (
+          <Text type='tertiary'>{t('全部')}</Text>
+        ),
+    },
+    {
       title: t('Key 来源'),
       dataIndex: 'key_sources',
       render: (list) => {
@@ -681,6 +725,7 @@ export default function SettingsChannelAffinity(props) {
       model_regex: [],
       path_regex: [],
       user_agent_include: [],
+      using_group_include: [],
       key_sources: [{ type: 'gjson', path: '' }],
       value_regex: '',
       ttl_seconds: 0,
@@ -707,6 +752,9 @@ export default function SettingsChannelAffinity(props) {
       ...r,
       user_agent_include: Array.isArray(r.user_agent_include)
         ? r.user_agent_include
+        : [],
+      using_group_include: Array.isArray(r.using_group_include)
+        ? r.using_group_include
         : [],
       key_sources: (r.key_sources || []).map(normalizeKeySource),
     };
@@ -741,6 +789,7 @@ export default function SettingsChannelAffinity(props) {
       const userAgentInclude = normalizeStringList(
         values.user_agent_include_text,
       );
+      const usingGroupInclude = normalizeGroupList(values.using_group_include);
       const paramTemplateValidation = parseOptionalObjectJson(
         paramTemplateDraft,
         '参数覆盖模板',
@@ -758,6 +807,7 @@ export default function SettingsChannelAffinity(props) {
         pathRegex: normalizeStringList(values.path_regex_text),
         keySources: keySourcesValidation.value,
         userAgentInclude,
+        usingGroupInclude,
         paramOverrideTemplate: paramTemplateValidation.value,
       });
 
@@ -887,6 +937,10 @@ export default function SettingsChannelAffinity(props) {
     setRules(parseRulesJson(currentInputs[KEY_RULES]));
     refreshCacheStats();
   }, [props.options]);
+
+  useEffect(() => {
+    fetchGroups();
+  }, []);
 
   useEffect(() => {
     const prevEditMode = prevEditModeRef.current;
@@ -1176,6 +1230,30 @@ export default function SettingsChannelAffinity(props) {
                     }
                     placeholder={'curl\nPostmanRuntime\nMyApp/…'}
                     autosize={{ minRows: 3, maxRows: 8 }}
+                  />
+                </Col>
+              </Row>
+
+              <Row gutter={16}>
+                <Col xs={24}>
+                  <Form.Select
+                    field='using_group_include'
+                    label={t('限定分组（留空对所有分组生效）')}
+                    multiple
+                    filter
+                    allowAdditions
+                    style={{ width: '100%' }}
+                    optionList={groupOptions}
+                    placeholder={t(
+                      '选择或输入分组，仅这些分组的请求才会命中该规则',
+                    )}
+                    extraText={
+                      <Text type='tertiary' size='small'>
+                        {t(
+                          '可选。按请求实际使用的分组（using_group）过滤；留空表示对所有分组生效。',
+                        )}
+                      </Text>
+                    }
                   />
                 </Col>
               </Row>

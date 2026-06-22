@@ -288,6 +288,18 @@ func matchAnyIncludeFold(patterns []string, s string) bool {
 	return false
 }
 
+func matchAnyExact(candidates []string, s string) bool {
+	if len(candidates) == 0 {
+		return false
+	}
+	for _, c := range candidates {
+		if strings.TrimSpace(c) == s {
+			return true
+		}
+	}
+	return false
+}
+
 func extractChannelAffinityValue(c *gin.Context, src operation_setting.ChannelAffinityKeySource) string {
 	switch src.Type {
 	case "context_int":
@@ -588,6 +600,9 @@ func GetPreferredChannelByAffinity(c *gin.Context, modelName string, usingGroup 
 			continue
 		}
 		if len(rule.UserAgentInclude) > 0 && !matchAnyIncludeFold(rule.UserAgentInclude, userAgent) {
+			continue
+		}
+		if len(rule.UsingGroupInclude) > 0 && !matchAnyExact(rule.UsingGroupInclude, usingGroup) {
 			continue
 		}
 		var affinityValue string
