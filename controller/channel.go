@@ -136,10 +136,7 @@ func GetAllChannels(c *gin.Context) {
 
 		buildBaseQuery().Where("collapsed = ?", false).Count(&total)
 
-		order := "priority desc"
-		if idSort {
-			order = "id desc"
-		}
+		order := model.ChannelListOrder(idSort)
 
 		err := buildBaseQuery().Where("collapsed = ?", false).Order(order).Limit(pageInfo.GetPageSize()).Offset(pageInfo.GetStartIdx()).Omit("key").Find(&channelData).Error
 		if err != nil {

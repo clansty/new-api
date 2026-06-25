@@ -265,10 +265,7 @@ func (channel *Channel) SaveWithoutKey() error {
 func GetAllChannels(startIdx int, num int, selectAll bool, idSort bool) ([]*Channel, error) {
 	var channels []*Channel
 	var err error
-	order := "priority desc"
-	if idSort {
-		order = "id desc"
-	}
+	order := ChannelListOrder(idSort)
 	if selectAll {
 		err = DB.Order(order).Find(&channels).Error
 	} else {
@@ -279,10 +276,7 @@ func GetAllChannels(startIdx int, num int, selectAll bool, idSort bool) ([]*Chan
 
 func GetChannelsByTag(tag string, idSort bool, selectAll bool) ([]*Channel, error) {
 	var channels []*Channel
-	order := "priority desc"
-	if idSort {
-		order = "id desc"
-	}
+	order := ChannelListOrder(idSort)
 	query := DB.Where("tag = ?", tag).Order(order)
 	if !selectAll {
 		query = query.Omit("key")
@@ -306,10 +300,7 @@ func SearchChannels(keyword string, group string, model string, idSort bool) ([]
 		baseURLCol = `"base_url"`
 	}
 
-	order := "priority desc"
-	if idSort {
-		order = "id desc"
-	}
+	order := ChannelListOrder(idSort)
 
 	// 构造基础查询
 	baseQuery := DB.Model(&Channel{}).Omit("key")
@@ -801,10 +792,7 @@ func SearchTags(keyword string, group string, model string, idSort bool) ([]*str
 		baseURLCol = `"base_url"`
 	}
 
-	order := "priority desc"
-	if idSort {
-		order = "id desc"
-	}
+	order := ChannelListOrder(idSort)
 
 	// 构造基础查询
 	baseQuery := DB.Model(&Channel{}).Omit("key")
@@ -983,10 +971,7 @@ func CountAllTags() (int64, error) {
 // Get channels of specified type with pagination
 func GetChannelsByType(startIdx int, num int, idSort bool, channelType int) ([]*Channel, error) {
 	var channels []*Channel
-	order := "priority desc"
-	if idSort {
-		order = "id desc"
-	}
+	order := ChannelListOrder(idSort)
 	err := DB.Where("type = ?", channelType).Order(order).Limit(num).Offset(startIdx).Omit("key").Find(&channels).Error
 	return channels, err
 }
