@@ -194,6 +194,11 @@ export const CHANNEL_OPTIONS = [
     color: 'teal',
     label: '透传',
   },
+  {
+    value: 59,
+    color: 'blue',
+    label: 'OpenCode Go',
+  },
 ];
 
 // Channel types that support upstream model list fetching in UI.

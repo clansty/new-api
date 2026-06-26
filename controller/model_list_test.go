@@ -154,6 +154,15 @@ func pricingByModelName(pricings []model.Pricing) map[string]model.Pricing {
 	return byName
 }
 
+func TestDashboardListModelsIncludesOpenCodeGoDefaults(t *testing.T) {
+	models := channelId2Models[constant.ChannelTypeOpenCodeGo]
+
+	require.Contains(t, models, "glm-5.2")
+	require.Contains(t, models, "minimax-m2.7")
+	require.Contains(t, models, "qwen3.7-max")
+	require.Contains(t, models, "qwen3.6-plus")
+}
+
 func TestListModelsIncludesTieredBillingModel(t *testing.T) {
 	withSelfUseModeDisabled(t)
 	withTieredBillingConfig(t, map[string]string{
