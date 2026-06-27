@@ -3951,6 +3951,17 @@
     "whsec_xxx 的 Webhook 签名密钥，敏感信息不显示": "Webhook signature key for whsec_xxx, sensitive information not displayed",
     "Worker地址": "Worker Address",
     "Worker密钥": "Worker Key",
+    "高级透传": "Advanced Pass-Through",
+    "OpenAI 上游地址": "OpenAI upstream URL",
+    "例如：https://api.openai.com": "Example: https://api.openai.com",
+    "Anthropic 上游地址": "Anthropic upstream URL",
+    "例如：https://api.anthropic.com": "Example: https://api.anthropic.com",
+    "OpenAI Chat、Responses（启用支持时）和 Gemini v1beta 转 Chat 后会请求此地址": "OpenAI Chat, Responses (when enabled), and Gemini v1beta converted to Chat will use this URL",
+    "Anthropic Messages 请求会请求此地址；未启用 Responses 支持时，Responses 会先转为 Messages 再请求此地址": "Anthropic Messages requests use this URL; when Responses support is disabled, Responses are converted to Messages and sent here",
+    "支持 Responses 协议": "Supports Responses protocol",
+    "开启后 /v1/responses 直接透传到 OpenAI 上游；关闭后会转换为 Anthropic Messages 并请求 Anthropic 上游": "When enabled, /v1/responses is passed through to the OpenAI upstream; when disabled, it is converted to Anthropic Messages and sent to the Anthropic upstream",
+    "请输入 OpenAI 上游地址！": "Please enter the OpenAI upstream URL!",
+    "请输入 Anthropic 上游地址！": "Please enter the Anthropic upstream URL!",
     "X 也可以小于 1，当折扣用。想做\"只给输出加价\"或\"额外加固定费用\"，请直接写完整计费公式。": ""
   }
 }

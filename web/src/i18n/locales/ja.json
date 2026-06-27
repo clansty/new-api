@@ -3817,6 +3817,17 @@
     "whsec_xxx 的 Webhook 签名密钥，敏感信息不显示": "whsec_xxx のWebhook署名シークレット。機密情報は表示されません",
     "Worker地址": "Workerアドレス",
     "Worker密钥": "WorkerAPIキー",
+    "高级透传": "高度なパススルー",
+    "OpenAI 上游地址": "OpenAI 上流アドレス",
+    "例如：https://api.openai.com": "例：https://api.openai.com",
+    "Anthropic 上游地址": "Anthropic 上流アドレス",
+    "例如：https://api.anthropic.com": "例：https://api.anthropic.com",
+    "OpenAI Chat、Responses（启用支持时）和 Gemini v1beta 转 Chat 后会请求此地址": "OpenAI Chat、Responses（有効時）、Gemini v1beta から Chat へ変換したリクエストはこのアドレスに送信されます",
+    "Anthropic Messages 请求会请求此地址；未启用 Responses 支持时，Responses 会先转为 Messages 再请求此地址": "Anthropic Messages リクエストはこのアドレスに送信されます。Responses サポートが無効な場合、Responses は Messages に変換されてからこのアドレスへ送信されます",
+    "支持 Responses 协议": "Responses プロトコルをサポート",
+    "开启后 /v1/responses 直接透传到 OpenAI 上游；关闭后会转换为 Anthropic Messages 并请求 Anthropic 上游": "有効にすると /v1/responses は OpenAI 上流へ直接パススルーされ、無効にすると Anthropic Messages に変換して Anthropic 上流へ送信します",
+    "请输入 OpenAI 上游地址！": "OpenAI 上流アドレスを入力してください！",
+    "请输入 Anthropic 上游地址！": "Anthropic 上流アドレスを入力してください！",
     "X 也可以小于 1，当折扣用。想做\"只给输出加价\"或\"额外加固定费用\"，请直接写完整计费公式。": ""
   }
 }

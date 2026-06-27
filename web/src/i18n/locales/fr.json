@@ -3848,6 +3848,17 @@
     "whsec_xxx 的 Webhook 签名密钥，敏感信息不显示": "Clé de signature Webhook whsec_xxx, les informations sensibles ne sont pas affichées",
     "Worker地址": "Adresse du Worker",
     "Worker密钥": "Clé du Worker",
+    "高级透传": "Passage direct avancé",
+    "OpenAI 上游地址": "Adresse amont OpenAI",
+    "例如：https://api.openai.com": "Exemple : https://api.openai.com",
+    "Anthropic 上游地址": "Adresse amont Anthropic",
+    "例如：https://api.anthropic.com": "Exemple : https://api.anthropic.com",
+    "OpenAI Chat、Responses（启用支持时）和 Gemini v1beta 转 Chat 后会请求此地址": "OpenAI Chat, Responses (si activé) et Gemini v1beta converti en Chat utiliseront cette adresse",
+    "Anthropic Messages 请求会请求此地址；未启用 Responses 支持时，Responses 会先转为 Messages 再请求此地址": "Les requêtes Anthropic Messages utilisent cette adresse ; si Responses n'est pas activé, Responses est d'abord converti en Messages puis envoyé ici",
+    "支持 Responses 协议": "Prend en charge le protocole Responses",
+    "开启后 /v1/responses 直接透传到 OpenAI 上游；关闭后会转换为 Anthropic Messages 并请求 Anthropic 上游": "Si activé, /v1/responses est transmis directement à l'amont OpenAI ; sinon il est converti en Anthropic Messages et envoyé à l'amont Anthropic",
+    "请输入 OpenAI 上游地址！": "Veuillez saisir l'adresse amont OpenAI !",
+    "请输入 Anthropic 上游地址！": "Veuillez saisir l'adresse amont Anthropic !",
     "X 也可以小于 1，当折扣用。想做\"只给输出加价\"或\"额外加固定费用\"，请直接写完整计费公式。": ""
   }
 }

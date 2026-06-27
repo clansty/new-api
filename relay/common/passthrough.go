@@ -20,6 +20,9 @@ func ShouldPassThroughRequest(info *RelayInfo) bool {
 	if !isPassThroughRelayMode(info.RelayMode) {
 		return false
 	}
+	if info.ChannelType == constant.ChannelTypeAdvancedPassThrough {
+		return shouldPassThroughAdvancedRequest(info)
+	}
 	if model_setting.GetGlobalSettings().PassThroughRequestEnabled {
 		return true
 	}
@@ -27,6 +30,17 @@ func ShouldPassThroughRequest(info *RelayInfo) bool {
 		return true
 	}
 	return info.ChannelSetting.PassThroughBodyEnabled
+}
+
+func shouldPassThroughAdvancedRequest(info *RelayInfo) bool {
+	switch info.RelayMode {
+	case relayconstant.RelayModeChatCompletions, relayconstant.RelayModeClaudeMessages:
+		return true
+	case relayconstant.RelayModeResponses, relayconstant.RelayModeResponsesCompact:
+		return info.ChannelOtherSettings.AdvancedResponsesSupported
+	default:
+		return false
+	}
 }
 
 func isPassThroughRelayMode(relayMode int) bool {

@@ -80,7 +80,7 @@ const renderType = (type, record = {}, t) => {
 
   const typeTag = (
     <Tag color={type2label[type]?.color} shape='circle' prefixIcon={icon}>
-      {type2label[type]?.label}
+      {t(type2label[type]?.label)}
     </Tag>
   );
 

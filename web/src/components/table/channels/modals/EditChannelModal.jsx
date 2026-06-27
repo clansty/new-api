@@ -216,6 +216,9 @@ const EditChannelModal = (props) => {
     allow_speed: false,
     claude_cache_read_as_cache_creation: false,
     claude_beta_query: false,
+    advanced_openai_base_url: '',
+    advanced_anthropic_base_url: '',
+    advanced_responses_supported: false,
     upstream_model_update_check_enabled: false,
     upstream_model_update_auto_sync_enabled: false,
     upstream_model_update_last_check_time: 0,
@@ -907,6 +910,12 @@ const EditChannelModal = (props) => {
           data.claude_cache_read_as_cache_creation =
             parsedSettings.claude_cache_read_as_cache_creation || false;
           data.claude_beta_query = parsedSettings.claude_beta_query || false;
+          data.advanced_openai_base_url =
+            parsedSettings.advanced_openai_base_url || '';
+          data.advanced_anthropic_base_url =
+            parsedSettings.advanced_anthropic_base_url || '';
+          data.advanced_responses_supported =
+            parsedSettings.advanced_responses_supported === true;
           data.upstream_model_update_check_enabled =
             parsedSettings.upstream_model_update_check_enabled === true;
           data.upstream_model_update_auto_sync_enabled =
@@ -937,6 +946,9 @@ const EditChannelModal = (props) => {
           data.allow_inference_geo = false;
           data.allow_speed = false;
           data.claude_beta_query = false;
+          data.advanced_openai_base_url = '';
+          data.advanced_anthropic_base_url = '';
+          data.advanced_responses_supported = false;
           data.upstream_model_update_check_enabled = false;
           data.upstream_model_update_auto_sync_enabled = false;
           data.upstream_model_update_last_check_time = 0;
@@ -955,6 +967,9 @@ const EditChannelModal = (props) => {
         data.allow_inference_geo = false;
         data.allow_speed = false;
         data.claude_beta_query = false;
+        data.advanced_openai_base_url = '';
+        data.advanced_anthropic_base_url = '';
+        data.advanced_responses_supported = false;
         data.upstream_model_update_check_enabled = false;
         data.upstream_model_update_auto_sync_enabled = false;
         data.upstream_model_update_last_check_time = 0;
@@ -1032,6 +1047,9 @@ const EditChannelModal = (props) => {
         data.pass_through_body_enabled ||
         data.force_format ||
         data.claude_beta_query ||
+        data.advanced_openai_base_url ||
+        data.advanced_anthropic_base_url ||
+        data.advanced_responses_supported ||
         data.balance_query_mode ||
         data.system_prompt_override;
       if (hasAdvancedValues) {
@@ -1073,7 +1091,10 @@ const EditChannelModal = (props) => {
           const res = await API.post(
             '/api/channel/fetch_models',
             {
-              base_url: inputs['base_url'],
+              base_url:
+                inputs['type'] === 60
+                  ? inputs['advanced_openai_base_url']
+                  : inputs['base_url'],
               type: inputs['type'],
               key: inputs['key'],
             },
@@ -1661,6 +1682,22 @@ const EditChannelModal = (props) => {
       showInfo(t('请输入API地址！'));
       return;
     }
+    if (
+      localInputs.type === 60 &&
+      (!localInputs.advanced_openai_base_url ||
+        localInputs.advanced_openai_base_url.trim() === '')
+    ) {
+      showInfo(t('请输入 OpenAI 上游地址！'));
+      return;
+    }
+    if (
+      localInputs.type === 60 &&
+      (!localInputs.advanced_anthropic_base_url ||
+        localInputs.advanced_anthropic_base_url.trim() === '')
+    ) {
+      showInfo(t('请输入 Anthropic 上游地址！'));
+      return;
+    }
     const hasModelMapping =
       typeof localInputs.model_mapping === 'string' &&
       localInputs.model_mapping.trim() !== '';
@@ -1801,6 +1838,21 @@ const EditChannelModal = (props) => {
       }
     }
 
+    if (localInputs.type === 60) {
+      settings.advanced_openai_base_url = (
+        localInputs.advanced_openai_base_url || ''
+      ).trim();
+      settings.advanced_anthropic_base_url = (
+        localInputs.advanced_anthropic_base_url || ''
+      ).trim();
+      settings.advanced_responses_supported =
+        localInputs.advanced_responses_supported === true;
+    } else {
+      delete settings.advanced_openai_base_url;
+      delete settings.advanced_anthropic_base_url;
+      delete settings.advanced_responses_supported;
+    }
+
     settings.upstream_model_update_check_enabled =
       localInputs.upstream_model_update_check_enabled === true;
     settings.upstream_model_update_auto_sync_enabled =
@@ -1847,6 +1899,9 @@ const EditChannelModal = (props) => {
     delete localInputs.allow_inference_geo;
     delete localInputs.allow_speed;
     delete localInputs.claude_beta_query;
+    delete localInputs.advanced_openai_base_url;
+    delete localInputs.advanced_anthropic_base_url;
+    delete localInputs.advanced_responses_supported;
     delete localInputs.upstream_model_update_check_enabled;
     delete localInputs.upstream_model_update_auto_sync_enabled;
     delete localInputs.upstream_model_update_last_check_time;
@@ -2079,10 +2134,9 @@ const EditChannelModal = (props) => {
     () =>
       CHANNEL_OPTIONS.map((opt) => ({
         ...opt,
-        // 保持 label 为纯文本以支持搜索
-        label: opt.label,
+        label: t(opt.label),
       })),
-    [],
+    [t],
   );
 
   const renderChannelOption = (renderProps) => {
@@ -2525,6 +2579,10 @@ const EditChannelModal = (props) => {
                     <Form.Switch field='force_format' label={t('强制格式化')} checkedText={t('开')} uncheckedText={t('关')} onChange={(value) => handleChannelSettingsChange('force_format', value)} extraText={t('强制将响应格式化为 OpenAI 标准格式（只适用于OpenAI渠道类型）')} />
                   )}
 
+                  {inputs.type === 60 && (
+                    <Form.Switch field='advanced_responses_supported' label={t('支持 Responses 协议')} checkedText={t('开')} uncheckedText={t('关')} onChange={(value) => handleChannelOtherSettingsChange('advanced_responses_supported', value)} extraText={t('开启后 /v1/responses 直接透传到 OpenAI 上游；关闭后会转换为 Anthropic Messages 并请求 Anthropic 上游')} />
+                  )}
+
                   <Form.Select
                     field='balance_query_mode'
                     label={t('余额获取方式')}
@@ -2537,7 +2595,9 @@ const EditChannelModal = (props) => {
                   />
 
                   <Form.Switch field='thinking_to_content' label={t('思考内容转换')} checkedText={t('开')} uncheckedText={t('关')} onChange={(value) => handleChannelSettingsChange('thinking_to_content', value)} extraText={t('将 reasoning_content 转换为 <think> 标签拼接到内容中')} />
-                  <Form.Switch field='pass_through_body_enabled' label={t('透传请求体')} checkedText={t('开')} uncheckedText={t('关')} onChange={(value) => handleChannelSettingsChange('pass_through_body_enabled', value)} extraText={t('启用请求体透传功能')} />
+                  {inputs.type !== 60 && (
+                    <Form.Switch field='pass_through_body_enabled' label={t('透传请求体')} checkedText={t('开')} uncheckedText={t('关')} onChange={(value) => handleChannelSettingsChange('pass_through_body_enabled', value)} extraText={t('启用请求体透传功能')} />
+                  )}
 
                   <Form.Input field='proxy' label={t('代理地址')} placeholder={t('例如: socks5://user:pass@host:port')} onChange={(value) => handleChannelSettingsChange('proxy', value)} showClear extraText={t('用于配置网络代理，支持 socks5 协议')} />
 
@@ -3371,6 +3431,7 @@ const EditChannelModal = (props) => {
                         inputs.type !== 8 &&
                         inputs.type !== 22 &&
                         inputs.type !== 36 &&
+                        inputs.type !== 60 &&
                         (inputs.type !== 45 || doubaoApiEditUnlocked) && (
                           <div>
                             <Form.Input
@@ -3390,6 +3451,49 @@ const EditChannelModal = (props) => {
                             />
                           </div>
                         )}
+
+                      {inputs.type === 60 && (
+                        <>
+                          <div>
+                            <Form.Input
+                              field='advanced_openai_base_url'
+                              label={t('OpenAI 上游地址')}
+                              placeholder={t(
+                                '例如：https://api.openai.com',
+                              )}
+                              onChange={(value) =>
+                                handleChannelOtherSettingsChange(
+                                  'advanced_openai_base_url',
+                                  value,
+                                )
+                              }
+                              showClear
+                              extraText={t(
+                                'OpenAI Chat、Responses（启用支持时）和 Gemini v1beta 转 Chat 后会请求此地址',
+                              )}
+                            />
+                          </div>
+                          <div>
+                            <Form.Input
+                              field='advanced_anthropic_base_url'
+                              label={t('Anthropic 上游地址')}
+                              placeholder={t(
+                                '例如：https://api.anthropic.com',
+                              )}
+                              onChange={(value) =>
+                                handleChannelOtherSettingsChange(
+                                  'advanced_anthropic_base_url',
+                                  value,
+                                )
+                              }
+                              showClear
+                              extraText={t(
+                                'Anthropic Messages 请求会请求此地址；未启用 Responses 支持时，Responses 会先转为 Messages 再请求此地址',
+                              )}
+                            />
+                          </div>
+                        </>
+                      )}
 
                       {inputs.type === 22 && (
                         <div>

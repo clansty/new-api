@@ -481,6 +481,15 @@ func validateChannel(channel *model.Channel, isAdd bool) error {
 	if channel.Type == constant.ChannelTypePassThrough && strings.TrimSpace(channel.GetBaseURL()) == "" {
 		return fmt.Errorf("透传渠道必须设置上游地址")
 	}
+	if channel.Type == constant.ChannelTypeAdvancedPassThrough {
+		settings := channel.GetOtherSettings()
+		if strings.TrimSpace(settings.AdvancedOpenAIBaseURL) == "" {
+			return fmt.Errorf("高级透传渠道必须设置 OpenAI 上游地址")
+		}
+		if strings.TrimSpace(settings.AdvancedAnthropicBaseURL) == "" {
+			return fmt.Errorf("高级透传渠道必须设置 Anthropic 上游地址")
+		}
+	}
 
 	// 如果是添加操作，检查 channel 和 key 是否为空
 	if isAdd {

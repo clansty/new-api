@@ -5,6 +5,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/model"
 
 	"github.com/stretchr/testify/require"
@@ -37,5 +38,59 @@ func TestValidateChannel_whenPassThroughBaseURLIsSet(t *testing.T) {
 	err := validateChannel(channel, true)
 
 	// Then: the pass-through-specific validation accepts it.
+	require.NoError(t, err)
+}
+
+func TestValidateChannel_whenAdvancedPassThroughOpenAIBaseURLIsEmpty(t *testing.T) {
+	// Given: an advanced pass-through channel without an OpenAI upstream.
+	channel := &model.Channel{
+		Type: constant.ChannelTypeAdvancedPassThrough,
+		Key:  "test-key",
+	}
+	channel.SetOtherSettings(dto.ChannelOtherSettings{
+		AdvancedAnthropicBaseURL: "https://anthropic-upstream.example",
+	})
+
+	// When: backend channel validation runs.
+	err := validateChannel(channel, true)
+
+	// Then: the OpenAI upstream requirement is enforced.
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "OpenAI 上游地址")
+}
+
+func TestValidateChannel_whenAdvancedPassThroughAnthropicBaseURLIsEmpty(t *testing.T) {
+	// Given: an advanced pass-through channel without an Anthropic upstream.
+	channel := &model.Channel{
+		Type: constant.ChannelTypeAdvancedPassThrough,
+		Key:  "test-key",
+	}
+	channel.SetOtherSettings(dto.ChannelOtherSettings{
+		AdvancedOpenAIBaseURL: "https://openai-upstream.example",
+	})
+
+	// When: backend channel validation runs.
+	err := validateChannel(channel, true)
+
+	// Then: the Anthropic upstream requirement is enforced.
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "Anthropic 上游地址")
+}
+
+func TestValidateChannel_whenAdvancedPassThroughBaseURLsAreSet(t *testing.T) {
+	// Given: an advanced pass-through channel with both upstream protocol URLs.
+	channel := &model.Channel{
+		Type: constant.ChannelTypeAdvancedPassThrough,
+		Key:  "test-key",
+	}
+	channel.SetOtherSettings(dto.ChannelOtherSettings{
+		AdvancedOpenAIBaseURL:    "https://openai-upstream.example",
+		AdvancedAnthropicBaseURL: "https://anthropic-upstream.example",
+	})
+
+	// When: backend channel validation runs.
+	err := validateChannel(channel, true)
+
+	// Then: the advanced pass-through-specific validation accepts it.
 	require.NoError(t, err)
 }

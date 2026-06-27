@@ -199,11 +199,17 @@ export const CHANNEL_OPTIONS = [
     color: 'blue',
     label: 'OpenCode Go',
   },
+  {
+    value: 60,
+    color: 'teal',
+    label: '高级透传',
+  },
 ];
 
 // Channel types that support upstream model list fetching in UI.
 export const MODEL_FETCHABLE_CHANNEL_TYPES = new Set([
   1, 4, 14, 34, 17, 26, 27, 24, 47, 25, 20, 23, 31, 40, 42, 48, 43, 58, 59,
+  60,
 ]);
 
 export const MODEL_TABLE_PAGE_SIZE = 10;

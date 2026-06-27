@@ -3841,6 +3841,17 @@
     "whsec_xxx 的 Webhook 签名密钥，敏感信息不显示": "whsec_xxx 的 Webhook 簽名密鑰，敏感資訊不顯示",
     "Worker地址": "Worker位址",
     "Worker密钥": "Worker密鑰",
+    "高级透传": "進階透傳",
+    "OpenAI 上游地址": "OpenAI 上游位址",
+    "例如：https://api.openai.com": "例如：https://api.openai.com",
+    "Anthropic 上游地址": "Anthropic 上游位址",
+    "例如：https://api.anthropic.com": "例如：https://api.anthropic.com",
+    "OpenAI Chat、Responses（启用支持时）和 Gemini v1beta 转 Chat 后会请求此地址": "OpenAI Chat、Responses（啟用支援時）和 Gemini v1beta 轉 Chat 後會請求此位址",
+    "Anthropic Messages 请求会请求此地址；未启用 Responses 支持时，Responses 会先转为 Messages 再请求此地址": "Anthropic Messages 請求會使用此位址；未啟用 Responses 支援時，Responses 會先轉為 Messages 再請求此位址",
+    "支持 Responses 协议": "支援 Responses 協議",
+    "开启后 /v1/responses 直接透传到 OpenAI 上游；关闭后会转换为 Anthropic Messages 并请求 Anthropic 上游": "開啟後 /v1/responses 直接透傳到 OpenAI 上游；關閉後會轉換為 Anthropic Messages 並請求 Anthropic 上游",
+    "请输入 OpenAI 上游地址！": "請輸入 OpenAI 上游位址！",
+    "请输入 Anthropic 上游地址！": "請輸入 Anthropic 上游位址！",
     "X 也可以小于 1，当折扣用。想做\"只给输出加价\"或\"额外加固定费用\"，请直接写完整计费公式。": ""
   }
 }

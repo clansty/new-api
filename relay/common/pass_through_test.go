@@ -6,6 +6,7 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
+	"github.com/QuantumNous/new-api/setting/model_setting"
 
 	"github.com/stretchr/testify/require"
 )
@@ -58,6 +59,121 @@ func TestShouldPassThroughRequest_returnsTrueForClaudeMessages(t *testing.T) {
 	got := ShouldPassThroughRequest(info)
 
 	// Then: Anthropic-native /v1/messages requests preserve the body.
+	require.True(t, got)
+}
+
+func TestShouldPassThroughRequest_returnsTrueForAdvancedOpenAIChat(t *testing.T) {
+	// Given: an advanced pass-through channel receives an OpenAI chat request.
+	info := &RelayInfo{
+		RelayMode: relayconstant.RelayModeChatCompletions,
+		ChannelMeta: &ChannelMeta{
+			ChannelType: constant.ChannelTypeAdvancedPassThrough,
+		},
+	}
+
+	// When: relay code decides whether to reuse the original request body.
+	got := ShouldPassThroughRequest(info)
+
+	// Then: OpenAI chat requests are passed through.
+	require.True(t, got)
+}
+
+func TestShouldPassThroughRequest_returnsFalseForAdvancedGemini(t *testing.T) {
+	// Given: an advanced pass-through channel receives a Gemini v1beta request.
+	info := &RelayInfo{
+		RelayMode: relayconstant.RelayModeGemini,
+		ChannelMeta: &ChannelMeta{
+			ChannelType: constant.ChannelTypeAdvancedPassThrough,
+		},
+	}
+
+	// When: relay code decides whether to reuse the original request body.
+	got := ShouldPassThroughRequest(info)
+
+	// Then: Gemini must be converted to OpenAI chat first.
+	require.False(t, got)
+}
+
+func TestShouldPassThroughRequest_returnsFalseForAdvancedResponsesUnsupported(t *testing.T) {
+	// Given: an advanced pass-through channel whose OpenAI upstream does not support Responses.
+	info := &RelayInfo{
+		RelayMode: relayconstant.RelayModeResponses,
+		ChannelMeta: &ChannelMeta{
+			ChannelType: constant.ChannelTypeAdvancedPassThrough,
+			ChannelOtherSettings: dto.ChannelOtherSettings{
+				AdvancedResponsesSupported: false,
+			},
+		},
+	}
+
+	// When: relay code decides whether to reuse the original request body.
+	got := ShouldPassThroughRequest(info)
+
+	// Then: Responses must be converted to Anthropic Messages.
+	require.False(t, got)
+}
+
+func TestShouldPassThroughRequest_ignoresGlobalPassThroughForAdvancedResponsesFallback(t *testing.T) {
+	// Given: global pass-through is enabled, but the advanced channel must still convert Responses.
+	original := model_setting.GetGlobalSettings().PassThroughRequestEnabled
+	model_setting.GetGlobalSettings().PassThroughRequestEnabled = true
+	t.Cleanup(func() {
+		model_setting.GetGlobalSettings().PassThroughRequestEnabled = original
+	})
+	info := &RelayInfo{
+		RelayMode: relayconstant.RelayModeResponses,
+		ChannelMeta: &ChannelMeta{
+			ChannelType: constant.ChannelTypeAdvancedPassThrough,
+			ChannelOtherSettings: dto.ChannelOtherSettings{
+				AdvancedResponsesSupported: false,
+			},
+		},
+	}
+
+	// When: relay code decides whether to reuse the original request body.
+	got := ShouldPassThroughRequest(info)
+
+	// Then: the advanced channel's conversion contract wins over global pass-through.
+	require.False(t, got)
+}
+
+func TestShouldPassThroughRequest_ignoresGlobalPassThroughForAdvancedGemini(t *testing.T) {
+	// Given: global pass-through is enabled, but Gemini v1beta must become OpenAI chat.
+	original := model_setting.GetGlobalSettings().PassThroughRequestEnabled
+	model_setting.GetGlobalSettings().PassThroughRequestEnabled = true
+	t.Cleanup(func() {
+		model_setting.GetGlobalSettings().PassThroughRequestEnabled = original
+	})
+	info := &RelayInfo{
+		RelayMode: relayconstant.RelayModeGemini,
+		ChannelMeta: &ChannelMeta{
+			ChannelType: constant.ChannelTypeAdvancedPassThrough,
+		},
+	}
+
+	// When: relay code decides whether to reuse the original request body.
+	got := ShouldPassThroughRequest(info)
+
+	// Then: Gemini is not sent as raw pass-through for advanced pass-through channels.
+	require.False(t, got)
+}
+
+func TestShouldPassThroughRequest_returnsTrueForAdvancedResponsesSupported(t *testing.T) {
+	// Given: an advanced pass-through channel whose OpenAI upstream supports Responses.
+	info := &RelayInfo{
+		RelayMode: relayconstant.RelayModeResponses,
+		ChannelMeta: &ChannelMeta{
+			ChannelType: constant.ChannelTypeAdvancedPassThrough,
+			ChannelOtherSettings: dto.ChannelOtherSettings{
+				AdvancedResponsesSupported: true,
+			},
+		},
+	}
+
+	// When: relay code decides whether to reuse the original request body.
+	got := ShouldPassThroughRequest(info)
+
+	// Then: Responses requests are passed through to the OpenAI-compatible upstream.
 	require.True(t, got)
 }
 

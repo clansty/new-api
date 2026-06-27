@@ -4376,6 +4376,17 @@
     "whsec_xxx 的 Webhook 签名密钥，敏感信息不显示": "Khóa chữ ký Webhook cho whsec_xxx, thông tin nhạy cảm không được hiển thị",
     "Worker地址": "Địa chỉ Worker",
     "Worker密钥": "Khóa Worker",
+    "高级透传": "Chuyển tiếp nâng cao",
+    "OpenAI 上游地址": "Địa chỉ upstream OpenAI",
+    "例如：https://api.openai.com": "Ví dụ: https://api.openai.com",
+    "Anthropic 上游地址": "Địa chỉ upstream Anthropic",
+    "例如：https://api.anthropic.com": "Ví dụ: https://api.anthropic.com",
+    "OpenAI Chat、Responses（启用支持时）和 Gemini v1beta 转 Chat 后会请求此地址": "OpenAI Chat, Responses (khi bật) và Gemini v1beta sau khi chuyển sang Chat sẽ gửi tới địa chỉ này",
+    "Anthropic Messages 请求会请求此地址；未启用 Responses 支持时，Responses 会先转为 Messages 再请求此地址": "Yêu cầu Anthropic Messages sẽ gửi tới địa chỉ này; khi chưa bật Responses, Responses sẽ được chuyển sang Messages rồi gửi tới đây",
+    "支持 Responses 协议": "Hỗ trợ giao thức Responses",
+    "开启后 /v1/responses 直接透传到 OpenAI 上游；关闭后会转换为 Anthropic Messages 并请求 Anthropic 上游": "Khi bật, /v1/responses được chuyển tiếp trực tiếp tới upstream OpenAI; khi tắt, yêu cầu sẽ được chuyển sang Anthropic Messages và gửi tới upstream Anthropic",
+    "请输入 OpenAI 上游地址！": "Vui lòng nhập địa chỉ upstream OpenAI!",
+    "请输入 Anthropic 上游地址！": "Vui lòng nhập địa chỉ upstream Anthropic!",
     "X 也可以小于 1，当折扣用。想做\"只给输出加价\"或\"额外加固定费用\"，请直接写完整计费公式。": ""
   }
 }

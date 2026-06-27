@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/types"
 
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
@@ -35,6 +37,169 @@ func TestAdaptorGetRequestURL_whenGeminiModelIsMapped(t *testing.T) {
 	// Then: the path stays Gemini-native and uses the mapped upstream model.
 	require.NoError(t, err)
 	require.Equal(t, "https://upstream.example/v1beta/models/gemini-2.5-pro:streamGenerateContent?alt=sse", url)
+}
+
+func TestAdaptorGetRequestURL_whenAdvancedOpenAIEntry(t *testing.T) {
+	// Given: an advanced pass-through channel receives an OpenAI chat request.
+	adaptor := &Adaptor{}
+	info := &relaycommon.RelayInfo{
+		RequestURLPath: "/v1/chat/completions",
+		RelayFormat:    types.RelayFormatOpenAI,
+		ChannelMeta: &relaycommon.ChannelMeta{
+			ChannelType: constant.ChannelTypeAdvancedPassThrough,
+			ChannelOtherSettings: dto.ChannelOtherSettings{
+				AdvancedOpenAIBaseURL:    "https://openai-upstream.example",
+				AdvancedAnthropicBaseURL: "https://anthropic-upstream.example",
+			},
+		},
+	}
+
+	// When: the upstream request URL is built.
+	url, err := adaptor.GetRequestURL(info)
+
+	// Then: the OpenAI-compatible upstream is selected.
+	require.NoError(t, err)
+	require.Equal(t, "https://openai-upstream.example/v1/chat/completions", url)
+}
+
+func TestAdaptorGetRequestURL_whenAdvancedClaudeEntry(t *testing.T) {
+	// Given: an advanced pass-through channel receives an Anthropic Messages request.
+	adaptor := &Adaptor{}
+	info := &relaycommon.RelayInfo{
+		RequestURLPath: "/v1/messages",
+		RelayFormat:    types.RelayFormatClaude,
+		ChannelMeta: &relaycommon.ChannelMeta{
+			ChannelType: constant.ChannelTypeAdvancedPassThrough,
+			ChannelOtherSettings: dto.ChannelOtherSettings{
+				AdvancedOpenAIBaseURL:    "https://openai-upstream.example",
+				AdvancedAnthropicBaseURL: "https://anthropic-upstream.example",
+			},
+		},
+	}
+
+	// When: the upstream request URL is built.
+	url, err := adaptor.GetRequestURL(info)
+
+	// Then: the Anthropic upstream is selected.
+	require.NoError(t, err)
+	require.Equal(t, "https://anthropic-upstream.example/v1/messages", url)
+}
+
+func TestAdaptorConvertOpenAIResponsesRequest_whenAdvancedResponsesUnsupported(t *testing.T) {
+	// Given: an advanced pass-through channel whose OpenAI-compatible upstream does not support Responses.
+	adaptor := &Adaptor{}
+	info := &relaycommon.RelayInfo{
+		RelayFormat: types.RelayFormatOpenAIResponses,
+		RelayMode:   relayconstant.RelayModeResponses,
+		ChannelMeta: &relaycommon.ChannelMeta{
+			ChannelType: constant.ChannelTypeAdvancedPassThrough,
+			ChannelOtherSettings: dto.ChannelOtherSettings{
+				AdvancedResponsesSupported: false,
+			},
+		},
+	}
+	request := dto.OpenAIResponsesRequest{
+		Model: "claude-3-5-sonnet",
+		Input: []byte(`"hello"`),
+	}
+
+	// When: the request is converted for upstream.
+	converted, err := adaptor.ConvertOpenAIResponsesRequest(&gin.Context{}, info, request)
+	relaycommon.AppendRequestConversionFromRequest(info, converted)
+
+	// Then: it is downgraded to Anthropic Messages.
+	require.NoError(t, err)
+	require.IsType(t, &dto.ClaudeRequest{}, converted)
+	require.Equal(t, relayconstant.RelayModeClaudeMessages, info.RelayMode)
+	require.Equal(t, types.RelayFormat(types.RelayFormatClaude), info.GetFinalRequestRelayFormat())
+}
+
+func TestAdaptorConvertOpenAIResponsesRequest_whenAdvancedResponsesSupported(t *testing.T) {
+	// Given: an advanced pass-through channel whose OpenAI-compatible upstream supports Responses.
+	adaptor := &Adaptor{}
+	info := &relaycommon.RelayInfo{
+		RelayFormat: types.RelayFormatOpenAIResponses,
+		RelayMode:   relayconstant.RelayModeResponses,
+		ChannelMeta: &relaycommon.ChannelMeta{
+			ChannelType: constant.ChannelTypeAdvancedPassThrough,
+			ChannelOtherSettings: dto.ChannelOtherSettings{
+				AdvancedResponsesSupported: true,
+			},
+		},
+	}
+	request := dto.OpenAIResponsesRequest{
+		Model: "gpt-4.1",
+		Input: []byte(`"hello"`),
+	}
+
+	// When: the request is converted for upstream.
+	converted, err := adaptor.ConvertOpenAIResponsesRequest(&gin.Context{}, info, request)
+	relaycommon.AppendRequestConversionFromRequest(info, converted)
+
+	// Then: the original Responses payload remains pass-through compatible.
+	require.NoError(t, err)
+	require.IsType(t, dto.OpenAIResponsesRequest{}, converted)
+	require.Equal(t, relayconstant.RelayModeResponses, info.RelayMode)
+	require.Equal(t, types.RelayFormat(types.RelayFormatOpenAIResponses), info.GetFinalRequestRelayFormat())
+}
+
+func TestAdaptorConvertOpenAIResponsesRequest_whenAdvancedCompactUnsupported(t *testing.T) {
+	// Given: an advanced pass-through channel receives compact without upstream Responses support.
+	adaptor := &Adaptor{}
+	info := &relaycommon.RelayInfo{
+		RelayFormat: types.RelayFormatOpenAIResponsesCompaction,
+		RelayMode:   relayconstant.RelayModeResponsesCompact,
+		ChannelMeta: &relaycommon.ChannelMeta{
+			ChannelType: constant.ChannelTypeAdvancedPassThrough,
+			ChannelOtherSettings: dto.ChannelOtherSettings{
+				AdvancedResponsesSupported: false,
+			},
+		},
+	}
+
+	// When: the request is converted for upstream.
+	converted, err := adaptor.ConvertOpenAIResponsesRequest(&gin.Context{}, info, dto.OpenAIResponsesRequest{})
+
+	// Then: compact is rejected instead of returning an incompatible response shape.
+	require.ErrorContains(t, err, "requires OpenAI Responses support")
+	require.Nil(t, converted)
+}
+
+func TestAdaptorConvertGeminiRequest_whenAdvancedPassThrough(t *testing.T) {
+	// Given: an advanced pass-through channel receives a Gemini v1beta request.
+	adaptor := &Adaptor{}
+	info := &relaycommon.RelayInfo{
+		RelayFormat: types.RelayFormatGemini,
+		RelayMode:   relayconstant.RelayModeGemini,
+		IsStream:    true,
+		ChannelMeta: &relaycommon.ChannelMeta{
+			ChannelType:       constant.ChannelTypeAdvancedPassThrough,
+			UpstreamModelName: "gpt-4.1",
+		},
+	}
+	request := &dto.GeminiChatRequest{
+		Contents: []dto.GeminiChatContent{
+			{
+				Role: "user",
+				Parts: []dto.GeminiPart{
+					{Text: "hello"},
+				},
+			},
+		},
+	}
+
+	// When: the request is converted for upstream.
+	converted, err := adaptor.ConvertGeminiRequest(&gin.Context{}, info, request)
+	relaycommon.AppendRequestConversionFromRequest(info, converted)
+
+	// Then: it is converted to OpenAI chat/completions.
+	require.NoError(t, err)
+	openAIRequest, ok := converted.(*dto.GeneralOpenAIRequest)
+	require.True(t, ok)
+	require.Equal(t, "gpt-4.1", openAIRequest.Model)
+	require.Len(t, openAIRequest.Messages, 1)
+	require.Equal(t, "hello", openAIRequest.Messages[0].StringContent())
+	require.Equal(t, types.RelayFormat(types.RelayFormatOpenAI), info.GetFinalRequestRelayFormat())
 }
 
 func TestAdaptorGetRequestURL_whenClientCredentialQueryIsPresent(t *testing.T) {

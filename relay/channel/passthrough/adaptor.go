@@ -8,12 +8,14 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/relay/channel"
 	"github.com/QuantumNous/new-api/relay/channel/claude"
-	"github.com/QuantumNous/new-api/relay/channel/gemini"
 	"github.com/QuantumNous/new-api/relay/channel/openai"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	relayconstant "github.com/QuantumNous/new-api/relay/constant"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/types"
 
 	"github.com/gin-gonic/gin"
@@ -30,12 +32,54 @@ func (a *Adaptor) GetRequestURL(info *relaycommon.RelayInfo) (string, error) {
 	if !isSupportedRelayFormat(info.RelayFormat) {
 		return "", fmt.Errorf("unsupported pass-through relay format: %s", info.RelayFormat)
 	}
+	if info.ChannelType == constant.ChannelTypeAdvancedPassThrough {
+		return getAdvancedRequestURL(info)
+	}
 	requestPath := info.RequestURLPath
 	if info.RelayFormat == types.RelayFormatGemini {
 		requestPath = rewriteGeminiModelInPath(requestPath, info.OriginModelName, info.UpstreamModelName)
 	}
 	requestPath = stripClientCredentialQuery(requestPath)
 	return relaycommon.GetFullRequestURL(strings.TrimRight(info.ChannelBaseUrl, "/"), requestPath, info.ChannelType), nil
+}
+
+func getAdvancedRequestURL(info *relaycommon.RelayInfo) (string, error) {
+	baseURL, err := getAdvancedBaseURL(info)
+	if err != nil {
+		return "", err
+	}
+	requestPath := getAdvancedRequestPath(info)
+	return relaycommon.GetFullRequestURL(strings.TrimRight(baseURL, "/"), requestPath, info.ChannelType), nil
+}
+
+func getAdvancedBaseURL(info *relaycommon.RelayInfo) (string, error) {
+	switch info.GetFinalRequestRelayFormat() {
+	case types.RelayFormatClaude:
+		baseURL := strings.TrimSpace(info.ChannelOtherSettings.AdvancedAnthropicBaseURL)
+		if baseURL == "" {
+			return "", errors.New("advanced pass-through Anthropic base URL is empty")
+		}
+		return baseURL, nil
+	case types.RelayFormatOpenAI, types.RelayFormatOpenAIResponses, types.RelayFormatOpenAIResponsesCompaction:
+		baseURL := strings.TrimSpace(info.ChannelOtherSettings.AdvancedOpenAIBaseURL)
+		if baseURL == "" {
+			return "", errors.New("advanced pass-through OpenAI base URL is empty")
+		}
+		return baseURL, nil
+	default:
+		return "", fmt.Errorf("unsupported advanced pass-through request format: %s", info.GetFinalRequestRelayFormat())
+	}
+}
+
+func getAdvancedRequestPath(info *relaycommon.RelayInfo) string {
+	switch info.GetFinalRequestRelayFormat() {
+	case types.RelayFormatClaude:
+		return "/v1/messages"
+	case types.RelayFormatOpenAI:
+		return "/v1/chat/completions"
+	default:
+		return stripClientCredentialQuery(info.RequestURLPath)
+	}
 }
 
 func rewriteGeminiModelInPath(requestPath string, originModel string, upstreamModel string) string {
@@ -75,7 +119,7 @@ func isSupportedRelayFormat(format types.RelayFormat) bool {
 
 func (a *Adaptor) SetupRequestHeader(c *gin.Context, req *http.Header, info *relaycommon.RelayInfo) error {
 	channel.SetupApiRequestHeader(info, c, req)
-	switch info.RelayFormat {
+	switch getHeaderRelayFormat(info) {
 	case types.RelayFormatClaude:
 		req.Set("x-api-key", info.ApiKey)
 		anthropicVersion := c.Request.Header.Get("anthropic-version")
@@ -90,6 +134,13 @@ func (a *Adaptor) SetupRequestHeader(c *gin.Context, req *http.Header, info *rel
 		req.Set("Authorization", "Bearer "+info.ApiKey)
 	}
 	return nil
+}
+
+func getHeaderRelayFormat(info *relaycommon.RelayInfo) types.RelayFormat {
+	if info == nil {
+		return ""
+	}
+	return info.GetFinalRequestRelayFormat()
 }
 
 func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayInfo, request *dto.GeneralOpenAIRequest) (any, error) {
@@ -110,10 +161,26 @@ func (a *Adaptor) ConvertGeminiRequest(c *gin.Context, info *relaycommon.RelayIn
 	if request == nil {
 		return nil, errors.New("request is nil")
 	}
+	if info != nil && info.ChannelType == constant.ChannelTypeAdvancedPassThrough {
+		openaiRequest, err := service.GeminiToOpenAIRequest(request, info)
+		if err != nil {
+			return nil, err
+		}
+		return a.ConvertOpenAIRequest(c, info, openaiRequest)
+	}
 	return request, nil
 }
 
 func (a *Adaptor) ConvertOpenAIResponsesRequest(c *gin.Context, info *relaycommon.RelayInfo, request dto.OpenAIResponsesRequest) (any, error) {
+	if info != nil &&
+		info.ChannelType == constant.ChannelTypeAdvancedPassThrough &&
+		!info.ChannelOtherSettings.AdvancedResponsesSupported {
+		if info.RelayMode == relayconstant.RelayModeResponsesCompact {
+			return nil, errors.New("advanced pass-through requires OpenAI Responses support for compact endpoint")
+		}
+		info.RelayMode = relayconstant.RelayModeClaudeMessages
+		return (&claude.Adaptor{}).ConvertOpenAIResponsesRequest(c, info, request)
+	}
 	return request, nil
 }
 
@@ -150,12 +217,16 @@ func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycom
 	if !isSupportedRelayFormat(info.RelayFormat) {
 		return nil, types.NewError(fmt.Errorf("unsupported pass-through relay format: %s", info.RelayFormat), types.ErrorCodeInvalidRequest)
 	}
-	switch info.RelayFormat {
+	switch info.GetFinalRequestRelayFormat() {
 	case types.RelayFormatClaude:
 		return (&claude.Adaptor{}).DoResponse(c, resp, info)
-	case types.RelayFormatGemini:
-		return (&gemini.Adaptor{}).DoResponse(c, resp, info)
 	default:
+		if info.RelayFormat == types.RelayFormatGemini {
+			if info.IsStream {
+				return openai.OaiStreamHandler(c, info, resp)
+			}
+			return openai.OpenaiHandler(c, info, resp)
+		}
 		return (&openai.Adaptor{}).DoResponse(c, resp, info)
 	}
 }
