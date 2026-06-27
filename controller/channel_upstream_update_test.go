@@ -1,8 +1,12 @@
 package controller
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
+	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/stretchr/testify/require"
@@ -85,6 +89,28 @@ func TestChannelUpstreamModelUpdateSelectFieldsIncludeModelMapping(t *testing.T)
 	require.Contains(t, channelUpstreamModelUpdateSelectFields, "model_mapping")
 }
 
+func TestFetchChannelUpstreamModelIDs_whenOpenCodeGo(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/v1/models", r.URL.Path)
+		require.Equal(t, "Bearer test-key", r.Header.Get("Authorization"))
+
+		_, err := w.Write([]byte(`{"data":[{"id":"glm-5.2"},{"id":" qwen3.7-max "}]}`))
+		require.NoError(t, err)
+	}))
+	defer server.Close()
+
+	channel := &model.Channel{
+		Type:    constant.ChannelTypeOpenCodeGo,
+		Key:     "test-key",
+		BaseURL: common.GetPointer(server.URL),
+	}
+
+	models, err := fetchChannelUpstreamModelIDs(channel)
+
+	require.NoError(t, err)
+	require.Equal(t, []string{"glm-5.2", "qwen3.7-max"}, models)
+}
+
 func TestNormalizeChannelModelMapping(t *testing.T) {
 	modelMapping := `{
 		" alias-model ": " upstream-model ",
@@ -129,7 +155,7 @@ func TestCollectPendingUpstreamModelChangesFromModels_WithIgnoredRegexPatterns(t
 
 func TestBuildUpstreamModelUpdateTaskNotificationContent_OmitOverflowDetails(t *testing.T) {
 	channelSummaries := make([]upstreamModelUpdateChannelSummary, 0, 12)
-	for i := 0; i < 12; i++ {
+	for i := range 12 {
 		channelSummaries = append(channelSummaries, upstreamModelUpdateChannelSummary{
 			ChannelName: "channel-" + string(rune('A'+i)),
 			AddCount:    i + 1,

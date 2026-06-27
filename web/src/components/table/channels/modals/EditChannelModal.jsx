@@ -45,7 +45,6 @@ import {
   Row,
   Col,
   Highlight,
-  Input,
   Tooltip,
   Collapse,
   Dropdown,
@@ -128,7 +127,6 @@ const PARAM_OVERRIDE_OPERATIONS_TEMPLATE = {
 };
 
 const DEPRECATED_DOUBAO_CODING_PLAN_BASE_URL = 'doubao-coding-plan';
-const BALANCE_QUERY_CHANNEL_TYPES = new Set([1, 14]);
 const BALANCE_QUERY_OPTIONS = [
   { value: '', label: '默认' },
   { value: 'openai', label: 'OpenAI 兼容接口' },
@@ -137,10 +135,8 @@ const BALANCE_QUERY_OPTIONS = [
   { value: 'disabled', label: '不获取' },
 ];
 
-// 支持并且已适配通过接口获取模型列表的渠道类型
-const MODEL_FETCHABLE_TYPES = new Set([
-  1, 4, 14, 34, 17, 26, 27, 24, 47, 25, 20, 23, 31, 40, 42, 48, 43, 58,
-]);
+const getSilentOption = (options) =>
+  options && typeof options === 'object' && options.silent === true;
 
 function type2secretPrompt(type) {
   // inputs.type === 15 ? '按照如下格式输入：APIKey|SecretKey' : (inputs.type === 18 ? '按照如下格式输入：APPID|APISecret|APIKey' : '请输入渠道对应的鉴权密钥')
@@ -239,7 +235,7 @@ const EditChannelModal = (props) => {
   const [modelGroups, setModelGroups] = useState([]);
   const [customModel, setCustomModel] = useState('');
   const [modelSearchValue, setModelSearchValue] = useState('');
-  const [modalImageUrl, setModalImageUrl] = useState('');
+  const [modalImageUrl] = useState('');
   const [isModalOpenurl, setIsModalOpenurl] = useState(false);
   const [modelModalVisible, setModelModalVisible] = useState(false);
   const [fetchedModels, setFetchedModels] = useState([]);
@@ -259,7 +255,6 @@ const EditChannelModal = (props) => {
   const [channelSearchValue, setChannelSearchValue] = useState('');
   const [useManualInput, setUseManualInput] = useState(false); // 是否使用手动输入模式
   const [keyMode, setKeyMode] = useState('append'); // 密钥模式：replace（覆盖）或 append（追加）
-  const [isEnterpriseAccount, setIsEnterpriseAccount] = useState(false); // 是否为企业账户
   const [doubaoApiEditUnlocked, setDoubaoApiEditUnlocked] = useState(false); // 豆包渠道自定义 API 地址隐藏入口
   const redirectModelList = useMemo(() => {
     const mapping = inputs.model_mapping;
@@ -403,10 +398,6 @@ const EditChannelModal = (props) => {
     keyData: '',
   });
 
-  // 专门的2FA验证状态（用于TwoFactorAuthModal）
-  const [show2FAVerifyModal, setShow2FAVerifyModal] = useState(false);
-  const [verifyCode, setVerifyCode] = useState('');
-
   useEffect(() => {
     if (!isEdit) {
       setIsIonetChannel(false);
@@ -421,7 +412,6 @@ const EditChannelModal = (props) => {
     const targetUrl = `/console/deployment?deployment_id=${ionetMetadata.deployment_id}`;
     window.open(targetUrl, '_blank', 'noopener');
   };
-  const [verifyLoading, setVerifyLoading] = useState(false);
   const statusCodeRiskConfirmResolverRef = useRef(null);
   const [statusCodeRiskConfirmVisible, setStatusCodeRiskConfirmVisible] =
     useState(false);
@@ -456,10 +446,6 @@ const EditChannelModal = (props) => {
     </Tooltip>
   );
 
-  // 2FA状态更新辅助函数
-  const updateTwoFAState = (updates) => {
-    setTwoFAState((prev) => ({ ...prev, ...updates }));
-  };
   // 使用通用安全验证 Hook
   const {
     isModalVisible,
@@ -497,13 +483,6 @@ const EditChannelModal = (props) => {
       showModal: false,
       keyData: '',
     });
-  };
-
-  // 重置2FA验证状态
-  const reset2FAVerifyState = () => {
-    setShow2FAVerifyModal(false);
-    setVerifyCode('');
-    setVerifyLoading(false);
   };
 
   const handleApiConfigSecretClick = () => {
@@ -1001,8 +980,6 @@ const EditChannelModal = (props) => {
       } else {
         setAutoBan(true);
       }
-      // 同步企业账户状态
-      setIsEnterpriseAccount(data.is_enterprise_account || false);
       setBasicModels(getChannelModels(data.type));
       // 同步更新channelSettings状态显示
       setChannelSettings({
@@ -1055,6 +1032,7 @@ const EditChannelModal = (props) => {
         data.pass_through_body_enabled ||
         data.force_format ||
         data.claude_beta_query ||
+        data.balance_query_mode ||
         data.system_prompt_override;
       if (hasAdvancedValues) {
         setAdvancedSettingsOpen(true);
@@ -1065,8 +1043,8 @@ const EditChannelModal = (props) => {
     setLoading(false);
   };
 
-  const fetchUpstreamModelList = async (name, options = {}) => {
-    const silent = !!options.silent;
+  const fetchUpstreamModelList = async (_name, options = {}) => {
+    const silent = getSilentOption(options);
     // if (inputs['type'] !== 1) {
     //   showError(t('仅支持 OpenAI 接口格式'));
     //   return;
@@ -1406,8 +1384,6 @@ const EditChannelModal = (props) => {
     });
     // 重置密钥模式状态
     setKeyMode('append');
-    // 重置企业账户状态
-    setIsEnterpriseAccount(false);
     // 重置豆包隐藏入口状态
     setDoubaoApiEditUnlocked(false);
     doubaoApiClickCountRef.current = 0;
@@ -2120,7 +2096,6 @@ const EditChannelModal = (props) => {
       style,
       onMouseEnter,
       onClick,
-      ...rest
     } = renderProps;
 
     const searchWords = channelSearchValue ? [channelSearchValue] : [];
@@ -2143,7 +2118,7 @@ const EditChannelModal = (props) => {
         style={style}
         className={optionClassName}
         onClick={() => !disabled && onClick()}
-        onMouseEnter={(e) => onMouseEnter()}
+        onMouseEnter={() => onMouseEnter()}
       >
         <div className='flex items-center gap-3 w-full'>
           <div className='flex-shrink-0 w-5 h-5 flex items-center justify-center'>
@@ -2550,18 +2525,16 @@ const EditChannelModal = (props) => {
                     <Form.Switch field='force_format' label={t('强制格式化')} checkedText={t('开')} uncheckedText={t('关')} onChange={(value) => handleChannelSettingsChange('force_format', value)} extraText={t('强制将响应格式化为 OpenAI 标准格式（只适用于OpenAI渠道类型）')} />
                   )}
 
-                  {BALANCE_QUERY_CHANNEL_TYPES.has(inputs.type) && (
-                    <Form.Select
-                      field='balance_query_mode'
-                      label={t('余额获取方式')}
-                      optionList={BALANCE_QUERY_OPTIONS.map((option) => ({
-                        ...option,
-                        label: t(option.label),
-                      }))}
-                      onChange={(value) => handleChannelSettingsChange('balance_query_mode', value)}
-                      extraText={t('上游为 new-api 或 One API 时选择 OpenAI 兼容接口；上游为 sub2api 时选择 sub2api /v1/usage；上游为 hyl2api 时选择 hyl2api /user/api/quota')}
-                    />
-                  )}
+                  <Form.Select
+                    field='balance_query_mode'
+                    label={t('余额获取方式')}
+                    optionList={BALANCE_QUERY_OPTIONS.map((option) => ({
+                      ...option,
+                      label: t(option.label),
+                    }))}
+                    onChange={(value) => handleChannelSettingsChange('balance_query_mode', value)}
+                    extraText={t('上游为 new-api 或 One API 时选择 OpenAI 兼容接口；上游为 sub2api 时选择 sub2api /v1/usage；上游为 hyl2api 时选择 hyl2api /user/api/quota')}
+                  />
 
                   <Form.Switch field='thinking_to_content' label={t('思考内容转换')} checkedText={t('开')} uncheckedText={t('关')} onChange={(value) => handleChannelSettingsChange('thinking_to_content', value)} extraText={t('将 reasoning_content 转换为 <think> 标签拼接到内容中')} />
                   <Form.Switch field='pass_through_body_enabled' label={t('透传请求体')} checkedText={t('开')} uncheckedText={t('关')} onChange={(value) => handleChannelSettingsChange('pass_through_body_enabled', value)} extraText={t('启用请求体透传功能')} />
@@ -2685,10 +2658,9 @@ const EditChannelModal = (props) => {
                         label={t('是否为企业账户')}
                         checkedText={t('是')}
                         uncheckedText={t('否')}
-                        onChange={(value) => {
-                          setIsEnterpriseAccount(value);
-                          handleInputChange('is_enterprise_account', value);
-                        }}
+                        onChange={(value) =>
+                          handleInputChange('is_enterprise_account', value)
+                        }
                         extraText={t(
                           '企业账户为特殊返回格式，需要特殊处理，如果非企业账户，请勿勾选',
                         )}
@@ -3963,9 +3935,9 @@ const EditChannelModal = (props) => {
         channelInfo={inputs}
         onModelsUpdate={(options = {}) => {
           // 当模型更新后，重新获取模型列表以更新表单
-          fetchUpstreamModelList('models', { silent: !!options.silent });
+          fetchUpstreamModelList('models', { silent: getSilentOption(options) });
         }}
-        onApplyModels={({ mode, modelIds } = {}) => {
+        onApplyModels={({ modelIds } = {}) => {
           if (!Array.isArray(modelIds) || modelIds.length === 0) {
             return;
           }
