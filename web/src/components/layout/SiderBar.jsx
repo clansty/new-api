@@ -43,6 +43,7 @@ const routerMap = {
   setting: '/console/setting',
   about: '/about',
   detail: '/console',
+  flow: '/console/flow',
   pricing: '/pricing',
   task: '/console/task',
   models: '/console/models',
@@ -80,6 +81,15 @@ const SiderBar = ({ onNavigate = () => {} }) => {
             : 'tableHiddle',
       },
       {
+        text: t('分流'),
+        itemKey: 'flow',
+        to: '/console/flow',
+        className:
+          isAdmin() && localStorage.getItem('enable_data_export') === 'true'
+            ? ''
+            : 'tableHiddle',
+      },
+      {
         text: t('令牌管理'),
         itemKey: 'token',
         to: '/token',
@@ -109,6 +119,8 @@ const SiderBar = ({ onNavigate = () => {} }) => {
 
     // 根据配置过滤项目
     const filteredItems = items.filter((item) => {
+      // 分流为数据看板的附属页, 不进入模块配置, 仅按 className 控制可见性
+      if (item.itemKey === 'flow') return true;
       const configVisible = isModuleVisible('console', item.itemKey);
       return configVisible;
     });
