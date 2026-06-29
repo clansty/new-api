@@ -1,6 +1,7 @@
 package service
 
 import (
+	"encoding/hex"
 	"fmt"
 	"hash/fnv"
 	"regexp"
@@ -10,11 +11,13 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/pkg/cachex"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/samber/hot"
 	"github.com/tidwall/gjson"
 )
@@ -55,7 +58,7 @@ type channelAffinityMeta struct {
 	ModelName            string
 	RequestPath          string
 	InjectAffinityUserId bool
-	AffinityUserIdHash   string // full SHA1 hash of cache key suffix, used for metadata.user_id injection
+	AffinityUserId       string // 注入上游的亲和性 user 标识 user_{device}_account_{account}_session_{session}
 }
 
 type ChannelAffinityStatsContext struct {
@@ -424,7 +427,18 @@ func GetChannelAffinityStatsContext(c *gin.Context) (ChannelAffinityStatsContext
 	}, true
 }
 
-// GetAffinityUserIdForInjection returns the hash to inject as metadata.user_id
+// buildAffinityUserId 生成注入上游的亲和性 user 标识，格式契约为
+// user_{device_id(64位hex)}_account_{account_uuid(可选)}_session_{session_uuid(36位)}
+// device_id 由 apikey 所属用户 id 派生，session uuid 由亲和性缓存键派生
+func buildAffinityUserId(c *gin.Context, cacheKeySuffix string) string {
+	userID := common.GetContextKeyInt(c, constant.ContextKeyUserId)
+	deviceID := hex.EncodeToString(common.Sha256Raw([]byte(fmt.Sprintf("affinity-device:%d", userID))))
+	sessionUUID := uuid.NewSHA1(uuid.NameSpaceURL, []byte(cacheKeySuffix)).String()
+	accountUUID := ""
+	return fmt.Sprintf("user_%s_account_%s_session_%s", deviceID, accountUUID, sessionUUID)
+}
+
+// GetAffinityUserIdForInjection returns the affinity user id to inject as metadata.user_id
 // when the matched affinity rule has InjectAffinityUserId enabled.
 // Returns ("", false) if injection is not applicable.
 func GetAffinityUserIdForInjection(c *gin.Context) (string, bool) {
@@ -435,10 +449,10 @@ func GetAffinityUserIdForInjection(c *gin.Context) (string, bool) {
 	if !ok {
 		return "", false
 	}
-	if !meta.InjectAffinityUserId || meta.AffinityUserIdHash == "" {
+	if !meta.InjectAffinityUserId || meta.AffinityUserId == "" {
 		return "", false
 	}
-	return meta.AffinityUserIdHash, true
+	return meta.AffinityUserId, true
 }
 
 func affinityFingerprint(s string) string {
@@ -628,9 +642,9 @@ func GetPreferredChannelByAffinity(c *gin.Context, modelName string, usingGroup 
 		cacheKeySuffix := buildChannelAffinityCacheKeySuffix(rule, modelName, usingGroup, affinityValue)
 		cacheKeyFull := channelAffinityCacheNamespace + ":" + cacheKeySuffix
 
-		var affinityUserIdHash string
+		var affinityUserId string
 		if rule.InjectAffinityUserId {
-			affinityUserIdHash = common.Sha1([]byte(cacheKeySuffix))
+			affinityUserId = buildAffinityUserId(c, cacheKeySuffix)
 		}
 
 		setChannelAffinityContext(c, channelAffinityMeta{
@@ -648,7 +662,7 @@ func GetPreferredChannelByAffinity(c *gin.Context, modelName string, usingGroup 
 			ModelName:            modelName,
 			RequestPath:          path,
 			InjectAffinityUserId: rule.InjectAffinityUserId,
-			AffinityUserIdHash:   affinityUserIdHash,
+			AffinityUserId:       affinityUserId,
 		})
 
 		cache := getChannelAffinityCache()
