@@ -172,14 +172,6 @@ func validateAnnouncements(announcementsStr string) error {
 				}
 			}
 		}
-		if len(content) > 500 {
-			return fmt.Errorf("第%d个公告的内容长度不能超过500字符", i+1)
-		}
-		if extra, exists := ann["extra"]; exists {
-			if extraStr, ok := extra.(string); ok && len(extraStr) > 200 {
-				return fmt.Errorf("第%d个公告的说明长度不能超过200字符", i+1)
-			}
-		}
 	}
 	return nil
 }
@@ -200,12 +192,6 @@ func validateFAQ(faqStr string) error {
 		answer, ok := faq["answer"].(string)
 		if !ok || answer == "" {
 			return fmt.Errorf("第%d个FAQ缺少答案字段", i+1)
-		}
-		if len(question) > 200 {
-			return fmt.Errorf("第%d个FAQ的问题长度不能超过200字符", i+1)
-		}
-		if len(answer) > 1000 {
-			return fmt.Errorf("第%d个FAQ的答案长度不能超过1000字符", i+1)
 		}
 	}
 	return nil

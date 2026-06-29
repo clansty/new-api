@@ -585,7 +585,7 @@ const RegisterForm = () => {
                 <Form.Input
                   field='password'
                   label={t('密码')}
-                  placeholder={t('输入密码，最短 8 位，最长 20 位')}
+                  placeholder={t('输入密码，最短 8 位')}
                   name='password'
                   mode='password'
                   onChange={(value) => handleChange('password', value)}

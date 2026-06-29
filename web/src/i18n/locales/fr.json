@@ -2392,7 +2392,7 @@
     "输入金额": "Entrer le montant",
     "输入每次调用价格": "",
     "输入每次价格": "Saisir le prix par utilisation",
-    "输入密码，最短 8 位，最长 20 位": "Saisissez un mot de passe, d'au moins 8 caractères et jusqu'à 20 caractères",
+    "输入密码，最短 8 位": "Saisissez un mot de passe, d'au moins 8 caractères",
     "输入模型倍率": "Saisir le ratio de modèle",
     "输入模型名称，例如 gpt-4.1": "Saisissez un nom de modèle, par exemple gpt-4.1",
     "输入你的账户名{{username}}以确认删除": "Saisissez votre nom de compte{{username}}pour confirmer la suppression",

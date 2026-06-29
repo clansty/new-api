@@ -449,7 +449,6 @@ const SettingsFAQ = ({ options, refresh }) => {
             field='question'
             label={t('问题标题')}
             placeholder={t('请输入问题标题')}
-            maxLength={200}
             rules={[{ required: true, message: t('请输入问题标题') }]}
             onChange={(value) => setFaqForm({ ...faqForm, question: value })}
           />
@@ -457,7 +456,6 @@ const SettingsFAQ = ({ options, refresh }) => {
             field='answer'
             label={t('回答内容')}
             placeholder={t('请输入回答内容（支持 Markdown/HTML）')}
-            maxCount={1000}
             rows={6}
             rules={[{ required: true, message: t('请输入回答内容') }]}
             onChange={(value) => setFaqForm({ ...faqForm, answer: value })}

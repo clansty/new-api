@@ -2723,7 +2723,7 @@
     "输入旧密码": "Nhập mật khẩu cũ",
     "输入每次调用价格": "",
     "输入每次价格": "Nhập giá mỗi lần",
-    "输入密码，最短 8 位，最长 20 位": "Nhập mật khẩu, tối thiểu 8 ký tự, tối đa 20 ký tự",
+    "输入密码，最短 8 位": "Nhập mật khẩu, tối thiểu 8 ký tự",
     "输入模型倍率": "Nhập tỷ lệ mô hình",
     "输入模型名称，例如 gpt-4.1": "Nhập tên mô hình, ví dụ gpt-4.1",
     "输入你的账户名{{username}}以确认删除": "Nhập tên tài khoản của bạn {{username}} để xác nhận xóa",

@@ -2458,7 +2458,7 @@
     "输入金额": "Enter amount",
     "输入每次调用价格": "",
     "输入每次价格": "Enter per-use price",
-    "输入密码，最短 8 位，最长 20 位": "Enter password, at least 8 characters and up to 20 characters",
+    "输入密码，最短 8 位": "Enter password, at least 8 characters",
     "输入模型倍率": "Enter model ratio",
     "输入模型名称，例如 gpt-4.1": "Enter a model name, for example gpt-4.1",
     "输入你的账户名{{username}}以确认删除": "Enter your account name{{username}} to confirm deletion",
