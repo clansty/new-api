@@ -58,6 +58,18 @@ const UsersPage = () => {
     compactMode,
     setCompactMode,
 
+    // Filter & sort state
+    hideZeroQuota,
+    setHideZeroQuota,
+    hideFullQuota,
+    setHideFullQuota,
+    hideDeleted,
+    setHideDeleted,
+    sortBy,
+    setSortBy,
+    sortOrder,
+    setSortOrder,
+
     // Translation
     t,
   } = usersData;
@@ -100,6 +112,16 @@ const UsersPage = () => {
               groupOptions={groupOptions}
               loading={loading}
               searching={searching}
+              hideZeroQuota={hideZeroQuota}
+              setHideZeroQuota={setHideZeroQuota}
+              hideFullQuota={hideFullQuota}
+              setHideFullQuota={setHideFullQuota}
+              hideDeleted={hideDeleted}
+              setHideDeleted={setHideDeleted}
+              sortBy={sortBy}
+              setSortBy={setSortBy}
+              sortOrder={sortOrder}
+              setSortOrder={setSortOrder}
               t={t}
             />
           </div>

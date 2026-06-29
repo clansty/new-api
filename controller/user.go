@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -240,36 +241,76 @@ func Register(c *gin.Context) {
 }
 
 func GetAllUsers(c *gin.Context) {
-	pageInfo := common.GetPageQuery(c)
-	users, total, err := model.GetAllUsers(pageInfo)
-	if err != nil {
-		common.ApiError(c, err)
-		return
-	}
-	attachUserInflightCounts(users)
-
-	pageInfo.SetTotal(int(total))
-	pageInfo.SetItems(users)
-
-	common.ApiSuccess(c, pageInfo)
-	return
+	listUsersResponse(c, parseUserQueryParams(c))
 }
 
 func SearchUsers(c *gin.Context) {
-	keyword := c.Query("keyword")
-	group := c.Query("group")
+	listUsersResponse(c, parseUserQueryParams(c))
+}
+
+func parseUserQueryParams(c *gin.Context) model.UserQueryParams {
+	return model.UserQueryParams{
+		Keyword:       c.Query("keyword"),
+		Group:         c.Query("group"),
+		HideZeroQuota: c.Query("hide_zero_quota") == "true",
+		HideFullQuota: c.Query("hide_full_quota") == "true",
+		HideDeleted:   c.Query("hide_deleted") == "true",
+		SortBy:        c.Query("sort_by"),
+		SortOrder:     c.Query("sort_order"),
+	}
+}
+
+func listUsersResponse(c *gin.Context, params model.UserQueryParams) {
 	pageInfo := common.GetPageQuery(c)
-	users, total, err := model.SearchUsers(keyword, group, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
+	users, total, err := model.GetUsers(params, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
 	attachUserInflightCounts(users)
 
+	if params.IsInflightSort() {
+		// 并发数为内存字段，model 已返回全部过滤结果，这里排序后再手动分页
+		sortUsersByInflight(users, params.SortOrder)
+		total = int64(len(users))
+		users = paginateUsers(users, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
+	}
+
 	pageInfo.SetTotal(int(total))
 	pageInfo.SetItems(users)
 	common.ApiSuccess(c, pageInfo)
-	return
+}
+
+// sortUsersByInflight 按当前并发数在内存中排序，置顶用户始终在前
+func sortUsersByInflight(users []*model.User, sortOrder string) {
+	asc := strings.ToLower(sortOrder) == "asc"
+	sort.SliceStable(users, func(i, j int) bool {
+		a, b := users[i], users[j]
+		if a.PinnedTime != b.PinnedTime {
+			return a.PinnedTime > b.PinnedTime
+		}
+		if a.InflightCount != b.InflightCount {
+			if asc {
+				return a.InflightCount < b.InflightCount
+			}
+			return a.InflightCount > b.InflightCount
+		}
+		return a.Id > b.Id
+	})
+}
+
+func paginateUsers(users []*model.User, startIdx int, pageSize int) []*model.User {
+	if startIdx < 0 {
+		startIdx = 0
+	}
+	if startIdx >= len(users) {
+		return []*model.User{}
+	}
+	end := startIdx + pageSize
+	if end > len(users) {
+		end = len(users)
+	}
+	return users[startIdx:end]
 }
 
 func attachUserInflightCounts(users []*model.User) {

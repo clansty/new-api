@@ -17,11 +17,12 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { API, showError, showSuccess } from '../../helpers';
 import { ITEMS_PER_PAGE } from '../../constants';
 import { useTableCompactMode } from '../common/useTableCompactMode';
+import { useLocalStorageState } from '../common/useLocalStorageState';
 
 export const useUsersData = () => {
   const { t } = useTranslation();
@@ -37,6 +38,24 @@ export const useUsersData = () => {
   const [searching, setSearching] = useState(false);
   const [groupOptions, setGroupOptions] = useState([]);
   const [userCount, setUserCount] = useState(0);
+
+  const [hideZeroQuota, setHideZeroQuota] = useLocalStorageState(
+    'users-hide-zero-quota',
+    false,
+  );
+  const [hideFullQuota, setHideFullQuota] = useLocalStorageState(
+    'users-hide-full-quota',
+    false,
+  );
+  const [hideDeleted, setHideDeleted] = useLocalStorageState(
+    'users-hide-deleted',
+    false,
+  );
+  const [sortBy, setSortBy] = useLocalStorageState('users-sort-by', '');
+  const [sortOrder, setSortOrder] = useLocalStorageState(
+    'users-sort-order',
+    'desc',
+  );
 
   // Modal states
   const [showAddUser, setShowAddUser] = useState(false);
@@ -63,6 +82,16 @@ export const useUsersData = () => {
     };
   };
 
+  const buildExtraParams = () => {
+    let params = '';
+    if (hideZeroQuota) params += '&hide_zero_quota=true';
+    if (hideFullQuota) params += '&hide_full_quota=true';
+    if (hideDeleted) params += '&hide_deleted=true';
+    if (sortBy) params += `&sort_by=${sortBy}`;
+    params += `&sort_order=${sortOrder}`;
+    return params;
+  };
+
   // Set user format with key field
   const setUserFormat = (users) => {
     for (let i = 0; i < users.length; i++) {
@@ -74,7 +103,7 @@ export const useUsersData = () => {
   // Load users data
   const loadUsers = async (startIdx, pageSize) => {
     setLoading(true);
-    const res = await API.get(`/api/user/?p=${startIdx}&page_size=${pageSize}`);
+    const res = await API.get(`/api/user/?p=${startIdx}&page_size=${pageSize}${buildExtraParams()}`);
     const { success, message, data } = res.data;
     if (success) {
       const newPageData = data.items;
@@ -108,7 +137,7 @@ export const useUsersData = () => {
     }
     setSearching(true);
     const res = await API.get(
-      `/api/user/search?keyword=${searchKeyword}&group=${searchGroup}&p=${startIdx}&page_size=${pageSize}`,
+      `/api/user/search?keyword=${searchKeyword}&group=${searchGroup}&p=${startIdx}&page_size=${pageSize}${buildExtraParams()}`,
     );
     const { success, message, data } = res.data;
     if (success) {
@@ -288,6 +317,16 @@ export const useUsersData = () => {
     fetchGroups().then();
   }, []);
 
+  // 过滤/排序变化时回到第一页重新加载；跳过首次挂载，避免与上面的初始加载重复
+  const didMountRef = useRef(false);
+  useEffect(() => {
+    if (!didMountRef.current) {
+      didMountRef.current = true;
+      return;
+    }
+    refresh(1);
+  }, [hideZeroQuota, hideFullQuota, hideDeleted, sortBy, sortOrder]);
+
   return {
     // Data state
     users,
@@ -314,6 +353,18 @@ export const useUsersData = () => {
     // UI state
     compactMode,
     setCompactMode,
+
+    // Filter & sort state
+    hideZeroQuota,
+    setHideZeroQuota,
+    hideFullQuota,
+    setHideFullQuota,
+    hideDeleted,
+    setHideDeleted,
+    sortBy,
+    setSortBy,
+    sortOrder,
+    setSortOrder,
 
     // Actions
     loadUsers,

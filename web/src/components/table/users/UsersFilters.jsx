@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import React, { useRef } from 'react';
-import { Form, Button } from '@douyinfe/semi-ui';
+import { Form, Button, Switch, Select } from '@douyinfe/semi-ui';
 import { IconSearch } from '@douyinfe/semi-icons';
 
 const UsersFilters = ({
@@ -31,6 +31,16 @@ const UsersFilters = ({
   groupOptions,
   loading,
   searching,
+  hideZeroQuota,
+  setHideZeroQuota,
+  hideFullQuota,
+  setHideFullQuota,
+  hideDeleted,
+  setHideDeleted,
+  sortBy,
+  setSortBy,
+  sortOrder,
+  setSortOrder,
   t,
 }) => {
   const formApiRef = useRef(null);
@@ -43,72 +53,132 @@ const UsersFilters = ({
     }, 100);
   };
 
+  const sortOptions = [
+    { label: t('默认'), value: '' },
+    { label: t('当前并发'), value: 'inflight' },
+    { label: t('最大额度'), value: 'max_quota' },
+    { label: t('剩余额度'), value: 'remaining_quota' },
+  ];
+
   return (
-    <Form
-      initValues={formInitValues}
-      getFormApi={(api) => {
-        setFormApi(api);
-        formApiRef.current = api;
-      }}
-      onSubmit={() => {
-        searchUsers(1, pageSize);
-      }}
-      allowEmpty={true}
-      autoComplete='off'
-      layout='horizontal'
-      trigger='change'
-      stopValidateWithError={false}
-      className='w-full md:w-auto order-1 md:order-2'
-    >
-      <div className='flex flex-col md:flex-row items-center gap-2 w-full md:w-auto'>
-        <div className='relative w-full md:w-64'>
-          <Form.Input
-            field='searchKeyword'
-            prefix={<IconSearch />}
-            placeholder={t('支持搜索用户的 ID、用户名、显示名称、邮箱地址和备注')}
-            showClear
-            pure
+    <div className='flex flex-col gap-2 w-full md:w-auto order-1 md:order-2'>
+      <div className='flex flex-row flex-wrap items-center gap-x-4 gap-y-2'>
+        <div className='flex items-center gap-1'>
+          <Switch
             size='small'
+            checked={hideZeroQuota}
+            onChange={setHideZeroQuota}
+          />
+          <span className='text-xs whitespace-nowrap'>
+            {t('隐藏0额度用户')}
+          </span>
+        </div>
+        <div className='flex items-center gap-1'>
+          <Switch
+            size='small'
+            checked={hideFullQuota}
+            onChange={setHideFullQuota}
+          />
+          <span className='text-xs whitespace-nowrap'>
+            {t('隐藏满额度用户')}
+          </span>
+        </div>
+        <div className='flex items-center gap-1'>
+          <Switch
+            size='small'
+            checked={hideDeleted}
+            onChange={setHideDeleted}
+          />
+          <span className='text-xs whitespace-nowrap'>
+            {t('隐藏已注销用户')}
+          </span>
+        </div>
+        <div className='flex items-center gap-1'>
+          <span className='text-xs whitespace-nowrap'>{t('排序')}</span>
+          <Select
+            size='small'
+            value={sortBy}
+            onChange={setSortBy}
+            optionList={sortOptions}
+            className='w-28'
           />
         </div>
-        <div className='w-full md:w-48'>
-          <Form.Select
-            field='searchGroup'
-            placeholder={t('选择分组')}
-            optionList={groupOptions}
-            onChange={(value) => {
-              // Group change triggers automatic search
-              setTimeout(() => {
-                searchUsers(1, pageSize);
-              }, 100);
-            }}
-            className='w-full'
-            showClear
-            pure
+        <div className='flex items-center gap-1'>
+          <Switch
             size='small'
+            checked={sortOrder === 'asc'}
+            onChange={(checked) => setSortOrder(checked ? 'asc' : 'desc')}
           />
-        </div>
-        <div className='flex gap-2 w-full md:w-auto'>
-          <Button
-            type='tertiary'
-            htmlType='submit'
-            loading={loading || searching}
-            className='flex-1 md:flex-initial md:w-auto'
-            size='small'
-          >
-            {t('查询')}
-          </Button>
-          <Button
-            type='tertiary'
-            onClick={handleReset}
-            className='flex-1 md:flex-initial md:w-auto'
-            size='small'
-          >
-            {t('重置')}
-          </Button>
+          <span className='text-xs whitespace-nowrap'>{t('倒序')}</span>
         </div>
       </div>
-    </Form>
+
+      <Form
+        initValues={formInitValues}
+        getFormApi={(api) => {
+          setFormApi(api);
+          formApiRef.current = api;
+        }}
+        onSubmit={() => {
+          searchUsers(1, pageSize);
+        }}
+        allowEmpty={true}
+        autoComplete='off'
+        layout='horizontal'
+        trigger='change'
+        stopValidateWithError={false}
+        className='w-full md:w-auto'
+      >
+        <div className='flex flex-col md:flex-row items-center gap-2 w-full md:w-auto'>
+          <div className='relative w-full md:w-64'>
+            <Form.Input
+              field='searchKeyword'
+              prefix={<IconSearch />}
+              placeholder={t('支持搜索用户的 ID、用户名、显示名称、邮箱地址和备注')}
+              showClear
+              pure
+              size='small'
+            />
+          </div>
+          <div className='w-full md:w-48'>
+            <Form.Select
+              field='searchGroup'
+              placeholder={t('选择分组')}
+              optionList={groupOptions}
+              onChange={(value) => {
+                // Group change triggers automatic search
+                setTimeout(() => {
+                  searchUsers(1, pageSize);
+                }, 100);
+              }}
+              className='w-full'
+              showClear
+              pure
+              size='small'
+            />
+          </div>
+          <div className='flex gap-2 w-full md:w-auto'>
+            <Button
+              type='tertiary'
+              htmlType='submit'
+              loading={loading || searching}
+              className='flex-1 md:flex-initial md:w-auto'
+              size='small'
+            >
+              {t('查询')}
+            </Button>
+            <Button
+              type='tertiary'
+              onClick={handleReset}
+              className='flex-1 md:flex-initial md:w-auto'
+              size='small'
+            >
+              {t('重置')}
+            </Button>
+          </div>
+        </div>
+      </Form>
+    </div>
   );
 };
 

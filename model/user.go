@@ -194,105 +194,118 @@ func GetMaxUserId() int {
 	return user.Id
 }
 
-func GetAllUsers(pageInfo *common.PageInfo) (users []*User, total int64, err error) {
-	// Start transaction
-	tx := DB.Begin()
-	if tx.Error != nil {
-		return nil, 0, tx.Error
-	}
-	defer func() {
-		if r := recover(); r != nil {
-			tx.Rollback()
-		}
-	}()
+const (
+	UserSortDefault        = ""
+	UserSortRemainingQuota = "remaining_quota"
+	UserSortMaxQuota       = "max_quota" // 最大额度 = 剩余额度 + 已用额度
+	UserSortInflight       = "inflight"  // 当前并发，仅存在于内存中
+)
 
-	// Get total count within transaction
-	err = tx.Unscoped().Model(&User{}).Count(&total).Error
-	if err != nil {
-		tx.Rollback()
-		return nil, 0, err
-	}
-
-	// Get paginated users within same transaction
-	err = tx.Unscoped().Order("pinned_time desc, id desc").Limit(pageInfo.GetPageSize()).Offset(pageInfo.GetStartIdx()).Omit("password").Find(&users).Error
-	if err != nil {
-		tx.Rollback()
-		return nil, 0, err
-	}
-
-	// Commit transaction
-	if err = tx.Commit().Error; err != nil {
-		return nil, 0, err
-	}
-
-	return users, total, nil
+// UserQueryParams 用户列表的过滤与排序参数
+type UserQueryParams struct {
+	Keyword       string
+	Group         string
+	HideZeroQuota bool // quota == 0，已耗尽
+	HideFullQuota bool // used_quota == 0，从未消费过（满额度）
+	HideDeleted   bool // 已注销，即软删除
+	SortBy        string
+	SortOrder     string
 }
 
-func SearchUsers(keyword string, group string, startIdx int, num int) ([]*User, int64, error) {
-	var users []*User
-	var total int64
-	var err error
+// IsInflightSort 是否按当前并发排序。该字段仅存在于内存，无法用 SQL 排序/分页，
+// 需由调用方取出全部数据后在内存中处理。
+func (p UserQueryParams) IsInflightSort() bool {
+	return p.SortBy == UserSortInflight
+}
 
-	// 开始事务
-	tx := DB.Begin()
-	if tx.Error != nil {
-		return nil, 0, tx.Error
+// orderClause 生成 SQL ORDER BY 子句。置顶用户始终排在最前，倒序仅作用于所选排序列。
+func (p UserQueryParams) orderClause() string {
+	direction := "desc"
+	if strings.ToLower(p.SortOrder) == "asc" {
+		direction = "asc"
 	}
-	defer func() {
-		if r := recover(); r != nil {
-			tx.Rollback()
-		}
-	}()
+	switch p.SortBy {
+	case UserSortRemainingQuota:
+		return "pinned_time desc, quota " + direction + ", id desc"
+	case UserSortMaxQuota:
+		// 最大额度 = 剩余额度 + 已用额度，三种数据库均支持该算术表达式
+		return "pinned_time desc, (quota + used_quota) " + direction + ", id desc"
+	default:
+		return "pinned_time desc, id " + direction
+	}
+}
 
-	// 构建基础查询
+// buildUserListQuery 构建带关键字搜索与过滤条件的用户查询。
+// 关键字 / 分组为空时不附加对应条件，从而兼容“列出全部用户”的场景。
+func buildUserListQuery(tx *gorm.DB, params UserQueryParams) *gorm.DB {
 	query := tx.Unscoped().Model(&User{})
 
-	// 构建搜索条件
-	likeCondition := "username " + commonLikeOp + " ? OR email " + commonLikeOp + " ? OR display_name " + commonLikeOp + " ? OR remark " + commonLikeOp + " ?"
-	likeArg := "%" + keyword + "%"
-
-	// 尝试将关键字转换为整数ID
-	keywordInt, err := strconv.Atoi(keyword)
-	if err == nil {
-		// 如果是数字，同时搜索ID和其他字段
-		likeCondition = "id = ? OR " + likeCondition
-		if group != "" {
-			query = query.Where("("+likeCondition+") AND "+commonGroupCol+" = ?",
-				keywordInt, likeArg, likeArg, likeArg, likeArg, group)
-		} else {
-			query = query.Where(likeCondition,
+	keyword := strings.TrimSpace(params.Keyword)
+	if keyword != "" {
+		likeCondition := "username " + commonLikeOp + " ? OR email " + commonLikeOp + " ? OR display_name " + commonLikeOp + " ? OR remark " + commonLikeOp + " ?"
+		likeArg := "%" + keyword + "%"
+		// 显式括号包裹 OR 组，避免与后续 AND 过滤条件产生优先级歧义
+		if keywordInt, err := strconv.Atoi(keyword); err == nil {
+			query = query.Where("(id = ? OR "+likeCondition+")",
 				keywordInt, likeArg, likeArg, likeArg, likeArg)
-		}
-	} else {
-		// 非数字关键字，只搜索字符串字段
-		if group != "" {
-			query = query.Where("("+likeCondition+") AND "+commonGroupCol+" = ?",
-				likeArg, likeArg, likeArg, likeArg, group)
 		} else {
-			query = query.Where(likeCondition,
+			query = query.Where("("+likeCondition+")",
 				likeArg, likeArg, likeArg, likeArg)
 		}
 	}
 
-	// 获取总数
-	err = query.Count(&total).Error
+	if params.Group != "" {
+		query = query.Where(commonGroupCol+" = ?", params.Group)
+	}
+	if params.HideZeroQuota {
+		query = query.Where("quota != ?", 0)
+	}
+	if params.HideFullQuota {
+		query = query.Where("used_quota != ?", 0)
+	}
+	if params.HideDeleted {
+		// 使用了 Unscoped()，GORM 不会自动追加软删除条件，这里手动过滤
+		query = query.Where("deleted_at IS NULL")
+	}
+	return query
+}
+
+// GetUsers 按过滤 / 排序参数获取用户列表。
+// 当按当前并发（inflight）排序时无法在数据库层完成，函数会返回全部过滤后的用户
+// （忽略分页），由调用方在内存中附加并发数、排序并手动分页。
+func GetUsers(params UserQueryParams, startIdx int, pageSize int) (users []*User, total int64, err error) {
+	tx := DB.Begin()
+	if tx.Error != nil {
+		return nil, 0, tx.Error
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			tx.Rollback()
+		}
+	}()
+
+	query := buildUserListQuery(tx, params)
+
+	if err = query.Count(&total).Error; err != nil {
+		tx.Rollback()
+		return nil, 0, err
+	}
+
+	dataQuery := query.Omit("password")
+	if params.IsInflightSort() {
+		// 并发数排序：取出全部过滤结果，交由调用方在内存中排序分页
+		err = dataQuery.Order("pinned_time desc, id desc").Find(&users).Error
+	} else {
+		err = dataQuery.Order(params.orderClause()).Limit(pageSize).Offset(startIdx).Find(&users).Error
+	}
 	if err != nil {
 		tx.Rollback()
 		return nil, 0, err
 	}
 
-	// 获取分页数据
-	err = query.Omit("password").Order("pinned_time desc, id desc").Limit(num).Offset(startIdx).Find(&users).Error
-	if err != nil {
-		tx.Rollback()
-		return nil, 0, err
-	}
-
-	// 提交事务
 	if err = tx.Commit().Error; err != nil {
 		return nil, 0, err
 	}
-
 	return users, total, nil
 }
 
