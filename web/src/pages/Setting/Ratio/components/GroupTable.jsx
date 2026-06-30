@@ -6,6 +6,7 @@ import {
   Checkbox,
   Typography,
   Popconfirm,
+  Tooltip,
 } from '@douyinfe/semi-ui';
 import { IconPlus, IconDelete } from '@douyinfe/semi-icons';
 import { useTranslation } from 'react-i18next';
@@ -25,13 +26,22 @@ function parseJSON(str, fallback) {
   }
 }
 
-function buildRows(groupRatioStr, userUsableGroupsStr) {
+function buildRows(
+  groupRatioStr,
+  userUsableGroupsStr,
+  userSelfUnusableGroupsStr,
+) {
   const ratioMap = parseJSON(groupRatioStr, {});
   const usableMap = parseJSON(userUsableGroupsStr, {});
+  const selfUnusableList = parseJSON(userSelfUnusableGroupsStr, []);
+  const selfUnusableSet = new Set(
+    Array.isArray(selfUnusableList) ? selfUnusableList : [],
+  );
 
   const allNames = new Set([
     ...Object.keys(ratioMap),
     ...Object.keys(usableMap),
+    ...selfUnusableSet,
   ]);
 
   return Array.from(allNames).map((name) => ({
@@ -39,6 +49,7 @@ function buildRows(groupRatioStr, userUsableGroupsStr) {
     name,
     ratio: ratioMap[name] ?? 1,
     selectable: name in usableMap,
+    selfUnusable: selfUnusableSet.has(name),
     description: usableMap[name] ?? '',
   }));
 }
@@ -46,6 +57,7 @@ function buildRows(groupRatioStr, userUsableGroupsStr) {
 export function serializeGroupTable(rows) {
   const groupRatio = {};
   const userUsableGroups = {};
+  const userSelfUnusableGroups = [];
 
   rows.forEach((row) => {
     if (!row.name) return;
@@ -53,19 +65,28 @@ export function serializeGroupTable(rows) {
     if (row.selectable) {
       userUsableGroups[row.name] = row.description;
     }
+    if (row.selfUnusable) {
+      userSelfUnusableGroups.push(row.name);
+    }
   });
 
   return {
     GroupRatio: JSON.stringify(groupRatio, null, 2),
     UserUsableGroups: JSON.stringify(userUsableGroups, null, 2),
+    UserSelfUnusableGroups: JSON.stringify(userSelfUnusableGroups, null, 2),
   };
 }
 
-export default function GroupTable({ groupRatio, userUsableGroups, onChange }) {
+export default function GroupTable({
+  groupRatio,
+  userUsableGroups,
+  userSelfUnusableGroups,
+  onChange,
+}) {
   const { t } = useTranslation();
 
   const [rows, setRows] = useState(() =>
-    buildRows(groupRatio, userUsableGroups),
+    buildRows(groupRatio, userUsableGroups, userSelfUnusableGroups),
   );
 
   // Use functional setRows to keep updateRow/addRow/removeRow referentially
@@ -107,6 +128,7 @@ export default function GroupTable({ groupRatio, userUsableGroups, onChange }) {
           name: newName,
           ratio: 1,
           selectable: true,
+          selfUnusable: false,
           description: '',
         },
       ];
@@ -180,6 +202,29 @@ export default function GroupTable({ groupRatio, userUsableGroups, onChange }) {
             checked={record.selectable}
             onChange={(e) =>
               updateRow(record._id, 'selectable', e.target.checked)
+            }
+          />
+        ),
+      },
+      {
+        title: (
+          <Tooltip
+            content={t(
+              '勾选后，属于该分组的用户创建令牌时不能使用本分组（也不能留空自动落到本分组），必须手动选择其他分组',
+            )}
+          >
+            <span>{t('禁止本组自选')}</span>
+          </Tooltip>
+        ),
+        dataIndex: 'selfUnusable',
+        key: 'selfUnusable',
+        width: 110,
+        align: 'center',
+        render: (_, record) => (
+          <Checkbox
+            checked={record.selfUnusable}
+            onChange={(e) =>
+              updateRow(record._id, 'selfUnusable', e.target.checked)
             }
           />
         ),

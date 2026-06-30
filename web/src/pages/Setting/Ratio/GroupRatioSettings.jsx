@@ -53,6 +53,7 @@ const { Text, Title, Paragraph } = Typography;
 const OPTION_KEYS = [
   'GroupRatio',
   'UserUsableGroups',
+  'UserSelfUnusableGroups',
   'GroupGroupRatio',
   'group_ratio_setting.group_special_usable_group',
   'AutoGroups',
@@ -77,6 +78,7 @@ export default function GroupRatioSettings(props) {
   const [inputs, setInputs] = useState({
     GroupRatio: '',
     UserUsableGroups: '',
+    UserSelfUnusableGroups: '',
     GroupGroupRatio: '',
     'group_ratio_setting.group_special_usable_group': '',
     AutoGroups: '',
@@ -155,8 +157,13 @@ export default function GroupRatioSettings(props) {
   }, [props.options]);
 
   const handleGroupTableChange = useCallback(
-    ({ GroupRatio, UserUsableGroups }) => {
-      setInputs((prev) => ({ ...prev, GroupRatio, UserUsableGroups }));
+    ({ GroupRatio, UserUsableGroups, UserSelfUnusableGroups }) => {
+      setInputs((prev) => ({
+        ...prev,
+        GroupRatio,
+        UserUsableGroups,
+        UserSelfUnusableGroups,
+      }));
     },
     [],
   );
@@ -182,12 +189,13 @@ export default function GroupRatioSettings(props) {
     <Form key='form-visual' values={inputs} style={{ marginBottom: 15 }}>
       <Form.Section text={t('分组管理')}>
         <Text type='tertiary' size='small' style={{ display: 'block', marginBottom: 12 }}>
-          {t('倍率用于计费乘数，勾选「用户可选」后用户可在创建令牌时选择该分组')}
+          {t('倍率用于计费乘数，勾选「用户可选」后用户可在创建令牌时选择该分组；勾选「禁止本组自选」后，属于该分组的用户必须手动选择其他分组')}
         </Text>
         <GroupTable
           key={`gt_${dv}`}
           groupRatio={inputs.GroupRatio}
           userUsableGroups={inputs.UserUsableGroups}
+          userSelfUnusableGroups={inputs.UserSelfUnusableGroups}
           onChange={handleGroupTableChange}
         />
       </Form.Section>
@@ -313,6 +321,42 @@ export default function GroupRatioSettings(props) {
               ]}
               onChange={(value) =>
                 setInputs((prev) => ({ ...prev, UserUsableGroups: value }))
+              }
+            />
+          </Col>
+        </Row>
+        <Row gutter={16}>
+          <Col xs={24} sm={16}>
+            <Form.TextArea
+              label={t('禁止本组自选的分组')}
+              placeholder={t('为一个 JSON 字符串数组，元素为分组名称')}
+              extraText={t(
+                '为一个 JSON 字符串数组。数组中的分组，其成员用户创建令牌时不能使用本分组（也不能留空自动落到本分组），必须手动选择其他分组。例如：["default"]',
+              )}
+              field={'UserSelfUnusableGroups'}
+              autosize={{ minRows: 4, maxRows: 12 }}
+              trigger='blur'
+              stopValidateWithError
+              rules={[
+                {
+                  validator: (rule, value) => {
+                    if (!value || value.trim() === '') return true;
+                    try {
+                      const parsed = JSON.parse(value);
+                      if (!Array.isArray(parsed)) return false;
+                      return parsed.every((item) => typeof item === 'string');
+                    } catch {
+                      return false;
+                    }
+                  },
+                  message: t('必须是有效的 JSON 字符串数组，例如：["g1","g2"]'),
+                },
+              ]}
+              onChange={(value) =>
+                setInputs((prev) => ({
+                  ...prev,
+                  UserSelfUnusableGroups: value,
+                }))
               }
             />
           </Col>

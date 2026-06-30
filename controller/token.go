@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -9,6 +10,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 
 	"github.com/gin-gonic/gin"
@@ -29,6 +31,19 @@ func buildMaskedTokenResponses(tokens []*model.Token) []*model.Token {
 		maskedTokens = append(maskedTokens, buildMaskedTokenResponse(token))
 	}
 	return maskedTokens
+}
+
+// validateTokenSelfGroup 校验令牌分组选择。当令牌所属用户的分组被设置为
+// 「禁止本组自选」时，令牌分组必填且不能选择该用户分组本身。
+func validateTokenSelfGroup(tokenGroup string, userId int) error {
+	userGroup, _ := model.GetUserGroup(userId, false)
+	if !setting.ContainsUserSelfUnusableGroup(userGroup) {
+		return nil
+	}
+	if tokenGroup == "" || tokenGroup == userGroup {
+		return errors.New("当前用户分组已被禁止作为令牌分组，请手动选择其他令牌分组")
+	}
+	return nil
 }
 
 func GetAllTokens(c *gin.Context) {
@@ -201,6 +216,10 @@ func AddToken(c *gin.Context) {
 		})
 		return
 	}
+	if err := validateTokenSelfGroup(token.Group, c.GetInt("id")); err != nil {
+		common.ApiError(c, err)
+		return
+	}
 	key, err := common.GenerateKey()
 	if err != nil {
 		common.ApiErrorI18n(c, i18n.MsgTokenGenerateFailed)
@@ -289,6 +308,10 @@ func UpdateToken(c *gin.Context) {
 	if statusOnly != "" {
 		cleanToken.Status = token.Status
 	} else {
+		if err := validateTokenSelfGroup(token.Group, userId); err != nil {
+			common.ApiError(c, err)
+			return
+		}
 		// If you add more fields, please also update token.Update()
 		cleanToken.Name = token.Name
 		cleanToken.ExpiredTime = token.ExpiredTime

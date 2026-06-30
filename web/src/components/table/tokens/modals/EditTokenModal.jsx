@@ -67,6 +67,7 @@ const EditTokenModal = (props) => {
   const formApiRef = useRef(null);
   const [models, setModels] = useState([]);
   const [groups, setGroups] = useState([]);
+  const [groupRequired, setGroupRequired] = useState(false);
   const [showQuotaInput, setShowQuotaInput] = useState(false);
   const isEdit = props.editingToken.id !== undefined;
 
@@ -137,6 +138,7 @@ const EditTokenModal = (props) => {
     let res = await API.get(`/api/user/self/groups`);
     const { success, message, data } = res.data;
     if (success) {
+      setGroupRequired(!!res.data.group_required);
       let localGroupOptions = Object.entries(data).map(([group, info]) => ({
         label: info.desc,
         value: group,
@@ -387,7 +389,16 @@ const EditTokenModal = (props) => {
                       <Form.Select
                         field='group'
                         label={t('令牌分组')}
-                        placeholder={t('令牌分组，默认为用户的分组')}
+                        placeholder={
+                          groupRequired
+                            ? t('请选择令牌分组')
+                            : t('令牌分组，默认为用户的分组')
+                        }
+                        rules={
+                          groupRequired
+                            ? [{ required: true, message: t('请选择令牌分组') }]
+                            : undefined
+                        }
                         optionList={groups}
                         renderOptionItem={renderGroupOption}
                         filter={(input, option) => {
@@ -552,7 +563,10 @@ const EditTokenModal = (props) => {
                         ? `▾ ${t('收起原生额度输入')}`
                         : `▸ ${t('使用原生额度输入')}`}
                     </div>
-                    <div style={{ display: showQuotaInput ? 'block' : 'none' }} className='mt-2'>
+                    <div
+                      style={{ display: showQuotaInput ? 'block' : 'none' }}
+                      className='mt-2'
+                    >
                       <Form.InputNumber
                         field='remain_quota'
                         label={t('额度')}
