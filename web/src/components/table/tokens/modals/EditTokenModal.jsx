@@ -71,6 +71,15 @@ const EditTokenModal = (props) => {
   const [showQuotaInput, setShowQuotaInput] = useState(false);
   const isEdit = props.editingToken.id !== undefined;
 
+  // adminUserId 不为空时操作指定用户的令牌（管理员代管），否则操作当前用户自己的令牌
+  const adminUserId = props.adminUserId ?? null;
+  const tokenBasePath =
+    adminUserId != null ? `/api/user/${adminUserId}/tokens` : '/api/token';
+  const groupsPath =
+    adminUserId != null
+      ? `/api/user/${adminUserId}/groups`
+      : '/api/user/self/groups';
+
   const getInitValues = () => ({
     name: '',
     remain_quota: 0,
@@ -135,7 +144,7 @@ const EditTokenModal = (props) => {
   };
 
   const loadGroups = async () => {
-    let res = await API.get(`/api/user/self/groups`);
+    let res = await API.get(groupsPath);
     const { success, message, data } = res.data;
     if (success) {
       setGroupRequired(!!res.data.group_required);
@@ -160,7 +169,7 @@ const EditTokenModal = (props) => {
 
   const loadToken = async () => {
     setLoading(true);
-    let res = await API.get(`/api/token/${props.editingToken.id}`);
+    let res = await API.get(`${tokenBasePath}/${props.editingToken.id}`);
     const { success, message, data } = res.data;
     if (success) {
       if (data.expired_time !== -1) {
@@ -240,7 +249,7 @@ const EditTokenModal = (props) => {
       }
       localInputs.model_limits = localInputs.model_limits.join(',');
       localInputs.model_limits_enabled = localInputs.model_limits.length > 0;
-      let res = await API.put(`/api/token/`, {
+      let res = await API.put(`${tokenBasePath}/`, {
         ...localInputs,
         id: parseInt(props.editingToken.id),
       });
@@ -284,7 +293,7 @@ const EditTokenModal = (props) => {
         }
         localInputs.model_limits = localInputs.model_limits.join(',');
         localInputs.model_limits_enabled = localInputs.model_limits.length > 0;
-        let res = await API.post(`/api/token/`, localInputs);
+        let res = await API.post(`${tokenBasePath}/`, localInputs);
         const { success, message } = res.data;
         if (success) {
           successCount++;

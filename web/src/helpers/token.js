@@ -22,10 +22,11 @@ import { API } from './api';
 /**
  * 按需获取单个令牌的真实 key
  * @param {number|string} tokenId
+ * @param {string} basePath 令牌接口基础路径，管理员场景传 `/api/user/${uid}/tokens`
  * @returns {Promise<string>} 返回不带 sk- 前缀的真实 token key
  */
-export async function fetchTokenKey(tokenId) {
-  const response = await API.post(`/api/token/${tokenId}/key`);
+export async function fetchTokenKey(tokenId, basePath = '/api/token') {
+  const response = await API.post(`${basePath}/${tokenId}/key`);
   const { success, data, message } = response.data || {};
   if (!success || !data?.key) {
     throw new Error(message || 'Failed to fetch token key');
@@ -36,10 +37,11 @@ export async function fetchTokenKey(tokenId) {
 /**
  * 批量获取多个令牌的真实 key
  * @param {number[]} tokenIds
+ * @param {string} basePath 令牌接口基础路径，管理员场景传 `/api/user/${uid}/tokens`
  * @returns {Promise<Record<number, string>>} 返回 {id: key} map，key 不带 sk- 前缀
  */
-export async function fetchTokenKeysBatch(tokenIds) {
-  const response = await API.post('/api/token/batch/keys', { ids: tokenIds });
+export async function fetchTokenKeysBatch(tokenIds, basePath = '/api/token') {
+  const response = await API.post(`${basePath}/batch/keys`, { ids: tokenIds });
   const { success, data, message } = response.data || {};
   if (!success || !data?.keys) {
     throw new Error(message || 'Failed to fetch token keys');

@@ -180,6 +180,10 @@ func GetTokenUsage(c *gin.Context) {
 }
 
 func AddToken(c *gin.Context) {
+	addTokenForUser(c, c.GetInt("id"))
+}
+
+func addTokenForUser(c *gin.Context, userId int) {
 	token := model.Token{}
 	err := c.ShouldBindJSON(&token)
 	if err != nil {
@@ -204,7 +208,7 @@ func AddToken(c *gin.Context) {
 	}
 	// 检查用户令牌数量是否已达上限
 	maxTokens := operation_setting.GetMaxUserTokens()
-	count, err := model.CountUserTokens(c.GetInt("id"))
+	count, err := model.CountUserTokens(userId)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -216,7 +220,7 @@ func AddToken(c *gin.Context) {
 		})
 		return
 	}
-	if err := validateTokenSelfGroup(token.Group, c.GetInt("id")); err != nil {
+	if err := validateTokenSelfGroup(token.Group, userId); err != nil {
 		common.ApiError(c, err)
 		return
 	}
@@ -227,7 +231,7 @@ func AddToken(c *gin.Context) {
 		return
 	}
 	cleanToken := model.Token{
-		UserId:             c.GetInt("id"),
+		UserId:             userId,
 		Name:               token.Name,
 		Key:                key,
 		CreatedTime:        common.GetTimestamp(),
@@ -267,7 +271,10 @@ func DeleteToken(c *gin.Context) {
 }
 
 func UpdateToken(c *gin.Context) {
-	userId := c.GetInt("id")
+	updateTokenForUser(c, c.GetInt("id"))
+}
+
+func updateTokenForUser(c *gin.Context, userId int) {
 	statusOnly := c.Query("status_only")
 	token := model.Token{}
 	err := c.ShouldBindJSON(&token)
@@ -369,6 +376,154 @@ func GetTokenKeysBatch(c *gin.Context) {
 		return
 	}
 	userId := c.GetInt("id")
+	tokens, err := model.GetTokenKeysByIds(tokenBatch.Ids, userId)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	keysMap := make(map[int]string)
+	for _, t := range tokens {
+		keysMap[t.Id] = t.GetFullKey()
+	}
+	common.ApiSuccess(c, gin.H{"keys": keysMap})
+}
+
+func resolveTargetUserId(c *gin.Context) (int, bool) {
+	userId, err := strconv.Atoi(c.Param("id"))
+	if err != nil || userId <= 0 {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return 0, false
+	}
+	if _, err := model.GetUserById(userId, false); err != nil {
+		common.ApiError(c, err)
+		return 0, false
+	}
+	return userId, true
+}
+
+func AdminGetUserTokens(c *gin.Context) {
+	userId, ok := resolveTargetUserId(c)
+	if !ok {
+		return
+	}
+	pageInfo := common.GetPageQuery(c)
+	tokens, err := model.GetAllUserTokens(userId, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	total, _ := model.CountUserTokens(userId)
+	pageInfo.SetTotal(int(total))
+	pageInfo.SetItems(buildMaskedTokenResponses(tokens))
+	common.ApiSuccess(c, pageInfo)
+}
+
+func AdminSearchUserTokens(c *gin.Context) {
+	userId, ok := resolveTargetUserId(c)
+	if !ok {
+		return
+	}
+	keyword := c.Query("keyword")
+	token := c.Query("token")
+	pageInfo := common.GetPageQuery(c)
+	tokens, total, err := model.SearchUserTokens(userId, keyword, token, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	pageInfo.SetTotal(int(total))
+	pageInfo.SetItems(buildMaskedTokenResponses(tokens))
+	common.ApiSuccess(c, pageInfo)
+}
+
+func AdminAddUserToken(c *gin.Context) {
+	userId, ok := resolveTargetUserId(c)
+	if !ok {
+		return
+	}
+	addTokenForUser(c, userId)
+}
+
+func AdminUpdateUserToken(c *gin.Context) {
+	userId, ok := resolveTargetUserId(c)
+	if !ok {
+		return
+	}
+	updateTokenForUser(c, userId)
+}
+
+func AdminDeleteUserToken(c *gin.Context) {
+	userId, ok := resolveTargetUserId(c)
+	if !ok {
+		return
+	}
+	tokenId, _ := strconv.Atoi(c.Param("token_id"))
+	if err := model.DeleteTokenById(tokenId, userId); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "",
+	})
+}
+
+func AdminDeleteUserTokenBatch(c *gin.Context) {
+	userId, ok := resolveTargetUserId(c)
+	if !ok {
+		return
+	}
+	tokenBatch := TokenBatch{}
+	if err := c.ShouldBindJSON(&tokenBatch); err != nil || len(tokenBatch.Ids) == 0 {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+	count, err := model.BatchDeleteTokens(tokenBatch.Ids, userId)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "",
+		"data":    count,
+	})
+}
+
+func AdminGetUserTokenKey(c *gin.Context) {
+	userId, ok := resolveTargetUserId(c)
+	if !ok {
+		return
+	}
+	tokenId, err := strconv.Atoi(c.Param("token_id"))
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	token, err := model.GetTokenByIds(tokenId, userId)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, gin.H{
+		"key": token.GetFullKey(),
+	})
+}
+
+func AdminGetUserTokenKeysBatch(c *gin.Context) {
+	userId, ok := resolveTargetUserId(c)
+	if !ok {
+		return
+	}
+	tokenBatch := TokenBatch{}
+	if err := c.ShouldBindJSON(&tokenBatch); err != nil || len(tokenBatch.Ids) == 0 {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+	if len(tokenBatch.Ids) > 100 {
+		common.ApiErrorI18n(c, i18n.MsgBatchTooMany, map[string]any{"Max": 100})
+		return
+	}
 	tokens, err := model.GetTokenKeysByIds(tokenBatch.Ids, userId)
 	if err != nil {
 		common.ApiError(c, err)

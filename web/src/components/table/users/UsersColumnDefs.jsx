@@ -238,6 +238,7 @@ const renderOperations = (
     showResetPasskeyModal,
     showResetTwoFAModal,
     showUserSubscriptionsModal,
+    showUserTokensModal,
     togglePinUser,
     t,
   },
@@ -255,6 +256,11 @@ const renderOperations = (
     },
     {
       node: 'divider',
+    },
+    {
+      node: 'item',
+      name: t('查看令牌'),
+      onClick: () => showUserTokensModal(record),
     },
     {
       node: 'item',
@@ -348,6 +354,7 @@ export const getUsersColumns = ({
   showResetPasskeyModal,
   showResetTwoFAModal,
   showUserSubscriptionsModal,
+  showUserTokensModal,
   togglePinUser,
 }) => {
   return [
@@ -421,6 +428,7 @@ export const getUsersColumns = ({
           showResetPasskeyModal,
           showResetTwoFAModal,
           showUserSubscriptionsModal,
+          showUserTokensModal,
           togglePinUser,
           t,
         }),

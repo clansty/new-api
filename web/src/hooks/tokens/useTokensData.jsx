@@ -36,8 +36,21 @@ import {
   encodeChannelConnectionString,
 } from '../../helpers/token';
 
-export const useTokensData = (openFluentNotification, openCCSwitchModal) => {
+export const useTokensData = (
+  openFluentNotification,
+  openCCSwitchModal,
+  options = {},
+) => {
   const { t } = useTranslation();
+
+  // adminUserId 不为空时切换到管理员令牌接口，操作指定用户的令牌
+  const adminUserId = options.adminUserId ?? null;
+  const tokenBasePath =
+    adminUserId != null ? `/api/user/${adminUserId}/tokens` : '/api/token';
+  const groupsPath =
+    adminUserId != null
+      ? `/api/user/${adminUserId}/groups`
+      : '/api/user/self/groups';
 
   // Basic state
   const [tokens, setTokens] = useState([]);
@@ -106,7 +119,7 @@ export const useTokensData = (openFluentNotification, openCCSwitchModal) => {
   const loadTokens = async (page = 1, size = pageSize) => {
     setLoading(true);
     setSearchMode(false);
-    const res = await API.get(`/api/token/?p=${page}&size=${size}`);
+    const res = await API.get(`${tokenBasePath}/?p=${page}&size=${size}`);
     const { success, message, data } = res.data;
     if (success) {
       syncPageData(data);
@@ -159,7 +172,7 @@ export const useTokensData = (openFluentNotification, openCCSwitchModal) => {
     const request = (async () => {
       setLoadingTokenKeys((prev) => ({ ...prev, [tokenId]: true }));
       try {
-        const fullKey = await fetchTokenKeyById(tokenId);
+        const fullKey = await fetchTokenKeyById(tokenId, tokenBasePath);
         setResolvedTokenKeys((prev) => ({ ...prev, [tokenId]: fullKey }));
         return fullKey;
       } catch (error) {
@@ -269,15 +282,15 @@ export const useTokensData = (openFluentNotification, openCCSwitchModal) => {
     let res;
     switch (action) {
       case 'delete':
-        res = await API.delete(`/api/token/${id}/`);
+        res = await API.delete(`${tokenBasePath}/${id}`);
         break;
       case 'enable':
         data.status = 1;
-        res = await API.put('/api/token/?status_only=true', data);
+        res = await API.put(`${tokenBasePath}/?status_only=true`, data);
         break;
       case 'disable':
         data.status = 2;
-        res = await API.put('/api/token/?status_only=true', data);
+        res = await API.put(`${tokenBasePath}/?status_only=true`, data);
         break;
     }
     const { success, message } = res.data;
@@ -309,7 +322,7 @@ export const useTokensData = (openFluentNotification, openCCSwitchModal) => {
     }
     setSearching(true);
     const res = await API.get(
-      `/api/token/search?keyword=${encodeURIComponent(searchKeyword)}&token=${encodeURIComponent(searchToken)}&p=${normalizedPage}&size=${normalizedSize}`,
+      `${tokenBasePath}/search?keyword=${encodeURIComponent(searchKeyword)}&token=${encodeURIComponent(searchToken)}&p=${normalizedPage}&size=${normalizedSize}`,
     );
     const { success, message, data } = res.data;
     if (success) {
@@ -386,7 +399,7 @@ export const useTokensData = (openFluentNotification, openCCSwitchModal) => {
     setLoading(true);
     try {
       const ids = selectedKeys.map((token) => token.id);
-      const res = await API.post('/api/token/batch', { ids });
+      const res = await API.post(`${tokenBasePath}/batch`, { ids });
       if (res?.data?.success) {
         const count = res.data.data || 0;
         showSuccess(t('已删除 {{count}} 个令牌！', { count }));
@@ -414,7 +427,7 @@ export const useTokensData = (openFluentNotification, openCCSwitchModal) => {
     }
     try {
       const ids = selectedKeys.map((token) => token.id);
-      const keysMap = await fetchTokenKeysBatch(ids);
+      const keysMap = await fetchTokenKeysBatch(ids, tokenBasePath);
 
       setResolvedTokenKeys((prev) => ({ ...prev, ...keysMap }));
 
@@ -441,7 +454,7 @@ export const useTokensData = (openFluentNotification, openCCSwitchModal) => {
       .catch((reason) => {
         showError(reason);
       });
-    API.get('/api/user/self/groups')
+    API.get(groupsPath)
       .then((res) => {
         if (res.data.success && res.data.data) {
           const ratios = {};
