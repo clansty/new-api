@@ -436,6 +436,24 @@ func AdminSearchUserTokens(c *gin.Context) {
 	common.ApiSuccess(c, pageInfo)
 }
 
+func AdminGetUserToken(c *gin.Context) {
+	userId, ok := resolveTargetUserId(c)
+	if !ok {
+		return
+	}
+	tokenId, err := strconv.Atoi(c.Param("token_id"))
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	token, err := model.GetTokenByIds(tokenId, userId)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, buildMaskedTokenResponse(token))
+}
+
 func AdminAddUserToken(c *gin.Context) {
 	userId, ok := resolveTargetUserId(c)
 	if !ok {
