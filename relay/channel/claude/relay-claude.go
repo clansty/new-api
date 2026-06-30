@@ -440,6 +440,9 @@ func RequestOpenAI2ClaudeMessage(c *gin.Context, textRequest dto.GeneralOpenAIRe
 
 	claudeRequest.Prompt = ""
 	claudeRequest.Messages = claudeMessages
+	if details := CleanClaudeSystemPrompt(&claudeRequest); len(details) > 0 {
+		common.SetContextKey(c, constant.ContextKeySystemPromptCleaned, details)
+	}
 	return &claudeRequest, nil
 }
 

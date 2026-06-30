@@ -11,6 +11,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
+	"github.com/QuantumNous/new-api/relay/channel/claude"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relay/helper"
 	"github.com/QuantumNous/new-api/service"
@@ -129,6 +130,13 @@ func ClaudeHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *typ
 		}
 	}
 
+	// 清洗 claude-* 系统提示词中的同形撇号与日期斜杠格式（直通模式下请求体走原始字节，在下方单独处理）
+	if !relaycommon.ShouldPassThroughRequest(info) {
+		if details := claude.CleanClaudeSystemPrompt(request); len(details) > 0 {
+			common.SetContextKey(c, constant.ContextKeySystemPromptCleaned, details)
+		}
+	}
+
 	if !relaycommon.ShouldPassThroughRequest(info) &&
 		isClaudeDirectResponsesChannel(info.ChannelType) &&
 		service.ShouldChatCompletionsUseResponsesGlobal(info.ChannelId, info.ChannelType, info.OriginModelName) {
@@ -147,7 +155,16 @@ func ClaudeHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *typ
 		if err != nil {
 			return types.NewErrorWithStatusCode(err, types.ErrorCodeReadRequestBodyFailed, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
 		}
-		requestBody = body
+		// 直通模式发送的是原始字节，需在字节层清洗 system 字段以确保传出请求被修正
+		rawBody, err := io.ReadAll(body)
+		if err != nil {
+			return types.NewErrorWithStatusCode(err, types.ErrorCodeReadRequestBodyFailed, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
+		}
+		cleanedBody, details := claude.CleanClaudeSystemPromptBody(rawBody)
+		if len(details) > 0 {
+			common.SetContextKey(c, constant.ContextKeySystemPromptCleaned, details)
+		}
+		requestBody = bytes.NewReader(cleanedBody)
 	} else {
 		convertedRequest, err := adaptor.ConvertClaudeRequest(c, info, request)
 		if err != nil {

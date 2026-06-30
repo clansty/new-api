@@ -664,6 +664,33 @@ export const useLogsData = () => {
           value: other.request_path,
         });
       }
+      if (
+        Array.isArray(other?.system_prompt_clean) &&
+        other.system_prompt_clean.length > 0
+      ) {
+        const cleanTypeLabel = (type) => {
+          if (type === 'apostrophe') return t('撇号变体');
+          if (type === 'date_format') return t('日期格式');
+          return type;
+        };
+        expandDataLocal.push({
+          key: t('系统提示词清洗'),
+          value: (
+            <div
+              style={{
+                maxWidth: 600,
+                whiteSpace: 'pre-line',
+                wordBreak: 'break-word',
+                lineHeight: 1.6,
+              }}
+            >
+              {other.system_prompt_clean
+                .map((d) => `${cleanTypeLabel(d.type)}: ${d.from} → ${d.to}`)
+                .join('\n')}
+            </div>
+          ),
+        });
+      }
       if (isAdminUser && other?.stream_status) {
         const ss = other.stream_status;
         const isOk = ss.status === 'ok';

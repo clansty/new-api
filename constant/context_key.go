@@ -57,6 +57,9 @@ const (
 
 	ContextKeySystemPromptOverride ContextKey = "system_prompt_override"
 
+	// ContextKeySystemPromptCleaned 存放针对 claude-* 系统提示词的清洗详情（[]dto.SystemPromptCleanDetail），用于写入消费日志
+	ContextKeySystemPromptCleaned ContextKey = "system_prompt_cleaned"
+
 	// ContextKeyFileSourcesToCleanup stores file sources that need cleanup when request ends
 	ContextKeyFileSourcesToCleanup ContextKey = "file_sources_to_cleanup"
 

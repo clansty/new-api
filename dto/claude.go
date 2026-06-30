@@ -485,6 +485,19 @@ func (c *ClaudeRequest) ParseSystem() []ClaudeMediaMessage {
 	return mediaContent
 }
 
+// 系统提示词清洗的两种构造：同形撇号替换、日期斜杠格式替换
+const (
+	SystemPromptCleanApostrophe = "apostrophe"
+	SystemPromptCleanDateFormat = "date_format"
+)
+
+// SystemPromptCleanDetail 会被序列化进日志 other 字段，前端据此渲染清洗详情，故字段需保持稳定
+type SystemPromptCleanDetail struct {
+	Type string `json:"type"`
+	From string `json:"from"`
+	To   string `json:"to"`
+}
+
 type ClaudeErrorWithStatusCode struct {
 	Error      types.ClaudeError `json:"error"`
 	StatusCode int               `json:"status_code"`
