@@ -130,9 +130,9 @@ func ClaudeHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *typ
 		}
 	}
 
-	// 清洗 claude-* 系统提示词中的同形撇号与日期斜杠格式（直通模式下请求体走原始字节，在下方单独处理）
+	// 清洗 claude-* 系统提示词与首条用户消息中被篡改的同形撇号与日期斜杠格式（直通模式下请求体走原始字节，在下方单独处理）
 	if !relaycommon.ShouldPassThroughRequest(info) {
-		if details := claude.CleanClaudeSystemPrompt(request); len(details) > 0 {
+		if details := claude.CleanClaudeRequest(request); len(details) > 0 {
 			common.SetContextKey(c, constant.ContextKeySystemPromptCleaned, details)
 		}
 	}
@@ -160,7 +160,7 @@ func ClaudeHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *typ
 		if err != nil {
 			return types.NewErrorWithStatusCode(err, types.ErrorCodeReadRequestBodyFailed, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
 		}
-		cleanedBody, details := claude.CleanClaudeSystemPromptBody(rawBody)
+		cleanedBody, details := claude.CleanClaudeRequestBody(rawBody)
 		if len(details) > 0 {
 			common.SetContextKey(c, constant.ContextKeySystemPromptCleaned, details)
 		}
