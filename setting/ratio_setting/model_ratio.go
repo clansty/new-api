@@ -753,3 +753,72 @@ func GetModelRatioOrPrice(model string) (float64, bool, bool) { // price or rati
 	}
 	return 37.5, false, false
 }
+
+// buildCoveredModelSet 根据渠道声明的原始模型名构建"已覆盖"的定价 key 集合。
+// 除原始名外，还加入 FormatMatchingModelName 归一化后的名称（如 gpt-4-gizmo-* 等通配 key），
+// 以及 compact 后缀对应的通配 key，从而与计费查询的匹配规则保持一致。
+func buildCoveredModelSet(declaredModels []string) map[string]bool {
+	covered := make(map[string]bool, len(declaredModels)*2)
+	for _, name := range declaredModels {
+		if name == "" {
+			continue
+		}
+		covered[name] = true
+		covered[FormatMatchingModelName(name)] = true
+		if strings.HasSuffix(name, CompactModelSuffix) {
+			covered[CompactWildcardModelKey] = true
+		}
+	}
+	return covered
+}
+
+// FilterUncoveredModels 计算删除"未被任何渠道覆盖的模型"后的各价格/倍率配置。
+// declaredModels 为渠道声明的原始模型名列表（含禁用渠道）。
+// 返回 changed（optionKey -> 过滤后 JSON，仅含发生删除的项）、被删除的条目总数 removed、
+// 以及被删除的模型名列表 removedModels（跨配置项去重）。
+func FilterUncoveredModels(declaredModels []string) (changed map[string]string, removed int, removedModels []string) {
+	covered := buildCoveredModelSet(declaredModels)
+	changed = make(map[string]string)
+	removedSet := make(map[string]bool)
+
+	configs := []struct {
+		key string
+		m   map[string]float64
+	}{
+		{"ModelPrice", modelPriceMap.ReadAll()},
+		{"ModelRatio", modelRatioMap.ReadAll()},
+		{"CompletionRatio", completionRatioMap.ReadAll()},
+		{"CacheRatio", cacheRatioMap.ReadAll()},
+		{"CreateCacheRatio", createCacheRatioMap.ReadAll()},
+		{"ImageRatio", imageRatioMap.ReadAll()},
+		{"AudioRatio", audioRatioMap.ReadAll()},
+		{"AudioCompletionRatio", audioCompletionRatioMap.ReadAll()},
+	}
+
+	for _, cfg := range configs {
+		filtered := make(map[string]float64, len(cfg.m))
+		localRemoved := 0
+		for name, value := range cfg.m {
+			if covered[name] {
+				filtered[name] = value
+				continue
+			}
+			localRemoved++
+			if !removedSet[name] {
+				removedSet[name] = true
+				removedModels = append(removedModels, name)
+			}
+		}
+		if localRemoved == 0 {
+			continue
+		}
+		jsonBytes, err := common.Marshal(filtered)
+		if err != nil {
+			common.SysError("error marshalling filtered ratio config " + cfg.key + ": " + err.Error())
+			continue
+		}
+		changed[cfg.key] = string(jsonBytes)
+		removed += localRemoved
+	}
+	return changed, removed, removedModels
+}

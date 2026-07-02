@@ -1,6 +1,8 @@
 package controller
 
 import (
+	"fmt"
+
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
@@ -97,5 +99,36 @@ func ResetModelRatio(c *gin.Context) {
 	c.JSON(200, gin.H{
 		"success": true,
 		"message": "重置模型倍率成功",
+	})
+}
+
+// ClearUncoveredModelPrices 清空未被任何现有渠道（含已禁用）声明的模型的价格/倍率配置
+func ClearUncoveredModelPrices(c *gin.Context) {
+	declaredModels := model.GetAllDeclaredModels()
+	changed, removed, removedModels := ratio_setting.FilterUncoveredModels(declaredModels)
+
+	if removed == 0 {
+		c.JSON(200, gin.H{
+			"success": true,
+			"message": "没有需要清理的价格配置",
+			"data":    gin.H{"removed": 0, "removed_models": []string{}},
+		})
+		return
+	}
+
+	for key, value := range changed {
+		if err := model.UpdateOption(key, value); err != nil {
+			c.JSON(200, gin.H{
+				"success": false,
+				"message": err.Error(),
+			})
+			return
+		}
+	}
+
+	c.JSON(200, gin.H{
+		"success": true,
+		"message": fmt.Sprintf("已清理 %d 条未被任何渠道覆盖的价格配置", removed),
+		"data":    gin.H{"removed": removed, "removed_models": removedModels},
 	})
 }

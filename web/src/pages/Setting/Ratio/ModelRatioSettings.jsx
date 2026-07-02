@@ -122,6 +122,23 @@ export default function ModelRatioSettings(props) {
     }
   }
 
+  async function clearUncoveredRatio() {
+    setLoading(true);
+    try {
+      let res = await API.post(`/api/option/clear_uncovered_ratio`);
+      if (res.data.success) {
+        showSuccess(res.data.message);
+        props.refresh();
+      } else {
+        showError(res.data.message);
+      }
+    } catch (error) {
+      showError(error);
+    } finally {
+      setLoading(false);
+    }
+  }
+
   useEffect(() => {
     const currentInputs = {};
     for (let key in props.options) {
@@ -333,6 +350,17 @@ export default function ModelRatioSettings(props) {
       </Form>
       <Space>
         <Button onClick={onSubmit}>{t('保存模型倍率设置')}</Button>
+        <Popconfirm
+          title={t('确定清空未覆盖的价格吗？')}
+          content={t(
+            '将删除所有未被任何现有渠道（含已禁用）声明的模型的价格与倍率配置，此操作不可逆',
+          )}
+          okType={'danger'}
+          position={'top'}
+          onConfirm={clearUncoveredRatio}
+        >
+          <Button type={'warning'}>{t('清空未覆盖的价格')}</Button>
+        </Popconfirm>
         <Popconfirm
           title={t('确定重置模型倍率吗？')}
           content={t('此修改将不可逆')}

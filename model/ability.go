@@ -52,6 +52,15 @@ func GetEnabledModels() []string {
 	return models
 }
 
+// GetAllDeclaredModels 返回所有渠道声明的模型名（去重，含被禁用渠道）。
+// 禁用渠道的 ability 行仍保留（enabled=false），故不加 enabled 过滤，
+// 以便"现有渠道"覆盖判断保守地把禁用渠道也算作覆盖。
+func GetAllDeclaredModels() []string {
+	var models []string
+	DB.Table("abilities").Distinct("model").Pluck("model", &models)
+	return models
+}
+
 func GetAllEnableAbilities() []Ability {
 	var abilities []Ability
 	DB.Find(&abilities, "enabled = ?", true)
