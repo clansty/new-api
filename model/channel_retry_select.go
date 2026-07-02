@@ -16,12 +16,14 @@ type retrySelectionCandidate struct {
 	weight    int
 }
 
-func GetRandomSatisfiedChannelExcludingFailed(group string, modelName string, failedChannelIDs map[int]struct{}) (*Channel, error) {
+// nextPriorityOnFailure 为 true 时，本优先级只要有渠道已失败，就整层跳过、直接尝试下一优先级；
+// 为 false（默认）时，在同优先级内继续选择未失败的渠道，本层全部失败后才降级。
+func GetRandomSatisfiedChannelExcludingFailed(group string, modelName string, failedChannelIDs map[int]struct{}, nextPriorityOnFailure bool) (*Channel, error) {
 	if len(failedChannelIDs) == 0 {
 		return GetRandomSatisfiedChannel(group, modelName, 0)
 	}
 	if !common.MemoryCacheEnabled {
-		return getChannelExcludingFailedDB(group, modelName, failedChannelIDs)
+		return getChannelExcludingFailedDB(group, modelName, failedChannelIDs, nextPriorityOnFailure)
 	}
 
 	channelSyncLock.RLock()
@@ -45,7 +47,7 @@ func GetRandomSatisfiedChannelExcludingFailed(group string, modelName string, fa
 		})
 	}
 
-	channelID, ok, err := selectRetryCandidateID(candidates, failedChannelIDs)
+	channelID, ok, err := selectRetryCandidateID(candidates, failedChannelIDs, nextPriorityOnFailure)
 	if err != nil || !ok {
 		return nil, err
 	}
@@ -68,7 +70,7 @@ func channelIDsForGroupModel(group string, modelName string) []int {
 	return group2model2channels[group][normalizedModel]
 }
 
-func getChannelExcludingFailedDB(group string, modelName string, failedChannelIDs map[int]struct{}) (*Channel, error) {
+func getChannelExcludingFailedDB(group string, modelName string, failedChannelIDs map[int]struct{}, nextPriorityOnFailure bool) (*Channel, error) {
 	abilities, err := retryAbilitiesForGroupModel(group, modelName)
 	if err != nil || len(abilities) == 0 {
 		return nil, err
@@ -83,7 +85,7 @@ func getChannelExcludingFailedDB(group string, modelName string, failedChannelID
 		})
 	}
 
-	channelID, ok, err := selectRetryCandidateID(candidates, failedChannelIDs)
+	channelID, ok, err := selectRetryCandidateID(candidates, failedChannelIDs, nextPriorityOnFailure)
 	if err != nil || !ok {
 		return nil, err
 	}
@@ -120,7 +122,7 @@ func abilityPriority(ability Ability) int64 {
 	return *ability.Priority
 }
 
-func selectRetryCandidateID(candidates []retrySelectionCandidate, failedChannelIDs map[int]struct{}) (int, bool, error) {
+func selectRetryCandidateID(candidates []retrySelectionCandidate, failedChannelIDs map[int]struct{}, nextPriorityOnFailure bool) (int, bool, error) {
 	if len(candidates) == 0 {
 		return 0, false, nil
 	}
@@ -128,9 +130,18 @@ func selectRetryCandidateID(candidates []retrySelectionCandidate, failedChannelI
 		return candidates[i].priority > candidates[j].priority
 	})
 
-	unfailedCandidates := highestPriorityUnfailedCandidates(candidates, failedChannelIDs)
-	if len(unfailedCandidates) > 0 {
-		id, err := weightedRetryCandidateID(unfailedCandidates)
+	var preferredCandidates []retrySelectionCandidate
+	if nextPriorityOnFailure {
+		// 优先选择"整层都未失败"的最高优先级层
+		preferredCandidates = highestFullyUnfailedTierCandidates(candidates, failedChannelIDs)
+	}
+	if len(preferredCandidates) == 0 {
+		// 同优先级模式，或下一优先级模式下已无整层未失败的层：退回到"任意未失败渠道"，
+		// 避免重试已知失败的渠道
+		preferredCandidates = highestPriorityUnfailedCandidates(candidates, failedChannelIDs)
+	}
+	if len(preferredCandidates) > 0 {
+		id, err := weightedRetryCandidateID(preferredCandidates)
 		return id, err == nil, err
 	}
 
@@ -146,6 +157,8 @@ func selectRetryCandidateID(candidates []retrySelectionCandidate, failedChannelI
 	return id, err == nil, err
 }
 
+// highestPriorityUnfailedCandidates 返回最高优先级中"仍有未失败渠道"的那一层的未失败候选。
+// 即：同优先级优先，本层被逐个耗尽后才降级到下一优先级。
 func highestPriorityUnfailedCandidates(candidates []retrySelectionCandidate, failedChannelIDs map[int]struct{}) []retrySelectionCandidate {
 	for i := 0; i < len(candidates); {
 		priority := candidates[i].priority
@@ -158,6 +171,27 @@ func highestPriorityUnfailedCandidates(candidates []retrySelectionCandidate, fai
 		}
 		if len(samePriority) > 0 {
 			return samePriority
+		}
+	}
+	return nil
+}
+
+// highestFullyUnfailedTierCandidates 返回最高优先级中"整层都未失败"的那一层的全部候选。
+// 即：本优先级只要有渠道失败过，就整层跳过、直接尝试下一优先级。
+func highestFullyUnfailedTierCandidates(candidates []retrySelectionCandidate, failedChannelIDs map[int]struct{}) []retrySelectionCandidate {
+	for i := 0; i < len(candidates); {
+		priority := candidates[i].priority
+		tier := make([]retrySelectionCandidate, 0)
+		tierHasFailure := false
+		for i < len(candidates) && candidates[i].priority == priority {
+			if _, failed := failedChannelIDs[candidates[i].channelID]; failed {
+				tierHasFailure = true
+			}
+			tier = append(tier, candidates[i])
+			i++
+		}
+		if !tierHasFailure && len(tier) > 0 {
+			return tier
 		}
 	}
 	return nil

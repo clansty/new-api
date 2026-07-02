@@ -20,6 +20,7 @@ For commercial licensing, please contact support@quantumnous.com
 import React, { useEffect, useState } from 'react';
 import { Card, Spin } from '@douyinfe/semi-ui';
 import SettingsGeneral from '../../pages/Setting/Operation/SettingsGeneral';
+import SettingsModelRetry from '../../pages/Setting/Operation/SettingsModelRetry';
 import SettingsHeaderNavModules from '../../pages/Setting/Operation/SettingsHeaderNavModules';
 import SettingsSidebarModulesAdmin from '../../pages/Setting/Operation/SettingsSidebarModulesAdmin';
 import SettingsSensitiveWords from '../../pages/Setting/Operation/SettingsSensitiveWords';
@@ -45,6 +46,7 @@ const OperationSetting = () => {
     USDExchangeRate: 0,
     RetryTimes: 0,
     'general_setting.quota_display_type': 'USD',
+    'model_retry_setting.models': '{}',
     DisplayTokenStatEnabled: false,
     DefaultCollapseSidebar: false,
     DemoSiteEnabled: false,
@@ -125,6 +127,10 @@ const OperationSetting = () => {
         {/* 通用设置 */}
         <Card style={{ marginTop: '10px' }}>
           <SettingsGeneral options={inputs} refresh={onRefresh} />
+        </Card>
+        {/* 模型级失败重试 */}
+        <Card style={{ marginTop: '10px' }}>
+          <SettingsModelRetry options={inputs} refresh={onRefresh} />
         </Card>
         {/* 顶栏模块管理 */}
         <div style={{ marginTop: '10px' }}>

@@ -188,7 +188,10 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 	relayInfo.RetryIndex = 0
 	relayInfo.LastError = nil
 
-	for ; retryParam.GetRetry() <= common.RetryTimes; retryParam.IncreaseRetry() {
+	// 该模型的有效重试次数（未单独配置则回退到全局 RetryTimes）
+	modelRetryTimes := operation_setting.GetModelRetryTimes(relayInfo.OriginModelName, common.RetryTimes)
+
+	for ; retryParam.GetRetry() <= modelRetryTimes; retryParam.IncreaseRetry() {
 		relayInfo.RetryIndex = retryParam.GetRetry()
 		channel, channelErr := getChannel(c, relayInfo, retryParam)
 		if channelErr != nil {
@@ -236,7 +239,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 
 		processChannelError(c, *types.NewChannelError(channel.Id, channel.Type, channel.Name, channel.ChannelInfo.IsMultiKey, common.GetContextKeyString(c, constant.ContextKeyChannelKey), channel.GetAutoBan()), newAPIError)
 
-		if !shouldRetryAndRecord(c, newAPIError, common.RetryTimes-retryParam.GetRetry(), retryParam, channel.Id) {
+		if !shouldRetryAndRecord(c, newAPIError, modelRetryTimes-retryParam.GetRetry(), retryParam, channel.Id) {
 			break
 		}
 	}
@@ -524,7 +527,10 @@ func RelayTask(c *gin.Context) {
 		Retry:      common.GetPointer(0),
 	}
 
-	for ; retryParam.GetRetry() <= common.RetryTimes; retryParam.IncreaseRetry() {
+	// 该模型的有效重试次数（未单独配置则回退到全局 RetryTimes）
+	modelRetryTimes := operation_setting.GetModelRetryTimes(relayInfo.OriginModelName, common.RetryTimes)
+
+	for ; retryParam.GetRetry() <= modelRetryTimes; retryParam.IncreaseRetry() {
 		var channel *model.Channel
 
 		if lockedCh, ok := relayInfo.LockedChannel.(*model.Channel); ok && lockedCh != nil {
@@ -573,7 +579,7 @@ func RelayTask(c *gin.Context) {
 				types.NewOpenAIError(taskErr.Error, types.ErrorCodeBadResponseStatusCode, taskErr.StatusCode))
 		}
 
-		if !shouldRetryTaskRelayAndRecord(c, channel.Id, taskErr, common.RetryTimes-retryParam.GetRetry(), retryParam) {
+		if !shouldRetryTaskRelayAndRecord(c, channel.Id, taskErr, modelRetryTimes-retryParam.GetRetry(), retryParam) {
 			break
 		}
 	}

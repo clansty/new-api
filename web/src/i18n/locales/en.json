@@ -1,5 +1,17 @@
 {
   "translation": {
+    "模型级失败重试": "Per-Model Retry",
+    "重试次数": "Retry Count",
+    "失败后选路策略": "Routing Strategy on Failure",
+    "同优先级优先": "Same priority first",
+    "直接下一优先级": "Next priority directly",
+    "留空使用全局": "Leave empty to use global",
+    "暂无模型级重试配置": "No per-model retry config yet",
+    "例如 gpt-4o、claude-3-5-sonnet": "e.g. gpt-4o, claude-3-5-sonnet",
+    "为特定模型单独设置失败重试次数与失败后的渠道选路策略；未在此配置的模型使用全局“失败重试次数”。": "Set a separate retry count and post-failure channel routing strategy for specific models; models not configured here use the global \"Retry Count\".",
+    "重试次数：留空则沿用全局设置，填 0 表示该模型失败后不重试。": "Retry count: leave empty to inherit the global setting; set to 0 to disable retry for this model.",
+    "同优先级优先：当前优先级渠道全部失败后才降级到下一优先级（默认）。直接下一优先级：当前优先级任一渠道失败后立即尝试下一优先级渠道。": "Same priority first: fall back to the next priority only after all channels in the current priority have failed (default). Next priority directly: try the next priority's channels immediately once any channel in the current priority fails.",
+
     " + 图片生成调用 {{symbol}}{{price}} / 1次 * {{ratioType}} {{ratio}}": " + Image generation call {{symbol}}{{price}} / 1 time * {{ratioType}} {{ratio}}",
     " + 文件搜索 {{count}}次 / 1K 次 * {{symbol}}{{price}} * {{ratioType}} {{ratio}}_one": " + File search {{count}} time / 1K times * {{symbol}}{{price}} * {{ratioType}} {{ratio}}",
     " + 文件搜索 {{count}}次 / 1K 次 * {{symbol}}{{price}} * {{ratioType}} {{ratio}}_other": " + File search {{count}} times / 1K times * {{symbol}}{{price}} * {{ratioType}} {{ratio}}",

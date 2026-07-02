@@ -8,6 +8,7 @@ import (
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting"
+	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/gin-gonic/gin"
 )
 
@@ -70,6 +71,10 @@ func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, 
 	selectGroup := param.TokenGroup
 	userGroup := common.GetContextKeyString(param.Ctx, constant.ContextKeyUserGroup)
 
+	// 解析该模型的有效重试次数与优先级选路策略（未单独配置则回退到全局）
+	effectiveRetryTimes := operation_setting.GetModelRetryTimes(param.ModelName, common.RetryTimes)
+	nextPriorityOnFailure := operation_setting.UseNextPriorityOnFailure(param.ModelName)
+
 	if param.TokenGroup == "auto" {
 		if len(setting.GetAutoGroups()) == 0 {
 			return nil, selectGroup, errors.New("auto groups is not enabled")
@@ -95,7 +100,7 @@ func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, 
 			}
 			logger.LogDebug(param.Ctx, "Auto selecting group: %s, groupRetry: %d", autoGroup, groupRetry)
 
-			channel, _ = model.GetRandomSatisfiedChannelExcludingFailed(autoGroup, param.ModelName, param.FailedChannelIDs)
+			channel, _ = model.GetRandomSatisfiedChannelExcludingFailed(autoGroup, param.ModelName, param.FailedChannelIDs, nextPriorityOnFailure)
 			if channel == nil {
 				logger.LogDebug(param.Ctx, "No available channel in group %s for model %s at groupRetry %d, trying next group", autoGroup, param.ModelName, groupRetry)
 				common.SetContextKey(param.Ctx, constant.ContextKeyAutoGroupIndex, i+1)
@@ -107,8 +112,8 @@ func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, 
 			selectGroup = autoGroup
 			logger.LogDebug(param.Ctx, "Auto selected group: %s", autoGroup)
 
-			if crossGroupRetry && groupRetry >= common.RetryTimes {
-				logger.LogDebug(param.Ctx, "Current group %s retries exhausted (groupRetry=%d >= RetryTimes=%d), preparing switch to next group for next retry", autoGroup, groupRetry, common.RetryTimes)
+			if crossGroupRetry && groupRetry >= effectiveRetryTimes {
+				logger.LogDebug(param.Ctx, "Current group %s retries exhausted (groupRetry=%d >= RetryTimes=%d), preparing switch to next group for next retry", autoGroup, groupRetry, effectiveRetryTimes)
 				common.SetContextKey(param.Ctx, constant.ContextKeyAutoGroupIndex, i+1)
 				param.SetRetry(0)
 				param.ResetRetryNextTry()
@@ -118,7 +123,7 @@ func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, 
 			break
 		}
 	} else {
-		channel, err = model.GetRandomSatisfiedChannelExcludingFailed(param.TokenGroup, param.ModelName, param.FailedChannelIDs)
+		channel, err = model.GetRandomSatisfiedChannelExcludingFailed(param.TokenGroup, param.ModelName, param.FailedChannelIDs, nextPriorityOnFailure)
 		if err != nil {
 			return nil, param.TokenGroup, err
 		}
