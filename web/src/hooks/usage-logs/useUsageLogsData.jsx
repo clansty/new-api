@@ -39,6 +39,7 @@ import {
 import { ITEMS_PER_PAGE } from '../../constants';
 import { AUTO_REFRESH_INTERVAL_OPTIONS } from '../../constants/console.constants';
 import { useTableCompactMode } from '../common/useTableCompactMode';
+import { useLocalStorageState } from '../common/useLocalStorageState';
 import ParamOverrideEntry from '../../components/table/usage-logs/components/ParamOverrideEntry';
 
 const getDefaultQueryDateRange = () => {
@@ -136,8 +137,12 @@ export const useLogsData = () => {
   const [logType, setLogType] = useState(0);
   const [expandedRowKeys, setExpandedRowKeys] = useState([]);
   const [mobileExpandedRowKeys, setMobileExpandedRowKeys] = useState([]);
-  const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(false);
-  const [autoRefreshInterval, setAutoRefreshInterval] = useState(
+  const [autoRefreshEnabled, setAutoRefreshEnabled] = useLocalStorageState(
+    'logs-auto-refresh-enabled',
+    false,
+  );
+  const [autoRefreshInterval, setAutoRefreshInterval] = useLocalStorageState(
+    'logs-auto-refresh-interval',
     AUTO_REFRESH_INTERVAL_OPTIONS[2],
   );
 
