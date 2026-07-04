@@ -920,6 +920,7 @@
     "缓存创建价格合计：5m {{symbol}}{{five}} + 1h {{symbol}}{{one}} = {{symbol}}{{total}} / 1M tokens": "快取建立價格合計：5m {{symbol}}{{five}} + 1h {{symbol}}{{one}} = {{symbol}}{{total}} / 1M tokens",
     "缓存读": "快取讀",
     "缓存读 {{price}} / 1M tokens": "快取讀 {{price}} / 1M tokens",
+    "缓存命中率": "快取命中率",
     "缓存读取": "",
     "缓存读取：{{tokens}} / 1M * 模型倍率 {{modelRatio}} * 缓存倍率 {{cacheRatio}} * {{ratioType}} {{ratio}} = {{amount}}": "快取讀取：{{tokens}} / 1M * 模型倍率 {{modelRatio}} * 快取倍率 {{cacheRatio}} * {{ratioType}} {{ratio}} = {{amount}}",
     "缓存读取倍率": "",

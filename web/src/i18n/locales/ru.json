@@ -926,6 +926,7 @@
     "缓存创建价格合计：5m {{symbol}}{{five}} + 1h {{symbol}}{{one}} = {{symbol}}{{total}} / 1M tokens": "Итого цена создания кэша: 5m {{symbol}}{{five}} + 1h {{symbol}}{{one}} = {{symbol}}{{total}} / 1M токенов",
     "缓存读": "Чтение кэша",
     "缓存读 {{price}} / 1M tokens": "Чтение кеша {{price}} / 1M tokens",
+    "缓存命中率": "Доля попаданий в кэш",
     "缓存读取": "",
     "缓存读取：{{tokens}} / 1M * 模型倍率 {{modelRatio}} * 缓存倍率 {{cacheRatio}} * {{ratioType}} {{ratio}} = {{amount}}": "Чтение кэша: {{tokens}} / 1M * коэффициент модели {{modelRatio}} * коэффициент кэша {{cacheRatio}} * {{ratioType}} {{ratio}} = {{amount}}",
     "缓存读取倍率": "",

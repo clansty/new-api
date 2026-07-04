@@ -23,16 +23,25 @@ import { renderQuota } from '../../../helpers';
 import CompactModeToggle from '../../common/ui/CompactModeToggle';
 import { useMinimumLoadingTime } from '../../../hooks/common/useMinimumLoadingTime';
 
+const statTagStyle = {
+  fontWeight: 500,
+  boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)',
+  padding: 13,
+};
+
 const LogsActions = ({
   stat,
   loadingStat,
   showStat,
   compactMode,
   setCompactMode,
+  isAdminUser,
   t,
 }) => {
   const showSkeleton = useMinimumLoadingTime(loadingStat);
   const needSkeleton = !showStat || showSkeleton;
+  const cacheHitRate = Number(stat.cache_hit_rate);
+  const showCacheHitRate = isAdminUser && Number.isFinite(cacheHitRate);
 
   const placeholder = (
     <Space>
@@ -45,41 +54,28 @@ const LogsActions = ({
   return (
     <div className='flex flex-col md:flex-row justify-between items-start md:items-center gap-2 w-full'>
       <Skeleton loading={needSkeleton} active placeholder={placeholder}>
-        <Space>
-          <Tag
-            color='blue'
-            style={{
-              fontWeight: 500,
-              boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)',
-              padding: 13,
-            }}
-            className='!rounded-lg'
-          >
+        <Space wrap>
+          <Tag color='blue' style={statTagStyle} className='!rounded-lg'>
             {t('消耗额度')}: {renderQuota(stat.quota)}
           </Tag>
-          <Tag
-            color='pink'
-            style={{
-              fontWeight: 500,
-              boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)',
-              padding: 13,
-            }}
-            className='!rounded-lg'
-          >
+          <Tag color='pink' style={statTagStyle} className='!rounded-lg'>
             RPM: {stat.rpm}
           </Tag>
           <Tag
             color='white'
             style={{
+              ...statTagStyle,
               border: 'none',
-              boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)',
-              fontWeight: 500,
-              padding: 13,
             }}
             className='!rounded-lg'
           >
             TPM: {stat.tpm}
           </Tag>
+          {showCacheHitRate && (
+            <Tag color='green' style={statTagStyle} className='!rounded-lg'>
+              {t('缓存命中率')}: {cacheHitRate.toFixed(2)}%
+            </Tag>
+          )}
         </Space>
       </Skeleton>
 

@@ -959,6 +959,7 @@
     "缓存创建价格合计：5m {{symbol}}{{five}} + 1h {{symbol}}{{one}} = {{symbol}}{{total}} / 1M tokens": "Cache creation price total: 5m {{symbol}}{{five}} + 1h {{symbol}}{{one}} = {{symbol}}{{total}} / 1M tokens",
     "缓存读": "Cache Read",
     "缓存读 {{price}} / 1M tokens": "Cache read {{price}} / 1M tokens",
+    "缓存命中率": "Cache Hit Rate",
     "缓存读取": "Cache read",
     "缓存读取 Token (cr)": "Cache Read Tokens (cr)",
     "缓存读取：{{tokens}} / 1M * 模型倍率 {{modelRatio}} * 缓存倍率 {{cacheRatio}} * {{ratioType}} {{ratio}} = {{amount}}": "Cache read: {{tokens}} / 1M * model ratio {{modelRatio}} * cache ratio {{cacheRatio}} * {{ratioType}} {{ratio}} = {{amount}}",
