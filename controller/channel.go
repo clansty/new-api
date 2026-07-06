@@ -857,9 +857,10 @@ func EditTagChannels(c *gin.Context) {
 }
 
 type ChannelBatch struct {
-	Ids       []int   `json:"ids"`
-	Tag       *string `json:"tag"`
-	Collapsed *bool   `json:"collapsed"`
+	Ids         []int   `json:"ids"`
+	Tag         *string `json:"tag"`
+	Collapsed   *bool   `json:"collapsed"`
+	AutoRecover *bool   `json:"auto_recover"`
 }
 
 func DeleteChannelBatch(c *gin.Context) {
@@ -896,6 +897,29 @@ func BatchSetChannelCollapse(c *gin.Context) {
 		return
 	}
 	err = model.BatchSetChannelCollapse(channelBatch.Ids, *channelBatch.Collapsed)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	model.InitChannelCache()
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "",
+		"data":    len(channelBatch.Ids),
+	})
+}
+
+func BatchSetChannelAutoRecover(c *gin.Context) {
+	channelBatch := ChannelBatch{}
+	err := c.ShouldBindJSON(&channelBatch)
+	if err != nil || len(channelBatch.Ids) == 0 || channelBatch.AutoRecover == nil {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": "参数错误",
+		})
+		return
+	}
+	err = model.BatchSetChannelAutoRecover(channelBatch.Ids, *channelBatch.AutoRecover)
 	if err != nil {
 		common.ApiError(c, err)
 		return

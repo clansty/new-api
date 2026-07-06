@@ -871,6 +871,16 @@ func TestChannel(c *gin.Context) {
 var testAllChannelsLock sync.Mutex
 var testAllChannelsRunning bool = false
 
+func shouldTestChannelAutomatically(channel *model.Channel) bool {
+	if channel.Status == common.ChannelStatusManuallyDisabled {
+		return false
+	}
+	if channel.Status == common.ChannelStatusAutoDisabled {
+		return channel.GetAutoRecover()
+	}
+	return true
+}
+
 func testAllChannels(notify bool) error {
 
 	testAllChannelsLock.Lock()
@@ -902,7 +912,7 @@ func testAllChannels(notify bool) error {
 				common.SysLog("testAllChannels: shutdown detected, aborting remaining channels")
 				return
 			}
-			if channel.Status == common.ChannelStatusManuallyDisabled {
+			if !shouldTestChannelAutomatically(channel) {
 				continue
 			}
 			isChannelEnabled := channel.Status == common.ChannelStatusEnabled

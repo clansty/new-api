@@ -4391,6 +4391,15 @@
     "开启后 /v1/responses 直接透传到 OpenAI 上游；关闭后会转换为 Anthropic Messages 并请求 Anthropic 上游": "Khi bật, /v1/responses được chuyển tiếp trực tiếp tới upstream OpenAI; khi tắt, yêu cầu sẽ được chuyển sang Anthropic Messages và gửi tới upstream Anthropic",
     "请输入 OpenAI 上游地址！": "Vui lòng nhập địa chỉ upstream OpenAI!",
     "请输入 Anthropic 上游地址！": "Vui lòng nhập địa chỉ upstream Anthropic!",
-    "X 也可以小于 1，当折扣用。想做\"只给输出加价\"或\"额外加固定费用\"，请直接写完整计费公式。": ""
+    "X 也可以小于 1，当折扣用。想做\"只给输出加价\"或\"额外加固定费用\"，请直接写完整计费公式。": "",
+    "批量编辑": "Chỉnh sửa hàng loạt",
+    "批量编辑渠道": "Chỉnh sửa kênh hàng loạt",
+    "留空则不修改标签": "Để trống để không đổi nhãn",
+    "同步禁用后自动检测": "Đồng bộ tự kiểm tra sau khi bị tắt",
+    "禁用后自动检测": "Tự kiểm tra sau khi bị tắt",
+    "开启后，自动禁用的渠道会纳入定时检测，测试成功后自动启用": "Khi bật, các kênh bị tự động tắt sẽ được đưa vào kiểm tra định kỳ và tự bật lại sau khi kiểm tra thành công.",
+    "已批量更新 ${count} 个渠道！": "Đã cập nhật hàng loạt ${count} kênh!",
+    "请先选择要批量编辑的渠道！": "Vui lòng chọn kênh cần chỉnh sửa hàng loạt trước!",
+    "请至少选择一个要批量修改的项目！": "Vui lòng chọn ít nhất một mục để cập nhật hàng loạt!"
   }
 }

@@ -6,6 +6,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/dto"
+	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/types"
@@ -68,4 +69,30 @@ func TestBuildTestLogOtherInjectsTieredInfo(t *testing.T) {
 	require.Equal(t, "tiered_expr", other["billing_mode"])
 	require.Equal(t, "base", other["matched_tier"])
 	require.NotEmpty(t, other["expr_b64"])
+}
+
+func TestShouldTestChannelAutomatically_whenAutoDisabledRecoveryDisabled(t *testing.T) {
+	channel := &model.Channel{
+		Status:      common.ChannelStatusAutoDisabled,
+		AutoRecover: common.GetPointer(0),
+	}
+
+	require.False(t, shouldTestChannelAutomatically(channel))
+}
+
+func TestShouldTestChannelAutomatically_whenAutoDisabledRecoveryUnset(t *testing.T) {
+	channel := &model.Channel{
+		Status: common.ChannelStatusAutoDisabled,
+	}
+
+	require.True(t, shouldTestChannelAutomatically(channel))
+}
+
+func TestShouldTestChannelAutomatically_whenManuallyDisabled(t *testing.T) {
+	channel := &model.Channel{
+		Status:      common.ChannelStatusManuallyDisabled,
+		AutoRecover: common.GetPointer(1),
+	}
+
+	require.False(t, shouldTestChannelAutomatically(channel))
 }

@@ -42,6 +42,7 @@ type Channel struct {
 	StatusCodeMapping *string `json:"status_code_mapping" gorm:"type:varchar(1024);default:''"`
 	Priority          *int64  `json:"priority" gorm:"bigint;default:0"`
 	AutoBan           *int    `json:"auto_ban" gorm:"default:1"`
+	AutoRecover       *int    `json:"auto_recover" gorm:"default:1"`
 	OtherInfo         string  `json:"other_info"`
 	Tag               *string `json:"tag" gorm:"index"`
 	Collapsed         bool    `json:"collapsed" gorm:"default:false;index"`
@@ -249,6 +250,13 @@ func (channel *Channel) GetAutoBan() bool {
 		return false
 	}
 	return *channel.AutoBan == 1
+}
+
+func (channel *Channel) GetAutoRecover() bool {
+	if channel.AutoRecover == nil {
+		return true
+	}
+	return *channel.AutoRecover == 1
 }
 
 func (channel *Channel) Save() error {
@@ -952,6 +960,17 @@ func BatchSetChannelCollapse(ids []int, collapsed bool) error {
 		return nil
 	}
 	return DB.Model(&Channel{}).Where("id in (?)", ids).Update("collapsed", collapsed).Error
+}
+
+func BatchSetChannelAutoRecover(ids []int, autoRecover bool) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	autoRecoverValue := 0
+	if autoRecover {
+		autoRecoverValue = 1
+	}
+	return DB.Model(&Channel{}).Where("id in (?)", ids).Update("auto_recover", autoRecoverValue).Error
 }
 
 // CountAllChannels returns total channels in DB

@@ -11,7 +11,6 @@
     "为特定模型单独设置失败重试次数与失败后的渠道选路策略；未在此配置的模型使用全局“失败重试次数”。": "Set a separate retry count and post-failure channel routing strategy for specific models; models not configured here use the global \"Retry Count\".",
     "重试次数：留空则沿用全局设置，填 0 表示该模型失败后不重试。": "Retry count: leave empty to inherit the global setting; set to 0 to disable retry for this model.",
     "同优先级优先：当前优先级渠道全部失败后才降级到下一优先级（默认）。直接下一优先级：当前优先级任一渠道失败后立即尝试下一优先级渠道。": "Same priority first: fall back to the next priority only after all channels in the current priority have failed (default). Next priority directly: try the next priority's channels immediately once any channel in the current priority fails.",
-
     " + 图片生成调用 {{symbol}}{{price}} / 1次 * {{ratioType}} {{ratio}}": " + Image generation call {{symbol}}{{price}} / 1 time * {{ratioType}} {{ratio}}",
     " + 文件搜索 {{count}}次 / 1K 次 * {{symbol}}{{price}} * {{ratioType}} {{ratio}}_one": " + File search {{count}} time / 1K times * {{symbol}}{{price}} * {{ratioType}} {{ratio}}",
     " + 文件搜索 {{count}}次 / 1K 次 * {{symbol}}{{price}} * {{ratioType}} {{ratio}}_other": " + File search {{count}} times / 1K times * {{symbol}}{{price}} * {{ratioType}} {{ratio}}",
@@ -4020,6 +4019,15 @@
     "其他令牌": "Other tokens",
     "其他分组": "Other groups",
     "其他模型": "Other models",
-    "其他渠道": "Other channels"
+    "其他渠道": "Other channels",
+    "批量编辑": "Batch Edit",
+    "批量编辑渠道": "Batch Edit Channels",
+    "留空则不修改标签": "Leave blank to keep labels unchanged",
+    "同步禁用后自动检测": "Sync auto-check after disabled",
+    "禁用后自动检测": "Auto-check after disabled",
+    "开启后，自动禁用的渠道会纳入定时检测，测试成功后自动启用": "When enabled, auto-disabled channels are included in scheduled checks and re-enabled after a successful test.",
+    "已批量更新 ${count} 个渠道！": "Batch updated ${count} channels!",
+    "请先选择要批量编辑的渠道！": "Please select channels to batch edit first!",
+    "请至少选择一个要批量修改的项目！": "Please select at least one item to batch update!"
   }
 }

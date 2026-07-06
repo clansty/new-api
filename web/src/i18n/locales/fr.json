@@ -3863,6 +3863,15 @@
     "开启后 /v1/responses 直接透传到 OpenAI 上游；关闭后会转换为 Anthropic Messages 并请求 Anthropic 上游": "Si activé, /v1/responses est transmis directement à l'amont OpenAI ; sinon il est converti en Anthropic Messages et envoyé à l'amont Anthropic",
     "请输入 OpenAI 上游地址！": "Veuillez saisir l'adresse amont OpenAI !",
     "请输入 Anthropic 上游地址！": "Veuillez saisir l'adresse amont Anthropic !",
-    "X 也可以小于 1，当折扣用。想做\"只给输出加价\"或\"额外加固定费用\"，请直接写完整计费公式。": ""
+    "X 也可以小于 1，当折扣用。想做\"只给输出加价\"或\"额外加固定费用\"，请直接写完整计费公式。": "",
+    "批量编辑": "Modification groupée",
+    "批量编辑渠道": "Modifier les canaux par lot",
+    "留空则不修改标签": "Laisser vide pour ne pas modifier les libellés",
+    "同步禁用后自动检测": "Synchroniser la détection après désactivation",
+    "禁用后自动检测": "Détection automatique après désactivation",
+    "开启后，自动禁用的渠道会纳入定时检测，测试成功后自动启用": "Une fois activé, les canaux désactivés automatiquement sont inclus dans les contrôles planifiés et réactivés après un test réussi.",
+    "已批量更新 ${count} 个渠道！": "${count} canaux mis à jour par lot !",
+    "请先选择要批量编辑的渠道！": "Veuillez d’abord sélectionner les canaux à modifier par lot !",
+    "请至少选择一个要批量修改的项目！": "Veuillez sélectionner au moins un élément à modifier par lot !"
   }
 }

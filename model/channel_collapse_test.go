@@ -58,3 +58,47 @@ func TestBatchSetChannelCollapse_whenSettingFalse(t *testing.T) {
 	require.NoError(t, DB.First(&updated, "id = ?", channel.Id).Error)
 	require.False(t, updated.Collapsed)
 }
+
+func TestChannelGetAutoRecover_whenUnset(t *testing.T) {
+	channel := Channel{}
+
+	require.True(t, channel.GetAutoRecover())
+}
+
+func TestBatchSetChannelAutoRecover_whenSettingFalse(t *testing.T) {
+	truncateTables(t)
+
+	channel := Channel{
+		Name:        "auto-recover-channel",
+		Key:         "test-key",
+		Status:      common.ChannelStatusAutoDisabled,
+		AutoRecover: common.GetPointer(1),
+	}
+	require.NoError(t, DB.Create(&channel).Error)
+
+	err := BatchSetChannelAutoRecover([]int{channel.Id}, false)
+
+	require.NoError(t, err)
+	var updated Channel
+	require.NoError(t, DB.First(&updated, "id = ?", channel.Id).Error)
+	require.False(t, updated.GetAutoRecover())
+}
+
+func TestBatchSetChannelAutoRecover_whenSettingTrue(t *testing.T) {
+	truncateTables(t)
+
+	channel := Channel{
+		Name:        "auto-recover-disabled-channel",
+		Key:         "test-key",
+		Status:      common.ChannelStatusAutoDisabled,
+		AutoRecover: common.GetPointer(0),
+	}
+	require.NoError(t, DB.Create(&channel).Error)
+
+	err := BatchSetChannelAutoRecover([]int{channel.Id}, true)
+
+	require.NoError(t, err)
+	var updated Channel
+	require.NoError(t, DB.First(&updated, "id = ?", channel.Id).Error)
+	require.True(t, updated.GetAutoRecover())
+}

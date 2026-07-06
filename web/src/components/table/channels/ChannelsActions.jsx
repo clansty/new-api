@@ -88,7 +88,7 @@ const ChannelsActions = ({
             onClick={() => setShowBatchSetTag(true)}
             className='w-full md:w-auto'
           >
-            {t('批量设置标签')}
+            {t('批量编辑')}
           </Button>
 
           <Dropdown

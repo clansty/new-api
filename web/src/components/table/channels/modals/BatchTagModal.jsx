@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import React from 'react';
-import { Modal, Input, Typography } from '@douyinfe/semi-ui';
+import { Checkbox, Input, Modal, Switch, Typography } from '@douyinfe/semi-ui';
 
 const BatchTagModal = ({
   showBatchSetTag,
@@ -26,12 +26,16 @@ const BatchTagModal = ({
   batchSetChannelTag,
   batchSetTagValue,
   setBatchSetTagValue,
+  batchSetAutoRecoverEnabled,
+  setBatchSetAutoRecoverEnabled,
+  batchSetAutoRecoverValue,
+  setBatchSetAutoRecoverValue,
   selectedChannels,
   t,
 }) => {
   return (
     <Modal
-      title={t('批量设置标签')}
+      title={t('批量编辑渠道')}
       visible={showBatchSetTag}
       onOk={batchSetChannelTag}
       onCancel={() => setShowBatchSetTag(false)}
@@ -44,10 +48,33 @@ const BatchTagModal = ({
         <Typography.Text>{t('请输入要设置的标签名称')}</Typography.Text>
       </div>
       <Input
-        placeholder={t('请输入标签名称')}
+        placeholder={t('留空则不修改标签')}
         value={batchSetTagValue}
         onChange={(v) => setBatchSetTagValue(v)}
       />
+      <div className='mt-4 flex items-center justify-between gap-3'>
+        <Checkbox
+          checked={batchSetAutoRecoverEnabled}
+          onChange={(event) =>
+            setBatchSetAutoRecoverEnabled(event.target.checked)
+          }
+        >
+          {t('同步禁用后自动检测')}
+        </Checkbox>
+        <Switch
+          size='small'
+          checked={batchSetAutoRecoverValue}
+          disabled={!batchSetAutoRecoverEnabled}
+          checkedText={t('开')}
+          uncheckedText={t('关')}
+          onChange={(value) => setBatchSetAutoRecoverValue(value)}
+        />
+      </div>
+      <div className='mt-2'>
+        <Typography.Text type='secondary'>
+          {t('开启后，自动禁用的渠道会纳入定时检测，测试成功后自动启用')}
+        </Typography.Text>
+      </div>
       <div className='mt-4'>
         <Typography.Text type='secondary'>
           {t('已选择 ${count} 个渠道').replace(

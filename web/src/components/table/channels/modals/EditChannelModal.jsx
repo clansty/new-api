@@ -186,6 +186,7 @@ const EditChannelModal = (props) => {
     status_code_mapping: '',
     models: [],
     auto_ban: 1,
+    auto_recover: true,
     test_model: '',
     groups: ['default'],
     priority: 0,
@@ -229,6 +230,7 @@ const EditChannelModal = (props) => {
   const [multiToSingle, setMultiToSingle] = useState(false);
   const [multiKeyMode, setMultiKeyMode] = useState('random');
   const [autoBan, setAutoBan] = useState(true);
+  const [autoRecover, setAutoRecover] = useState(true);
   const [inputs, setInputs] = useState(originInputs);
   const [originModelOptions, setOriginModelOptions] = useState([]);
   const [modelOptions, setModelOptions] = useState([]);
@@ -985,15 +987,23 @@ const EditChannelModal = (props) => {
         data.base_url = 'https://ark.cn-beijing.volces.com';
       }
 
-      initialBaseUrlRef.current = data.base_url || '';
-      setInputs(data);
-      if (formApiRef.current) {
-        formApiRef.current.setValues(data);
-      }
       if (data.auto_ban === 0) {
         setAutoBan(false);
       } else {
         setAutoBan(true);
+      }
+      if (data.auto_recover === 0) {
+        data.auto_recover = false;
+        setAutoRecover(false);
+      } else {
+        data.auto_recover = true;
+        setAutoRecover(true);
+      }
+
+      initialBaseUrlRef.current = data.base_url || '';
+      setInputs(data);
+      if (formApiRef.current) {
+        formApiRef.current.setValues(data);
       }
       setBasicModels(getChannelModels(data.type));
       // 同步更新channelSettings状态显示
@@ -1910,6 +1920,7 @@ const EditChannelModal = (props) => {
 
     let res;
     localInputs.auto_ban = localInputs.auto_ban ? 1 : 0;
+    localInputs.auto_recover = localInputs.auto_recover ? 1 : 0;
     localInputs.models = localInputs.models.join(',');
     localInputs.group = (localInputs.groups || []).join(',');
 
@@ -3766,6 +3777,18 @@ const EditChannelModal = (props) => {
                       '仅当自动禁用开启时有效，关闭后不会自动禁用该渠道',
                     )}
                     initValue={autoBan}
+                  />
+
+                  <Form.Switch
+                    field='auto_recover'
+                    label={t('禁用后自动检测')}
+                    checkedText={t('开')}
+                    uncheckedText={t('关')}
+                    onChange={(value) => setAutoRecover(value)}
+                    extraText={t(
+                      '开启后，自动禁用的渠道会纳入定时检测，测试成功后自动启用',
+                    )}
+                    initValue={autoRecover}
                   />
 
                   {/* Test Model - Core Config */}

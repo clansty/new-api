@@ -65,6 +65,10 @@ export const useChannelsData = () => {
   const [enableTagMode, setEnableTagMode] = useState(false);
   const [showBatchSetTag, setShowBatchSetTag] = useState(false);
   const [batchSetTagValue, setBatchSetTagValue] = useState('');
+  const [batchSetAutoRecoverEnabled, setBatchSetAutoRecoverEnabled] =
+    useState(false);
+  const [batchSetAutoRecoverValue, setBatchSetAutoRecoverValue] =
+    useState(true);
   const [compactMode, setCompactMode] = useTableCompactMode('channels');
 
   // Column visibility states
@@ -655,26 +659,46 @@ export const useChannelsData = () => {
   const batchSetChannelTag = async () => {
     const ids = getSelectedChannelIds();
     if (ids.length === 0) {
-      showError(t('请先选择要设置标签的渠道！'));
+      showError(t('请先选择要批量编辑的渠道！'));
       return;
     }
-    if (batchSetTagValue === '') {
-      showError(t('标签不能为空！'));
+    const shouldSetTag = batchSetTagValue !== '';
+    const shouldSetAutoRecover = batchSetAutoRecoverEnabled;
+    if (!shouldSetTag && !shouldSetAutoRecover) {
+      showError(t('请至少选择一个要批量修改的项目！'));
       return;
     }
-    const res = await API.post('/api/channel/batch/tag', {
-      ids: ids,
-      tag: batchSetTagValue === '' ? null : batchSetTagValue,
-    });
-    if (res.data.success) {
-      showSuccess(
-        t('已为 ${count} 个渠道设置标签！').replace('${count}', res.data.data),
-      );
-      await refresh();
-      setShowBatchSetTag(false);
-    } else {
-      showError(res.data.message);
+
+    if (shouldSetTag) {
+      const res = await API.post('/api/channel/batch/tag', {
+        ids: ids,
+        tag: batchSetTagValue,
+      });
+      if (!res.data.success) {
+        showError(res.data.message);
+        return;
+      }
     }
+
+    if (shouldSetAutoRecover) {
+      const res = await API.post('/api/channel/batch/auto_recover', {
+        ids: ids,
+        auto_recover: batchSetAutoRecoverValue,
+      });
+      if (!res.data.success) {
+        showError(res.data.message);
+        return;
+      }
+    }
+
+    showSuccess(
+      t('已批量更新 ${count} 个渠道！').replace('${count}', ids.length),
+    );
+    setBatchSetTagValue('');
+    setBatchSetAutoRecoverEnabled(false);
+    setBatchSetAutoRecoverValue(true);
+    await refresh();
+    setShowBatchSetTag(false);
   };
 
   const batchDeleteChannels = async () => {
@@ -1167,6 +1191,10 @@ export const useChannelsData = () => {
     setShowBatchSetTag,
     batchSetTagValue,
     setBatchSetTagValue,
+    batchSetAutoRecoverEnabled,
+    setBatchSetAutoRecoverEnabled,
+    batchSetAutoRecoverValue,
+    setBatchSetAutoRecoverValue,
 
     // Column states
     visibleColumns,
