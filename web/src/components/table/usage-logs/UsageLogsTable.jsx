@@ -88,20 +88,43 @@ const LogsTable = (logsData) => {
       : visibleColumnsList;
   }, [compactMode, visibleColumnsList]);
 
+  const getExpandData = (record) => {
+    const rowExpandData = expandData[record.key] || [];
+    if (!record.user_agent) {
+      return rowExpandData;
+    }
+    return [
+      ...rowExpandData,
+      {
+        key: t('User-Agent'),
+        value: (
+          <span style={{ maxWidth: 600, wordBreak: 'break-all' }}>
+            {record.user_agent}
+          </span>
+        ),
+      },
+    ];
+  };
+
+  const hasRowsWithDetails = () => {
+    return (
+      hasExpandableRows() || logs.some((record) => Boolean(record.user_agent))
+    );
+  };
+
   const expandRowRender = (record) => {
-    return <Descriptions data={expandData[record.key]} />;
+    return <Descriptions data={getExpandData(record)} />;
   };
 
   return (
     <CardTable
       columns={tableColumns}
-      {...(hasExpandableRows() && {
+      {...(hasRowsWithDetails() && {
         expandedRowRender: expandRowRender,
         expandRowByClick: true,
         expandedRowKeys,
         onExpand: handleRowExpand,
-        rowExpandable: (record) =>
-          expandData[record.key] && expandData[record.key].length > 0,
+        rowExpandable: (record) => getExpandData(record).length > 0,
       })}
       dataSource={logs}
       rowKey='key'
