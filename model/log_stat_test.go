@@ -23,7 +23,7 @@ func TestSumLogStatCacheHitRate_whenCacheReadAndWriteTokensExist(t *testing.T) {
 		CompletionTokens: 20,
 		ChannelId:        3,
 		Group:            "default",
-		Other: common.MapToJsonStr(map[string]interface{}{
+		Other: common.MapToJsonStr(map[string]any{
 			"cache_tokens":          50,
 			"cache_creation_tokens": 25,
 		}),
@@ -60,7 +60,7 @@ func TestSumLogStatCacheHitRate_whenSplitCacheWriteTokensExist(t *testing.T) {
 		PromptTokens: 100,
 		ChannelId:    3,
 		Group:        "default",
-		Other: common.MapToJsonStr(map[string]interface{}{
+		Other: common.MapToJsonStr(map[string]any{
 			"cache_tokens":             50,
 			"cache_creation_tokens":    999,
 			"cache_creation_tokens_5m": 20,
@@ -81,4 +81,39 @@ func TestSumLogStatCacheHitRate_whenSplitCacheWriteTokensExist(t *testing.T) {
 
 	require.NoError(t, err)
 	require.InDelta(t, 50.0/200.0*100, stat.CacheHitRate, 0.0001)
+}
+
+func TestSumLogStatCacheHitRate_whenRowsReachBatchSize(t *testing.T) {
+	truncateTables(t)
+	now := time.Now().Unix()
+	logs := make([]Log, logStatBatchSize)
+	for i := range logs {
+		logs[i] = Log{
+			UserId:       1,
+			Username:     "alice",
+			CreatedAt:    now,
+			Type:         LogTypeConsume,
+			TokenName:    "token-a",
+			ModelName:    "gpt-batch-test",
+			PromptTokens: 10,
+			Group:        "default",
+			Other: common.MapToJsonStr(map[string]any{
+				"cache_tokens": 5,
+			}),
+		}
+	}
+	require.NoError(t, LOG_DB.CreateInBatches(logs, 100).Error)
+
+	stat, err := SumLogStat(LogStatQuery{
+		StartTimestamp:      now - 1,
+		EndTimestamp:        now + 1,
+		ModelName:           "gpt-batch-test",
+		Username:            "alice",
+		TokenName:           "token-a",
+		Group:               "default",
+		IncludeCacheHitRate: true,
+	})
+
+	require.NoError(t, err)
+	require.InDelta(t, 5.0/15.0*100, stat.CacheHitRate, 0.0001)
 }

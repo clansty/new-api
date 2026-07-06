@@ -30,6 +30,7 @@ type Stat struct {
 }
 
 type logInputTokenRow struct {
+	ID           int    `gorm:"column:id;primaryKey"`
 	PromptTokens int    `gorm:"column:prompt_tokens"`
 	Other        string `gorm:"column:other"`
 }
@@ -113,7 +114,7 @@ func sumInputTokenStat(query LogStatQuery) (inputTokenStat, error) {
 
 	var rows []logInputTokenRow
 	stat := inputTokenStat{}
-	err = tx.Select("prompt_tokens", "other").FindInBatches(&rows, logStatBatchSize, func(tx *gorm.DB, batch int) error {
+	err = tx.Select("id", "prompt_tokens", "other").FindInBatches(&rows, logStatBatchSize, func(tx *gorm.DB, batch int) error {
 		for _, row := range rows {
 			stat.add(row)
 		}
@@ -135,7 +136,7 @@ func (stat *inputTokenStat) add(row logInputTokenRow) {
 	stat.totalInputTokens += positiveTokenValue(row.PromptTokens) + cacheReadTokens + cacheWriteTokens
 }
 
-func cacheWriteTokenValue(other map[string]interface{}) int {
+func cacheWriteTokenValue(other map[string]any) int {
 	cacheWriteTokens := positiveTokenValue(other["cache_write_tokens"])
 	if cacheWriteTokens > 0 {
 		return cacheWriteTokens
@@ -150,7 +151,7 @@ func cacheWriteTokenValue(other map[string]interface{}) int {
 	return positiveTokenValue(other["cache_creation_tokens"])
 }
 
-func positiveTokenValue(value interface{}) int {
+func positiveTokenValue(value any) int {
 	switch v := value.(type) {
 	case int:
 		if v > 0 {
