@@ -18,13 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import React from 'react';
-import {
-  Space,
-  Tag,
-  Tooltip,
-  Popover,
-  Typography,
-} from '@douyinfe/semi-ui';
+import { Space, Tag, Tooltip, Popover, Typography } from '@douyinfe/semi-ui';
 import {
   renderGroup,
   renderQuota,
@@ -36,6 +30,12 @@ import {
 import { IconHelpCircle } from '@douyinfe/semi-icons';
 import { CircleAlert, Route, Sparkles } from 'lucide-react';
 import UserAvatar from '../../common/UserAvatar';
+import {
+  formatCacheHitRate,
+  getPromptCacheSummary,
+  getUsageCacheHitRate,
+  toPositiveTokenNumber,
+} from './cacheHitRate';
 
 const colors = [
   'amber',
@@ -143,10 +143,7 @@ function renderType(type, t) {
 
 function buildStreamStatusTooltip(ss, t) {
   if (!ss) return null;
-  const lines = [
-    t('流状态') + '：' + t('异常'),
-    (ss.end_reason || 'unknown'),
-  ];
+  const lines = [t('流状态') + '：' + t('异常'), ss.end_reason || 'unknown'];
   if (ss.error_count > 0) {
     lines.push(`${t('软错误')}: ${ss.error_count}`);
   }
@@ -184,11 +181,7 @@ function renderIsStream(bool, t, streamStatus) {
                 userSelect: 'none',
               }}
             >
-              <CircleAlert
-                size={14}
-                strokeWidth={2.5}
-                color='currentColor'
-              />
+              <CircleAlert size={14} strokeWidth={2.5} color='currentColor' />
             </span>
           </Tooltip>
         )}
@@ -331,42 +324,8 @@ function renderModelName(record, copyText, t) {
   }
 }
 
-function toTokenNumber(value) {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed) || parsed <= 0) {
-    return 0;
-  }
-  return parsed;
-}
-
 function formatTokenCount(value) {
-  return toTokenNumber(value).toLocaleString();
-}
-
-function getPromptCacheSummary(other) {
-  if (!other || typeof other !== 'object') {
-    return null;
-  }
-
-  const cacheReadTokens = toTokenNumber(other.cache_tokens);
-  const cacheCreationTokens = toTokenNumber(other.cache_creation_tokens);
-  const cacheCreationTokens5m = toTokenNumber(other.cache_creation_tokens_5m);
-  const cacheCreationTokens1h = toTokenNumber(other.cache_creation_tokens_1h);
-
-  const hasSplitCacheCreation =
-    cacheCreationTokens5m > 0 || cacheCreationTokens1h > 0;
-  const cacheWriteTokens = hasSplitCacheCreation
-    ? cacheCreationTokens5m + cacheCreationTokens1h
-    : cacheCreationTokens;
-
-  if (cacheReadTokens <= 0 && cacheWriteTokens <= 0) {
-    return null;
-  }
-
-  return {
-    cacheReadTokens,
-    cacheWriteTokens,
-  };
+  return toPositiveTokenNumber(value).toLocaleString();
 }
 
 function normalizeDetailText(detail) {
@@ -460,7 +419,11 @@ function getUsageLogDetailSummary(record, text, billingDisplayMode, t) {
     };
   }
 
-  const summaryOpts = { ...other, displayMode: billingDisplayMode, outputMode: 'segments' };
+  const summaryOpts = {
+    ...other,
+    displayMode: billingDisplayMode,
+    outputMode: 'segments',
+  };
 
   if (other?.billing_mode === 'tiered_expr') {
     return { segments: renderTieredModelPriceSimple(summaryOpts) };
@@ -677,6 +640,28 @@ export const getLogsColumns = ({
         return <>{renderType(text, t)}</>;
       },
     },
+    ...(isAdminUser
+      ? [
+          {
+            key: COLUMN_KEYS.CACHE_HIT_RATE,
+            title: t('缓存命中率'),
+            dataIndex: 'cache_hit_rate',
+            width: 112,
+            render: (text, record, index) => {
+              const cacheHitRate = getUsageCacheHitRate(record);
+              if (cacheHitRate === null) {
+                return <Typography.Text type='tertiary'>-</Typography.Text>;
+              }
+
+              return (
+                <Tag color={cacheHitRate > 0 ? 'green' : 'grey'} shape='circle'>
+                  {formatCacheHitRate(cacheHitRate)}
+                </Tag>
+              );
+            },
+          },
+        ]
+      : []),
     {
       key: COLUMN_KEYS.MODEL,
       title: t('模型'),

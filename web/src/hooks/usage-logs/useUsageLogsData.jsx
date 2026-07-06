@@ -116,11 +116,19 @@ export const useLogsData = () => {
     USE_TIME: 'use_time',
     PROMPT: 'prompt',
     COMPLETION: 'completion',
+    CACHE_HIT_RATE: 'cache_hit_rate',
     COST: 'cost',
     RETRY: 'retry',
     IP: 'ip',
     DETAILS: 'details',
   };
+
+  const ADMIN_ONLY_COLUMN_KEYS = new Set([
+    COLUMN_KEYS.CHANNEL,
+    COLUMN_KEYS.USERNAME,
+    COLUMN_KEYS.CACHE_HIT_RATE,
+    COLUMN_KEYS.RETRY,
+  ]);
 
   // Basic state
   const [logs, setLogs] = useState([]);
@@ -188,6 +196,7 @@ export const useLogsData = () => {
       [COLUMN_KEYS.USE_TIME]: true,
       [COLUMN_KEYS.PROMPT]: true,
       [COLUMN_KEYS.COMPLETION]: true,
+      [COLUMN_KEYS.CACHE_HIT_RATE]: isAdminUser,
       [COLUMN_KEYS.COST]: true,
       [COLUMN_KEYS.RETRY]: isAdminUser,
       [COLUMN_KEYS.IP]: true,
@@ -208,9 +217,9 @@ export const useLogsData = () => {
       const merged = { ...defaults, ...parsed };
 
       if (!isAdminUser) {
-        merged[COLUMN_KEYS.CHANNEL] = false;
-        merged[COLUMN_KEYS.USERNAME] = false;
-        merged[COLUMN_KEYS.RETRY] = false;
+        ADMIN_ONLY_COLUMN_KEYS.forEach((key) => {
+          merged[key] = false;
+        });
       }
 
       return merged;
@@ -287,12 +296,7 @@ export const useLogsData = () => {
     const updatedColumns = {};
 
     allKeys.forEach((key) => {
-      if (
-        (key === COLUMN_KEYS.CHANNEL ||
-          key === COLUMN_KEYS.USERNAME ||
-          key === COLUMN_KEYS.RETRY) &&
-        !isAdminUser
-      ) {
+      if (ADMIN_ONLY_COLUMN_KEYS.has(key) && !isAdminUser) {
         updatedColumns[key] = false;
       } else {
         updatedColumns[key] = checked;
