@@ -161,7 +161,7 @@ func ClaudeToOpenAIRequest(claudeRequest dto.ClaudeRequest, info *relaycommon.Re
 					if mediaMsg.Thinking != nil {
 						openAIMessage.ReasoningContent = *mediaMsg.Thinking
 					}
-					if mediaMsg.Signature != nil {
+					if mediaMsg.Signature != nil && *mediaMsg.Signature != "" {
 						openAIMessage.ReasoningOpaque = mediaMsg.Signature
 					}
 				case "text", "input_text":

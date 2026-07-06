@@ -274,6 +274,40 @@ func TestClaudeToOpenAIRequestPreservesSignedThinkingContent(t *testing.T) {
 	require.Len(t, openAIRequest.Messages[0].ParseToolCalls(), 1)
 }
 
+func TestClaudeToOpenAIRequestOmitsEmptyThinkingSignature(t *testing.T) {
+	thinking := "Visible reasoning without a provider signature."
+	signature := ""
+	claudeRequest := dto.ClaudeRequest{
+		Model: "gpt-5",
+		Messages: []dto.ClaudeMessage{
+			{
+				Role: "assistant",
+				Content: []dto.ClaudeMediaMessage{
+					{
+						Type:      "thinking",
+						Thinking:  &thinking,
+						Signature: &signature,
+					},
+					{
+						Type: "text",
+						Text: common.GetPointer("final answer"),
+					},
+				},
+			},
+		},
+	}
+
+	openAIRequest, err := ClaudeToOpenAIRequest(claudeRequest, testRelayInfo())
+	require.NoError(t, err)
+	require.Len(t, openAIRequest.Messages, 1)
+	require.Equal(t, thinking, openAIRequest.Messages[0].GetReasoningContent())
+	require.Nil(t, openAIRequest.Messages[0].ReasoningOpaque)
+
+	body, err := common.Marshal(openAIRequest)
+	require.NoError(t, err)
+	require.NotContains(t, string(body), "reasoning_opaque")
+}
+
 func TestClaudeToOpenAIRequestSkipsEmptyThinkingOnlyMessage(t *testing.T) {
 	claudeRequest := dto.ClaudeRequest{
 		Model: "deepseek-v4-pro",
