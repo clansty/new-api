@@ -64,13 +64,19 @@ export function getPromptCacheSummary(other) {
   };
 }
 
+function usesAnthropicUsageSemantic(other) {
+  return other?.usage_semantic === 'anthropic';
+}
+
 export function getUsageCacheHitRate(record) {
   const other = getLogOther(record?.other);
   const promptTokens = toPositiveTokenNumber(record?.prompt_tokens);
   const cacheSummary = getPromptCacheSummary(other);
   const cacheReadTokens = cacheSummary?.cacheReadTokens || 0;
   const cacheWriteTokens = cacheSummary?.cacheWriteTokens || 0;
-  const totalInputTokens = promptTokens + cacheReadTokens + cacheWriteTokens;
+  const totalInputTokens = usesAnthropicUsageSemantic(other)
+    ? promptTokens + cacheReadTokens + cacheWriteTokens
+    : promptTokens;
 
   if (totalInputTokens <= 0) {
     return null;

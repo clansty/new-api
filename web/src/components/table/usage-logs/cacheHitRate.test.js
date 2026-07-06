@@ -25,7 +25,7 @@ import {
 } from './cacheHitRate';
 
 describe('usage log cache hit rate', () => {
-  test('calculates hit rate with cache read and cache creation tokens', () => {
+  test('uses prompt tokens as total input for OpenAI semantics', () => {
     const rate = getUsageCacheHitRate({
       prompt_tokens: 100,
       other: JSON.stringify({
@@ -34,14 +34,15 @@ describe('usage log cache hit rate', () => {
       }),
     });
 
-    expect(rate).toBe(25);
-    expect(formatCacheHitRate(rate)).toBe('25.00%');
+    expect(rate).toBe(50);
+    expect(formatCacheHitRate(rate)).toBe('50.00%');
   });
 
-  test('uses split cache creation tokens before legacy creation tokens', () => {
+  test('adds cache read and split cache creation tokens for Anthropic semantics', () => {
     const rate = getUsageCacheHitRate({
       prompt_tokens: 100,
       other: JSON.stringify({
+        usage_semantic: 'anthropic',
         cache_tokens: 40,
         cache_creation_tokens: 999,
         cache_creation_tokens_5m: 20,
@@ -50,6 +51,19 @@ describe('usage log cache hit rate', () => {
     });
 
     expect(rate).toBeCloseTo(22.2222, 4);
+  });
+
+  test('does not infer Anthropic semantics from Claude upstream display flag', () => {
+    const rate = getUsageCacheHitRate({
+      prompt_tokens: 180,
+      other: JSON.stringify({
+        claude: true,
+        cache_tokens: 30,
+        cache_creation_tokens: 50,
+      }),
+    });
+
+    expect(rate).toBeCloseTo(16.6667, 4);
   });
 
   test('keeps explicit zero hit rate when input tokens exist', () => {

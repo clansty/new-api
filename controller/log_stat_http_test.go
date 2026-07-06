@@ -73,5 +73,5 @@ func TestHTTP_GetLogsStat_returnsCacheHitRate_whenRowsReachBatchSize(t *testing.
 	}
 	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &payload))
 	require.True(t, payload.Success, payload.Message)
-	require.InDelta(t, 5.0/15.0*100, payload.Data.CacheHitRate, 0.0001)
+	require.InDelta(t, 5.0/10.0*100, payload.Data.CacheHitRate, 0.0001)
 }

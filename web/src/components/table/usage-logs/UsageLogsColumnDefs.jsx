@@ -640,28 +640,6 @@ export const getLogsColumns = ({
         return <>{renderType(text, t)}</>;
       },
     },
-    ...(isAdminUser
-      ? [
-          {
-            key: COLUMN_KEYS.CACHE_HIT_RATE,
-            title: t('缓存命中率'),
-            dataIndex: 'cache_hit_rate',
-            width: 112,
-            render: (text, record, index) => {
-              const cacheHitRate = getUsageCacheHitRate(record);
-              if (cacheHitRate === null) {
-                return <Typography.Text type='tertiary'>-</Typography.Text>;
-              }
-
-              return (
-                <Tag color={cacheHitRate > 0 ? 'green' : 'grey'} shape='circle'>
-                  {formatCacheHitRate(cacheHitRate)}
-                </Tag>
-              );
-            },
-          },
-        ]
-      : []),
     {
       key: COLUMN_KEYS.MODEL,
       title: t('模型'),
@@ -708,6 +686,28 @@ export const getLogsColumns = ({
         }
       },
     },
+    ...(isAdminUser
+      ? [
+          {
+            key: COLUMN_KEYS.CACHE_HIT_RATE,
+            title: t('缓存命中率'),
+            dataIndex: 'cache_hit_rate',
+            width: 112,
+            render: (text, record, index) => {
+              const cacheHitRate = getUsageCacheHitRate(record);
+              if (cacheHitRate === null) {
+                return <Typography.Text type='tertiary'>-</Typography.Text>;
+              }
+
+              return (
+                <Tag color={cacheHitRate > 0 ? 'green' : 'grey'} shape='circle'>
+                  {formatCacheHitRate(cacheHitRate)}
+                </Tag>
+              );
+            },
+          },
+        ]
+      : []),
     {
       key: COLUMN_KEYS.PROMPT,
       title: (

@@ -133,7 +133,12 @@ func (stat *inputTokenStat) add(row logInputTokenRow) {
 	cacheReadTokens := positiveTokenValue(other["cache_tokens"])
 	cacheWriteTokens := cacheWriteTokenValue(other)
 	stat.cacheReadTokens += cacheReadTokens
-	stat.totalInputTokens += positiveTokenValue(row.PromptTokens) + cacheReadTokens + cacheWriteTokens
+	stat.totalInputTokens += cacheHitRateInputTokens(
+		positiveTokenValue(row.PromptTokens),
+		cacheReadTokens,
+		cacheWriteTokens,
+		other,
+	)
 }
 
 func cacheWriteTokenValue(other map[string]any) int {
@@ -149,6 +154,18 @@ func cacheWriteTokenValue(other map[string]any) int {
 	}
 
 	return positiveTokenValue(other["cache_creation_tokens"])
+}
+
+func cacheHitRateInputTokens(promptTokens, cacheReadTokens, cacheWriteTokens int, other map[string]any) int {
+	if usesAnthropicUsageSemantic(other) {
+		return promptTokens + cacheReadTokens + cacheWriteTokens
+	}
+	return promptTokens
+}
+
+func usesAnthropicUsageSemantic(other map[string]any) bool {
+	usageSemantic, ok := other["usage_semantic"].(string)
+	return ok && usageSemantic == "anthropic"
 }
 
 func positiveTokenValue(value any) int {

@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestSumLogStatCacheHitRate_whenCacheReadAndWriteTokensExist(t *testing.T) {
+func TestSumLogStatCacheHitRate_whenOpenAIPromptTokensIncludeCacheRead(t *testing.T) {
 	truncateTables(t)
 	now := time.Now().Unix()
 	require.NoError(t, LOG_DB.Create(&Log{
@@ -44,10 +44,10 @@ func TestSumLogStatCacheHitRate_whenCacheReadAndWriteTokensExist(t *testing.T) {
 	require.Equal(t, 100, stat.Quota)
 	require.Equal(t, 1, stat.Rpm)
 	require.Equal(t, 120, stat.Tpm)
-	require.InDelta(t, 50.0/175.0*100, stat.CacheHitRate, 0.0001)
+	require.InDelta(t, 50.0/100.0*100, stat.CacheHitRate, 0.0001)
 }
 
-func TestSumLogStatCacheHitRate_whenSplitCacheWriteTokensExist(t *testing.T) {
+func TestSumLogStatCacheHitRate_whenAnthropicPromptTokensExcludeCacheReadAndWrite(t *testing.T) {
 	truncateTables(t)
 	now := time.Now().Unix()
 	require.NoError(t, LOG_DB.Create(&Log{
@@ -61,6 +61,7 @@ func TestSumLogStatCacheHitRate_whenSplitCacheWriteTokensExist(t *testing.T) {
 		ChannelId:    3,
 		Group:        "default",
 		Other: common.MapToJsonStr(map[string]any{
+			"usage_semantic":           "anthropic",
 			"cache_tokens":             50,
 			"cache_creation_tokens":    999,
 			"cache_creation_tokens_5m": 20,
@@ -81,6 +82,41 @@ func TestSumLogStatCacheHitRate_whenSplitCacheWriteTokensExist(t *testing.T) {
 
 	require.NoError(t, err)
 	require.InDelta(t, 50.0/200.0*100, stat.CacheHitRate, 0.0001)
+}
+
+func TestSumLogStatCacheHitRate_whenClaudeUpstreamUsesOpenAISemantic(t *testing.T) {
+	truncateTables(t)
+	now := time.Now().Unix()
+	require.NoError(t, LOG_DB.Create(&Log{
+		UserId:       1,
+		Username:     "alice",
+		CreatedAt:    now,
+		Type:         LogTypeConsume,
+		TokenName:    "token-a",
+		ModelName:    "claude-via-openai-test",
+		PromptTokens: 180,
+		ChannelId:    3,
+		Group:        "default",
+		Other: common.MapToJsonStr(map[string]any{
+			"claude":                true,
+			"cache_tokens":          30,
+			"cache_creation_tokens": 50,
+		}),
+	}).Error)
+
+	stat, err := SumLogStat(LogStatQuery{
+		StartTimestamp:      now - 1,
+		EndTimestamp:        now + 1,
+		ModelName:           "claude-via-openai-test",
+		Username:            "alice",
+		TokenName:           "token-a",
+		Channel:             3,
+		Group:               "default",
+		IncludeCacheHitRate: true,
+	})
+
+	require.NoError(t, err)
+	require.InDelta(t, 30.0/180.0*100, stat.CacheHitRate, 0.0001)
 }
 
 func TestSumLogStatCacheHitRate_whenRowsReachBatchSize(t *testing.T) {
@@ -115,5 +151,5 @@ func TestSumLogStatCacheHitRate_whenRowsReachBatchSize(t *testing.T) {
 	})
 
 	require.NoError(t, err)
-	require.InDelta(t, 5.0/15.0*100, stat.CacheHitRate, 0.0001)
+	require.InDelta(t, 5.0/10.0*100, stat.CacheHitRate, 0.0001)
 }
