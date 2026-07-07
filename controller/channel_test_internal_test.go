@@ -77,7 +77,7 @@ func TestShouldTestChannelAutomatically_whenAutoDisabledRecoveryDisabled(t *test
 		AutoRecover: common.GetPointer(0),
 	}
 
-	require.False(t, shouldTestChannelAutomatically(channel))
+	require.False(t, shouldTestChannelAutomatically(channel, channelTestScopeAll))
 }
 
 func TestShouldTestChannelAutomatically_whenAutoDisabledRecoveryUnset(t *testing.T) {
@@ -85,7 +85,8 @@ func TestShouldTestChannelAutomatically_whenAutoDisabledRecoveryUnset(t *testing
 		Status: common.ChannelStatusAutoDisabled,
 	}
 
-	require.True(t, shouldTestChannelAutomatically(channel))
+	require.True(t, shouldTestChannelAutomatically(channel, channelTestScopeAll))
+	require.True(t, shouldTestChannelAutomatically(channel, channelTestScopeAutoDisabled))
 }
 
 func TestShouldTestChannelAutomatically_whenManuallyDisabled(t *testing.T) {
@@ -94,5 +95,15 @@ func TestShouldTestChannelAutomatically_whenManuallyDisabled(t *testing.T) {
 		AutoRecover: common.GetPointer(1),
 	}
 
-	require.False(t, shouldTestChannelAutomatically(channel))
+	require.False(t, shouldTestChannelAutomatically(channel, channelTestScopeAll))
+	require.False(t, shouldTestChannelAutomatically(channel, channelTestScopeAutoDisabled))
+}
+
+func TestShouldTestChannelAutomatically_whenRecoveryScopeSkipsEnabledChannel(t *testing.T) {
+	channel := &model.Channel{
+		Status: common.ChannelStatusEnabled,
+	}
+
+	require.True(t, shouldTestChannelAutomatically(channel, channelTestScopeAll))
+	require.False(t, shouldTestChannelAutomatically(channel, channelTestScopeAutoDisabled))
 }

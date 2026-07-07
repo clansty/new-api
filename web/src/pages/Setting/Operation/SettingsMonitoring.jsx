@@ -148,11 +148,13 @@ export default function SettingsMonitoring(props) {
               </Col>
               <Col xs={24} sm={12} md={8} lg={8} xl={8}>
                 <Form.InputNumber
-                  label={t('自动测试所有通道间隔时间')}
+                  label={t('自动检测间隔时间')}
                   step={1}
                   min={1}
                   suffix={t('分钟')}
-                  extraText={t('每隔多少分钟测试一次所有通道')}
+                  extraText={t(
+                    '用于定时测试所有通道，以及检测已自动禁用且开启禁用后自动检测的渠道',
+                  )}
                   placeholder={''}
                   field={'monitor_setting.auto_test_channel_minutes'}
                   onChange={(value) =>
@@ -232,6 +234,9 @@ export default function SettingsMonitoring(props) {
                       AutomaticEnableChannelEnabled: value,
                     })
                   }
+                  extraText={t(
+                    '开启后会按自动检测间隔检测自动禁用渠道，成功后自动启用',
+                  )}
                 />
               </Col>
             </Row>

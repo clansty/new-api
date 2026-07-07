@@ -156,6 +156,7 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 	c.Request.Header.Set("Content-Type", "application/json")
 	c.Set("channel", channel.Type)
 	c.Set("base_url", channel.GetBaseURL())
+	common.SetContextKey(c, constant.ContextKeyChannelTest, true)
 	group, _ := model.GetUserGroup(1, false)
 	c.Set("group", group)
 
@@ -871,18 +872,35 @@ func TestChannel(c *gin.Context) {
 var testAllChannelsLock sync.Mutex
 var testAllChannelsRunning bool = false
 
-func shouldTestChannelAutomatically(channel *model.Channel) bool {
+type channelTestScope int
+
+const (
+	channelTestScopeAll channelTestScope = iota
+	channelTestScopeAutoDisabled
+)
+
+func shouldTestChannelAutomatically(channel *model.Channel, scope channelTestScope) bool {
 	if channel.Status == common.ChannelStatusManuallyDisabled {
 		return false
 	}
 	if channel.Status == common.ChannelStatusAutoDisabled {
 		return channel.GetAutoRecover()
 	}
+	if scope == channelTestScopeAutoDisabled {
+		return false
+	}
 	return true
 }
 
 func testAllChannels(notify bool) error {
+	return testChannels(notify, channelTestScopeAll)
+}
 
+func testAutoDisabledChannels() error {
+	return testChannels(false, channelTestScopeAutoDisabled)
+}
+
+func testChannels(notify bool, scope channelTestScope) error {
 	testAllChannelsLock.Lock()
 	if testAllChannelsRunning {
 		testAllChannelsLock.Unlock()
@@ -912,7 +930,7 @@ func testAllChannels(notify bool) error {
 				common.SysLog("testAllChannels: shutdown detected, aborting remaining channels")
 				return
 			}
-			if !shouldTestChannelAutomatically(channel) {
+			if !shouldTestChannelAutomatically(channel, scope) {
 				continue
 			}
 			isChannelEnabled := channel.Status == common.ChannelStatusEnabled
@@ -983,25 +1001,28 @@ func AutomaticallyTestChannels() {
 			if ctx.Err() != nil {
 				return
 			}
-			if !operation_setting.GetMonitorSetting().AutoTestChannelEnabled {
+			autoTestAllEnabled, interval, frequency := operation_setting.GetAutoTestChannelRuntimeConfig()
+			autoRecoverEnabled := common.AutomaticEnableChannelEnabled
+			if !autoTestAllEnabled && !autoRecoverEnabled {
 				if !common.SleepOrDone(ctx, 1*time.Minute) {
 					return
 				}
 				continue
 			}
-			for {
-				frequency := operation_setting.GetMonitorSetting().AutoTestChannelMinutes
-				if !common.SleepOrDone(ctx, time.Duration(int(math.Round(frequency)))*time.Minute) {
-					return
-				}
-				common.SysLog(fmt.Sprintf("automatically test channels with interval %f minutes", frequency))
+			if !common.SleepOrDone(ctx, interval) {
+				return
+			}
+			if autoTestAllEnabled {
+				common.SysLog(fmt.Sprintf("automatically test all channels with interval %f minutes", frequency))
 				common.SysLog("automatically testing all channels")
 				_ = testAllChannels(false)
-				common.SysLog("automatically channel test finished")
-				if !operation_setting.GetMonitorSetting().AutoTestChannelEnabled {
-					break
-				}
+				common.SysLog("automatically all channel test finished")
+				continue
 			}
+			common.SysLog(fmt.Sprintf("automatically test auto-disabled channels with interval %f minutes", frequency))
+			common.SysLog("automatically testing auto-disabled channels")
+			_ = testAutoDisabledChannels()
+			common.SysLog("automatically auto-disabled channel test finished")
 		}
 	})
 }

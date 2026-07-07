@@ -368,6 +368,9 @@ func SetupContextForSelectedChannel(c *gin.Context, channel *model.Channel, mode
 	common.SetContextKey(c, constant.ContextKeyChannelStatusCodeMapping, channel.GetStatusCodeMapping())
 
 	key, index, newAPIError := channel.GetNextEnabledKey()
+	if newAPIError != nil && common.GetContextKeyBool(c, constant.ContextKeyChannelTest) {
+		key, index, newAPIError = channel.GetNextTestKey()
+	}
 	if newAPIError != nil {
 		return newAPIError
 	}

@@ -192,6 +192,35 @@ func (channel *Channel) GetNextEnabledKey() (string, int, *types.NewAPIError) {
 	}
 }
 
+func (channel *Channel) GetNextTestKey() (string, int, *types.NewAPIError) {
+	key, index, err := channel.GetNextEnabledKey()
+	if err == nil || !channel.ChannelInfo.IsMultiKey {
+		return key, index, err
+	}
+
+	keys := channel.GetKeys()
+	if len(keys) == 0 {
+		return "", 0, err
+	}
+
+	lock := GetChannelPollingLock(channel.Id)
+	lock.Lock()
+	defer lock.Unlock()
+
+	start := channel.ChannelInfo.MultiKeyPollingIndex
+	if start < 0 || start >= len(keys) {
+		start = 0
+	}
+	for i := 0; i < len(keys); i++ {
+		idx := (start + i) % len(keys)
+		if channel.ChannelInfo.MultiKeyStatusList[idx] == common.ChannelStatusAutoDisabled {
+			channel.ChannelInfo.MultiKeyPollingIndex = (idx + 1) % len(keys)
+			return keys[idx], idx, nil
+		}
+	}
+	return "", 0, err
+}
+
 func (channel *Channel) SaveChannelInfo() error {
 	return DB.Model(channel).Update("channel_info", channel.ChannelInfo).Error
 }
@@ -588,6 +617,13 @@ func handlerMultiKeyUpdate(channel *Channel, usingKey string, status int, reason
 		}
 		if status == common.ChannelStatusEnabled {
 			delete(channel.ChannelInfo.MultiKeyStatusList, keyIndex)
+			delete(channel.ChannelInfo.MultiKeyDisabledReason, keyIndex)
+			delete(channel.ChannelInfo.MultiKeyDisabledTime, keyIndex)
+			channel.Status = common.ChannelStatusEnabled
+			info := channel.GetOtherInfo()
+			delete(info, "status_reason")
+			delete(info, "status_time")
+			channel.SetOtherInfo(info)
 		} else {
 			channel.ChannelInfo.MultiKeyStatusList[keyIndex] = status
 			if channel.ChannelInfo.MultiKeyDisabledReason == nil {

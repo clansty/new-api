@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/stretchr/testify/require"
 )
 
@@ -63,6 +64,49 @@ func TestChannelGetAutoRecover_whenUnset(t *testing.T) {
 	channel := Channel{}
 
 	require.True(t, channel.GetAutoRecover())
+}
+
+func TestChannelGetNextTestKey_whenAllKeysAutoDisabled(t *testing.T) {
+	channel := Channel{
+		Key:    "key-a\nkey-b",
+		Status: common.ChannelStatusAutoDisabled,
+		ChannelInfo: ChannelInfo{
+			IsMultiKey:   true,
+			MultiKeySize: 2,
+			MultiKeyStatusList: map[int]int{
+				0: common.ChannelStatusAutoDisabled,
+				1: common.ChannelStatusAutoDisabled,
+			},
+			MultiKeyMode: constant.MultiKeyModePolling,
+		},
+	}
+
+	key, index, err := channel.GetNextTestKey()
+
+	require.Nil(t, err)
+	require.Equal(t, "key-a", key)
+	require.Equal(t, 0, index)
+}
+
+func TestHandlerMultiKeyUpdate_enablesChannelWhenAutoDisabledKeyRecovers(t *testing.T) {
+	channel := Channel{
+		Key:    "key-a\nkey-b",
+		Status: common.ChannelStatusAutoDisabled,
+		ChannelInfo: ChannelInfo{
+			IsMultiKey:   true,
+			MultiKeySize: 2,
+			MultiKeyStatusList: map[int]int{
+				0: common.ChannelStatusAutoDisabled,
+				1: common.ChannelStatusAutoDisabled,
+			},
+		},
+	}
+
+	handlerMultiKeyUpdate(&channel, "key-a", common.ChannelStatusEnabled, "")
+
+	require.Equal(t, common.ChannelStatusEnabled, channel.Status)
+	require.NotContains(t, channel.ChannelInfo.MultiKeyStatusList, 0)
+	require.Equal(t, common.ChannelStatusAutoDisabled, channel.ChannelInfo.MultiKeyStatusList[1])
 }
 
 func TestBatchSetChannelAutoRecover_whenSettingFalse(t *testing.T) {
