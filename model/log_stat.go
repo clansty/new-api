@@ -100,8 +100,9 @@ func buildLogStatQuery(query LogStatQuery) (*gorm.DB, error) {
 	if query.Channel != 0 {
 		tx = tx.Where("channel_id = ?", query.Channel)
 	}
-	if query.Group != "" {
-		tx = tx.Where(logGroupCol+" = ?", query.Group)
+	tx, err = applyLogTextFilter(tx, logGroupCol, query.Group)
+	if err != nil {
+		return nil, err
 	}
 	return tx.Where("type = ?", LogTypeConsume), nil
 }

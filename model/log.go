@@ -49,7 +49,7 @@ const (
 // applyLogTextFilter 对日志库的文本字段应用过滤：
 //   - value 为空 -> 不加任何条件
 //   - 含 * 或 % 通配符 -> 大小写不敏感的 LIKE/ILIKE 模糊匹配
-//   - 不含通配符 -> 大小写敏感的精确匹配（MySQL 需要 BINARY，由 LogExactMatchExpr 处理）
+//   - 不含通配符 -> 大小写不敏感的精确匹配
 func applyLogTextFilter(tx *gorm.DB, column, value string) (*gorm.DB, error) {
 	if value == "" {
 		return tx, nil
@@ -61,7 +61,7 @@ func applyLogTextFilter(tx *gorm.DB, column, value string) (*gorm.DB, error) {
 	if isFuzzy {
 		return tx.Where(column+" "+logLikeOp+" ? ESCAPE '!'", pattern), nil
 	}
-	return tx.Where(LogExactMatchExpr(column), pattern), nil
+	return tx.Where(LogExactMatchExpr("LOWER("+column+")"), gorm.Expr("LOWER(?)", pattern)), nil
 }
 
 func formatUserLogs(logs []*Log, startIdx int) {
@@ -119,8 +119,9 @@ func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName
 	if channel != 0 {
 		tx = tx.Where("logs.channel_id = ?", channel)
 	}
-	if group != "" {
-		tx = tx.Where("logs."+logGroupCol+" = ?", group)
+	tx, err = applyLogTextFilter(tx, "logs."+logGroupCol, group)
+	if err != nil {
+		return nil, 0, err
 	}
 	err = tx.Model(&Log{}).Count(&total).Error
 	if err != nil {
@@ -224,8 +225,9 @@ func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int
 	if endTimestamp != 0 {
 		tx = tx.Where("logs.created_at <= ?", endTimestamp)
 	}
-	if group != "" {
-		tx = tx.Where("logs."+logGroupCol+" = ?", group)
+	tx, err = applyLogTextFilter(tx, "logs."+logGroupCol, group)
+	if err != nil {
+		return nil, 0, err
 	}
 	err = tx.Model(&Log{}).Limit(logSearchCountLimit).Count(&total).Error
 	if err != nil {
