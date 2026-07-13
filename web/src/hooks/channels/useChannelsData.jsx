@@ -795,11 +795,21 @@ export const useChannelsData = () => {
     }
 
     const res = await API.get(`/api/channel/update_balance/${record.id}/`);
-    const { success, message, balance } = res.data;
+    const {
+      success,
+      message,
+      balance,
+      upstream_rate_multiplier,
+      upstream_group_name,
+      upstream_group_description,
+    } = res.data;
     if (success) {
       updateChannelProperty(record.id, (channel) => {
         channel.balance = balance;
         channel.balance_updated_time = Date.now() / 1000;
+        channel.upstream_rate_multiplier = upstream_rate_multiplier;
+        channel.upstream_group_name = upstream_group_name;
+        channel.upstream_group_description = upstream_group_description;
       });
       showInfo(
         t('通道 ${name} 余额更新成功！').replace('${name}', record.name),

@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -81,6 +82,47 @@ func Test_querySub2APIBalance_whenRemainingIsExplicitZero(t *testing.T) {
 	// Then: the explicit zero is preserved instead of treated as absent.
 	require.NoError(t, err)
 	require.Equal(t, 0.0, balance)
+}
+
+func Test_querySub2APIChannelSnapshot_whenCredentialsAreConfigured(t *testing.T) {
+	// Given: sub2api 同时提供 API Key 余额和登录用户的专属倍率。
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/usage":
+			_, err := w.Write([]byte(`{"remaining":88.5,"unit":"USD"}`))
+			require.NoError(t, err)
+		case "/api/v1/auth/login":
+			_, err := w.Write([]byte(`{"code":0,"message":"success","data":{"access_token":"access-1","refresh_token":"refresh-1","expires_in":3600}}`))
+			require.NoError(t, err)
+		case "/api/v1/keys":
+			_, err := w.Write([]byte(`{"code":0,"message":"success","data":{"items":[{"key":"sk-upstream","group":{"id":7,"name":"专属 Claude 组","description":"Claude 专属低倍率分组","rate_multiplier":1.2}}]}}`))
+			require.NoError(t, err)
+		case "/api/v1/groups/rates":
+			_, err := w.Write([]byte(`{"code":0,"message":"success","data":{"7":0.45}}`))
+			require.NoError(t, err)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	channel := &model.Channel{
+		Key:             "sk-upstream",
+		BaseURL:         common.GetPointer(server.URL),
+		Sub2APIUsername: "user@example.com",
+		Sub2APIPassword: "secret",
+	}
+
+	// When: 余额查询模式获取完整的上游快照。
+	snapshot, err := querySub2APIChannelSnapshot(context.Background(), channel)
+
+	// Then: 余额、实际倍率、分组名和新 Token 在一次查询中返回。
+	require.NoError(t, err)
+	require.Equal(t, 88.5, snapshot.Balance)
+	require.NotNil(t, snapshot.RateMultiplier)
+	require.Equal(t, 0.45, *snapshot.RateMultiplier)
+	require.Equal(t, "专属 Claude 组", snapshot.GroupName)
+	require.Equal(t, "Claude 专属低倍率分组", snapshot.GroupDescription)
+	require.Equal(t, "refresh-1", snapshot.Auth.RefreshToken)
 }
 
 func Test_sub2APIUsageResponseRemainingBalance_whenQuotaRemainingIsPresent(t *testing.T) {
@@ -181,7 +223,7 @@ func Test_updateChannelBalanceByQueryMode_whenDisabled(t *testing.T) {
 	}
 
 	// When: the query-mode dispatcher is asked to update the balance.
-	balance, handled, err := updateChannelBalanceByQueryMode(channel)
+	balance, handled, err := updateChannelBalanceByQueryMode(context.Background(), channel)
 
 	// Then: the mode is handled without making an upstream request or changing the cached balance.
 	require.NoError(t, err)

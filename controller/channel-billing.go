@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -355,9 +356,9 @@ func updateChannelMoonshotBalance(channel *model.Channel) (float64, error) {
 	return availableBalanceUsd, nil
 }
 
-func updateChannelBalance(channel *model.Channel) (float64, error) {
+func updateChannelBalance(ctx context.Context, channel *model.Channel) (float64, error) {
 	ensureChannelBalanceBaseURL(channel)
-	if balance, handled, err := updateChannelBalanceByQueryMode(channel); handled {
+	if balance, handled, err := updateChannelBalanceByQueryMode(ctx, channel); handled {
 		return balance, err
 	}
 	switch channel.Type {
@@ -410,19 +411,22 @@ func UpdateChannelBalance(c *gin.Context) {
 		})
 		return
 	}
-	balance, err := updateChannelBalance(channel)
+	balance, err := updateChannelBalance(c.Request.Context(), channel)
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "",
-		"balance": balance,
+		"success":                    true,
+		"message":                    "",
+		"balance":                    balance,
+		"upstream_rate_multiplier":   channel.UpstreamRateMultiplier,
+		"upstream_group_name":        channel.UpstreamGroupName,
+		"upstream_group_description": channel.UpstreamGroupDescription,
 	})
 }
 
-func updateAllChannelsBalance() error {
+func updateAllChannelsBalance(ctx context.Context) error {
 	channels, err := model.GetAllChannels(0, 0, true, false)
 	if err != nil {
 		return err
@@ -441,7 +445,7 @@ func updateAllChannelsBalance() error {
 		//if channel.Type != common.ChannelTypeOpenAI && channel.Type != common.ChannelTypeCustom {
 		//	continue
 		//}
-		balance, err := updateChannelBalance(channel)
+		balance, err := updateChannelBalance(ctx, channel)
 		if err != nil {
 			continue
 		} else {
@@ -457,7 +461,7 @@ func updateAllChannelsBalance() error {
 
 func UpdateAllChannelsBalance(c *gin.Context) {
 	// TODO: make it async
-	err := updateAllChannelsBalance()
+	err := updateAllChannelsBalance(c.Request.Context())
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -479,7 +483,7 @@ func AutomaticallyUpdateChannels(frequency int) {
 			return
 		case <-ticker.C:
 			common.SysLog("updating all channels")
-			_ = updateAllChannelsBalance()
+			_ = updateAllChannelsBalance(ctx)
 			common.SysLog("channels update done")
 		}
 	}

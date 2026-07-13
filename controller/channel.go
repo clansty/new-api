@@ -581,6 +581,7 @@ type AddChannelRequest struct {
 	MultiKeyMode              constant.MultiKeyMode `json:"multi_key_mode"`
 	BatchAddSetKeyPrefix2Name bool                  `json:"batch_add_set_key_prefix_2_name"`
 	Channel                   *model.Channel        `json:"channel"`
+	Sub2APIPassword           *string               `json:"sub2api_password"`
 }
 
 func getVertexArrayKeys(keys string) ([]string, error) {
@@ -631,6 +632,12 @@ func AddChannel(c *gin.Context) {
 		})
 		return
 	}
+	sub2APIState, err := resolveSub2APIAuthUpdate(addChannelRequest.Channel, nil, addChannelRequest.Sub2APIPassword)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	addChannelRequest.Channel.ApplySub2APIState(sub2APIState)
 
 	addChannelRequest.Channel.CreatedTime = common.GetTimestamp()
 	keys := make([]string, 0)
@@ -934,8 +941,24 @@ func BatchSetChannelAutoRecover(c *gin.Context) {
 
 type PatchChannel struct {
 	model.Channel
-	MultiKeyMode *string `json:"multi_key_mode"`
-	KeyMode      *string `json:"key_mode"` // 多key模式下密钥覆盖或者追加
+	MultiKeyMode    *string `json:"multi_key_mode"`
+	KeyMode         *string `json:"key_mode"` // 多key模式下密钥覆盖或者追加
+	Sub2APIPassword *string `json:"-"`
+}
+
+func (channel *PatchChannel) UnmarshalJSON(data []byte) error {
+	type patchChannelAlias PatchChannel
+	payload := struct {
+		*patchChannelAlias
+		Sub2APIPassword *string `json:"sub2api_password"`
+	}{
+		patchChannelAlias: (*patchChannelAlias)(channel),
+	}
+	if err := common.Unmarshal(data, &payload); err != nil {
+		return err
+	}
+	channel.Sub2APIPassword = payload.Sub2APIPassword
+	return nil
 }
 
 func UpdateChannel(c *gin.Context) {
@@ -961,6 +984,11 @@ func UpdateChannel(c *gin.Context) {
 			"success": false,
 			"message": err.Error(),
 		})
+		return
+	}
+	sub2APIState, err := resolveSub2APIAuthUpdate(&channel.Channel, originChannel, channel.Sub2APIPassword)
+	if err != nil {
+		common.ApiError(c, err)
 		return
 	}
 
@@ -1057,9 +1085,14 @@ func UpdateChannel(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	if err := channel.SaveSub2APIState(sub2APIState); err != nil {
+		common.ApiError(c, err)
+		return
+	}
 	model.InitChannelCache()
 	service.ResetProxyClientCache()
 	channel.Key = ""
+	channel.Sub2APIPassword = nil
 	clearChannelInfo(&channel.Channel)
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,

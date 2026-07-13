@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
@@ -10,6 +11,7 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/service"
 )
 
 type sub2APIQuota struct {
@@ -21,6 +23,14 @@ type sub2APIUsageResponse struct {
 	Balance   *float64      `json:"balance,omitempty"`
 	Quota     *sub2APIQuota `json:"quota,omitempty"`
 	Unit      string        `json:"unit,omitempty"`
+}
+
+type sub2APIChannelSnapshot struct {
+	Balance          float64
+	RateMultiplier   *float64
+	GroupName        string
+	GroupDescription string
+	Auth             service.Sub2APIAuthState
 }
 
 type hyl2APIQuotaBucket struct {
@@ -42,7 +52,7 @@ func ensureChannelBalanceBaseURL(channel *model.Channel) string {
 	return baseURL
 }
 
-func updateChannelBalanceByQueryMode(channel *model.Channel) (float64, bool, error) {
+func updateChannelBalanceByQueryMode(ctx context.Context, channel *model.Channel) (float64, bool, error) {
 	switch mode := channel.GetSetting().BalanceQueryMode; mode {
 	case dto.BalanceQueryModeDefault:
 		return 0, false, nil
@@ -53,11 +63,34 @@ func updateChannelBalanceByQueryMode(channel *model.Channel) (float64, bool, err
 		}
 		return balance, true, err
 	case dto.BalanceQueryModeSub2API:
-		balance, err := querySub2APIBalance(channel)
-		if err == nil {
-			channel.UpdateBalance(balance)
+		lock := model.GetChannelPollingLock(channel.Id)
+		lock.Lock()
+		defer lock.Unlock()
+
+		snapshot, err := querySub2APIChannelSnapshot(ctx, channel)
+		currentAuth := service.Sub2APIAuthState{
+			Email:                channel.Sub2APIUsername,
+			Password:             channel.Sub2APIPassword,
+			AccessToken:          channel.Sub2APIAccessToken,
+			RefreshToken:         channel.Sub2APIRefreshToken,
+			AccessTokenExpiresAt: channel.Sub2APIAccessTokenExpiresAt,
 		}
-		return balance, true, err
+		if snapshot.Auth != currentAuth {
+			state := channel.Sub2APIState()
+			state.AccessToken = snapshot.Auth.AccessToken
+			state.RefreshToken = snapshot.Auth.RefreshToken
+			state.AccessTokenExpiresAt = snapshot.Auth.AccessTokenExpiresAt
+			if saveErr := channel.SaveSub2APITokens(state); saveErr != nil {
+				return 0, true, saveErr
+			}
+		}
+		if err != nil {
+			return 0, true, err
+		}
+		if err := channel.SaveSub2APIBalance(snapshot.Balance, snapshot.RateMultiplier, snapshot.GroupName, snapshot.GroupDescription); err != nil {
+			return 0, true, err
+		}
+		return snapshot.Balance, true, nil
 	case dto.BalanceQueryModeHYL2API:
 		balance, err := queryHYL2APIBalance(channel)
 		if err == nil {
@@ -146,6 +179,40 @@ func querySub2APIBalance(channel *model.Channel) (float64, error) {
 		return 0, err
 	}
 	return response.remainingBalance()
+}
+
+func querySub2APIChannelSnapshot(ctx context.Context, channel *model.Channel) (sub2APIChannelSnapshot, error) {
+	balance, err := querySub2APIBalance(channel)
+	if err != nil {
+		return sub2APIChannelSnapshot{}, err
+	}
+	auth := service.Sub2APIAuthState{
+		Email:                channel.Sub2APIUsername,
+		Password:             channel.Sub2APIPassword,
+		AccessToken:          channel.Sub2APIAccessToken,
+		RefreshToken:         channel.Sub2APIRefreshToken,
+		AccessTokenExpiresAt: channel.Sub2APIAccessTokenExpiresAt,
+	}
+	snapshot := sub2APIChannelSnapshot{Balance: balance, Auth: auth}
+	if auth.Email == "" || auth.Password == "" {
+		return snapshot, nil
+	}
+	client, err := service.NewSub2APIClient(channel.GetBaseURL(), channel.GetSetting().Proxy)
+	if err != nil {
+		return snapshot, err
+	}
+	queryCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
+	metadata, updatedAuth, err := client.QueryMetadata(queryCtx, channel.Key, auth)
+	snapshot.Auth = updatedAuth
+	if err != nil {
+		return snapshot, err
+	}
+	rateMultiplier := metadata.RateMultiplier
+	snapshot.RateMultiplier = &rateMultiplier
+	snapshot.GroupName = metadata.GroupName
+	snapshot.GroupDescription = metadata.GroupDescription
+	return snapshot, nil
 }
 
 func (response sub2APIUsageResponse) remainingBalance() (float64, error) {

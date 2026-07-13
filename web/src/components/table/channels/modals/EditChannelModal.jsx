@@ -201,6 +201,8 @@ const EditChannelModal = (props) => {
     system_prompt: '',
     system_prompt_override: false,
     balance_query_mode: '',
+    sub2api_username: '',
+    sub2api_password: '',
     settings: '',
     // 仅 Vertex: 密钥格式（存入 settings.vertex_key_type）
     vertex_key_type: 'json',
@@ -828,6 +830,7 @@ const EditChannelModal = (props) => {
       } else {
         data.models = data.models.split(',');
       }
+      data.sub2api_password = '';
       if (data.group === '') {
         data.groups = [];
       } else {
@@ -1061,6 +1064,7 @@ const EditChannelModal = (props) => {
         data.advanced_anthropic_base_url ||
         data.advanced_responses_supported ||
         data.balance_query_mode ||
+        data.sub2api_username ||
         data.system_prompt_override;
       if (hasAdvancedValues) {
         setAdvancedSettingsOpen(true);
@@ -1917,6 +1921,12 @@ const EditChannelModal = (props) => {
     delete localInputs.upstream_model_update_last_check_time;
     delete localInputs.upstream_model_update_last_detected_models;
     delete localInputs.upstream_model_update_ignored_models;
+    delete localInputs.upstream_rate_multiplier;
+    delete localInputs.upstream_group_name;
+    delete localInputs.upstream_group_description;
+
+    const sub2APIPassword = localInputs.sub2api_password || '';
+    delete localInputs.sub2api_password;
 
     let res;
     localInputs.auto_ban = localInputs.auto_ban ? 1 : 0;
@@ -1934,12 +1944,14 @@ const EditChannelModal = (props) => {
         ...localInputs,
         id: parseInt(channelId),
         key_mode: isMultiKeyChannel ? keyMode : undefined, // 只在多key模式下传递
+        sub2api_password: sub2APIPassword,
       });
     } else {
       res = await API.post(`/api/channel/`, {
         mode: mode,
         multi_key_mode: mode === 'multi_to_single' ? multiKeyMode : undefined,
         channel: localInputs,
+        sub2api_password: sub2APIPassword,
       });
     }
     const { success, message } = res.data;
@@ -2604,6 +2616,30 @@ const EditChannelModal = (props) => {
                     onChange={(value) => handleChannelSettingsChange('balance_query_mode', value)}
                     extraText={t('上游为 new-api 或 One API 时选择 OpenAI 兼容接口；上游为 sub2api 时选择 sub2api /v1/usage；上游为 hyl2api 时选择 hyl2api /user/api/quota')}
                   />
+
+                  {inputs.balance_query_mode === 'sub2api' && (
+                    <>
+                      <Form.Input
+                        field='sub2api_username'
+                        label={`sub2api ${t('邮箱')}`}
+                        onChange={(value) =>
+                          handleInputChange('sub2api_username', value)
+                        }
+                        showClear
+                      />
+                      <Form.Input
+                        field='sub2api_password'
+                        mode='password'
+                        label={`sub2api ${t('密码')}`}
+                        placeholder={
+                          isEdit && inputs.sub2api_username ? '********' : ''
+                        }
+                        onChange={(value) =>
+                          handleInputChange('sub2api_password', value)
+                        }
+                      />
+                    </>
+                  )}
 
                   <Form.Switch field='thinking_to_content' label={t('思考内容转换')} checkedText={t('开')} uncheckedText={t('关')} onChange={(value) => handleChannelSettingsChange('thinking_to_content', value)} extraText={t('将 reasoning_content 转换为 <think> 标签拼接到内容中')} />
                   {inputs.type !== 60 && (

@@ -45,6 +45,7 @@ import {
 } from '../../../constants';
 import { parseUpstreamUpdateMeta } from '../../../hooks/channels/upstreamUpdateUtils';
 import { isCollapsedChannelsRow } from '../../../hooks/channels/channelCollapseRows';
+import { formatSub2APIRate } from './sub2apiMetadata';
 import {
   IconTreeTriangleDown,
   IconMore,
@@ -592,6 +593,9 @@ export const getChannelsColumns = ({
       dataIndex: 'expired_time',
       render: (text, record, index) => {
         if (record.children === undefined) {
+          const upstreamRate = formatSub2APIRate(
+            record.upstream_rate_multiplier,
+          );
           return (
             <div>
               <Space spacing={1}>
@@ -622,6 +626,26 @@ export const getChannelsColumns = ({
                       : renderQuotaWithAmount(record.balance)}
                   </Tag>
                 </Tooltip>
+                {upstreamRate && (
+                  <Tooltip
+                    content={
+                      <div className='max-w-xs whitespace-normal'>
+                        <div className='font-medium'>
+                          {record.upstream_group_name || '-'}
+                        </div>
+                        {record.upstream_group_description && (
+                          <div className='mt-1'>
+                            {record.upstream_group_description}
+                          </div>
+                        )}
+                      </div>
+                    }
+                  >
+                    <Tag color='light-blue' type='light' shape='circle'>
+                      {upstreamRate}
+                    </Tag>
+                  </Tooltip>
+                )}
               </Space>
             </div>
           );
