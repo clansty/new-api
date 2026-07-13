@@ -7,6 +7,15 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestAppendSafeRequestQuery_whenClientCredentialsPresent(t *testing.T) {
+	got := AppendSafeRequestQuery(
+		"/v1/alpha/search",
+		"/backend-api/codex/alpha/search?feature=standalone&api_key=client-key&access_token=client-token",
+	)
+
+	require.Equal(t, "/v1/alpha/search?feature=standalone", got)
+}
+
 func TestRelayInfoGetFinalRequestRelayFormatPrefersExplicitFinal(t *testing.T) {
 	info := &RelayInfo{
 		RelayFormat:             types.RelayFormatOpenAI,

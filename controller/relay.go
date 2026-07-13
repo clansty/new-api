@@ -48,6 +48,8 @@ func relayHandler(c *gin.Context, info *relaycommon.RelayInfo) *types.NewAPIErro
 		err = relay.EmbeddingHelper(c, info)
 	case relayconstant.RelayModeResponses, relayconstant.RelayModeResponsesCompact:
 		err = relay.ResponsesHelper(c, info)
+	case relayconstant.RelayModeAlphaSearch:
+		err = relay.AlphaSearchHelper(c, info)
 	default:
 		err = relay.TextHelper(c, info)
 	}
@@ -155,6 +157,18 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 	if err != nil {
 		newAPIError = types.NewError(err, types.ErrorCodeModelPriceError, types.ErrOptionWithStatusCode(http.StatusBadRequest))
 		return
+	}
+	if relayInfo.RelayMode == relayconstant.RelayModeAlphaSearch {
+		toolQuota := service.ComputeToolCallQuota(service.ToolCallUsage{
+			ModelName:         relayInfo.OriginModelName,
+			WebSearchCalls:    1,
+			WebSearchToolName: dto.BuildInToolWebSearch,
+		}, priceData.GroupRatioInfo.GroupRatio)
+		priceData.QuotaToPreConsume += toolQuota.TotalQuota
+		if toolQuota.TotalQuota > 0 {
+			priceData.FreeModel = false
+		}
+		relayInfo.PriceData = priceData
 	}
 
 	// common.SetContextKey(c, constant.ContextKeyTokenCountMeta, meta)

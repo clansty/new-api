@@ -86,14 +86,23 @@ func calculateTextToolCallSurcharge(ctx *gin.Context, relayInfo *relaycommon.Rel
 	var surcharge decimal.Decimal
 
 	if relayInfo.ResponsesUsageInfo != nil {
-		if webSearchTool, exists := relayInfo.ResponsesUsageInfo.BuiltInTools[dto.BuildInToolWebSearchPreview]; exists && webSearchTool.CallCount > 0 {
-			summary.WebSearchCallCount = webSearchTool.CallCount
-			summary.WebSearchPrice = operation_setting.GetToolPriceForModel("web_search_preview", summary.ModelName)
-			surcharge = surcharge.Add(decimal.NewFromFloat(summary.WebSearchPrice).
+		weightedWebSearchPrice := 0.0
+		for _, webSearchToolName := range []string{dto.BuildInToolWebSearchPreview, dto.BuildInToolWebSearch} {
+			webSearchTool, exists := relayInfo.ResponsesUsageInfo.BuiltInTools[webSearchToolName]
+			if !exists || webSearchTool.CallCount <= 0 {
+				continue
+			}
+			price := operation_setting.GetToolPriceForModel(webSearchToolName, summary.ModelName)
+			summary.WebSearchCallCount += webSearchTool.CallCount
+			weightedWebSearchPrice += price * float64(webSearchTool.CallCount)
+			surcharge = surcharge.Add(decimal.NewFromFloat(price).
 				Mul(decimal.NewFromInt(int64(webSearchTool.CallCount))).
 				Div(decimal.NewFromInt(1000)).
 				Mul(dGroupRatio).
 				Mul(dQuotaPerUnit))
+		}
+		if summary.WebSearchCallCount > 0 {
+			summary.WebSearchPrice = weightedWebSearchPrice / float64(summary.WebSearchCallCount)
 		}
 	} else if strings.HasSuffix(summary.ModelName, "search-preview") {
 		summary.WebSearchCallCount = 1
@@ -298,7 +307,7 @@ func calculateTextQuotaSummary(ctx *gin.Context, relayInfo *relaycommon.RelayInf
 		summary.Quota = int(quotaCalculateDecimal.Round(0).IntPart())
 	}
 
-	if summary.TotalTokens == 0 {
+	if summary.TotalTokens == 0 && summary.ToolCallSurchargeQuota.IsZero() {
 		summary.Quota = 0
 	} else if !ratio.IsZero() && summary.Quota == 0 {
 		summary.Quota = 1
@@ -360,10 +369,13 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 		extraContent = append(extraContent, fmt.Sprintf("Image Generation Call 花费 %s", decimal.NewFromFloat(summary.ImageGenerationCallPrice).Mul(decimal.NewFromFloat(summary.GroupRatio)).Mul(decimal.NewFromFloat(common.QuotaPerUnit)).String()))
 	}
 
-	if summary.TotalTokens == 0 {
+	if summary.TotalTokens == 0 && summary.ToolCallSurchargeQuota.IsZero() {
 		extraContent = append(extraContent, "上游没有返回计费信息，无法扣费（可能是上游超时）")
 		logger.LogError(ctx, fmt.Sprintf("total tokens is 0, cannot consume quota, userId %d, channelId %d, tokenId %d, model %s， pre-consumed quota %d", relayInfo.UserId, relayInfo.ChannelId, relayInfo.TokenId, summary.ModelName, relayInfo.FinalPreConsumedQuota))
 	} else {
+		if summary.TotalTokens == 0 {
+			extraContent = append(extraContent, "上游未返回 token 用量，仅结算工具调用费用")
+		}
 		model.UpdateUserUsedQuotaAndRequestCount(relayInfo.UserId, summary.Quota)
 		model.UpdateChannelUsedQuota(relayInfo.ChannelId, summary.Quota)
 	}

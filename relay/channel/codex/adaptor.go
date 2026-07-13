@@ -135,8 +135,12 @@ func (a *Adaptor) GetChannelName() string {
 }
 
 func (a *Adaptor) GetRequestURL(info *relaycommon.RelayInfo) (string, error) {
+	if info.RelayMode == relayconstant.RelayModeAlphaSearch {
+		path := relaycommon.AppendSafeRequestQuery("/backend-api/codex/alpha/search", info.RequestURLPath)
+		return relaycommon.GetFullRequestURL(info.ChannelBaseUrl, path, info.ChannelType), nil
+	}
 	if info.RelayMode != relayconstant.RelayModeResponses && info.RelayMode != relayconstant.RelayModeResponsesCompact {
-		return "", errors.New("codex channel: only /v1/responses and /v1/responses/compact are supported")
+		return "", errors.New("codex channel: endpoint not supported")
 	}
 	path := "/backend-api/codex/responses"
 	if info.RelayMode == relayconstant.RelayModeResponsesCompact {
@@ -171,8 +175,16 @@ func (a *Adaptor) SetupRequestHeader(c *gin.Context, req *http.Header, info *rel
 	req.Set("Authorization", "Bearer "+accessToken)
 	req.Set("chatgpt-account-id", accountID)
 
-	if req.Get("OpenAI-Beta") == "" {
+	if info.RelayMode != relayconstant.RelayModeAlphaSearch && req.Get("OpenAI-Beta") == "" {
 		req.Set("OpenAI-Beta", "responses=experimental")
+	}
+	if info.RelayMode == relayconstant.RelayModeAlphaSearch {
+		if beta := strings.TrimSpace(c.GetHeader("OpenAI-Beta")); beta != "" {
+			req.Set("OpenAI-Beta", beta)
+		}
+		if version := strings.TrimSpace(c.GetHeader("Version")); version != "" {
+			req.Set("Version", version)
+		}
 	}
 	if req.Get("originator") == "" {
 		req.Set("originator", "codex_cli_rs")

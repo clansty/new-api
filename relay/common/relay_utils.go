@@ -3,6 +3,7 @@ package common
 import (
 	"fmt"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 
@@ -34,6 +35,26 @@ func GetFullRequestURL(baseURL string, requestURL string, channelType int) strin
 		}
 	}
 	return fullRequestURL
+}
+
+func AppendSafeRequestQuery(targetPath string, requestPath string) string {
+	requestURL, err := url.Parse(requestPath)
+	if err != nil || requestURL.RawQuery == "" {
+		return targetPath
+	}
+	query := requestURL.Query()
+	query.Del("key")
+	query.Del("api_key")
+	query.Del("access_token")
+	if len(query) == 0 {
+		return targetPath
+	}
+	targetURL, err := url.Parse(targetPath)
+	if err != nil {
+		return targetPath
+	}
+	targetURL.RawQuery = query.Encode()
+	return targetURL.String()
 }
 
 func GetAPIVersion(c *gin.Context) string {

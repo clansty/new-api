@@ -95,6 +95,13 @@ func (a *Adaptor) Init(info *relaycommon.RelayInfo) {
 }
 
 func (a *Adaptor) GetRequestURL(info *relaycommon.RelayInfo) (string, error) {
+	if info.RelayMode == relayconstant.RelayModeAlphaSearch {
+		if info.ChannelType == constant.ChannelTypeAzure {
+			return "", errors.New("alpha search is not supported by Azure OpenAI")
+		}
+		path := relaycommon.AppendSafeRequestQuery("/v1/alpha/search", info.RequestURLPath)
+		return relaycommon.GetFullRequestURL(info.ChannelBaseUrl, path, info.ChannelType), nil
+	}
 	if info.RelayMode == relayconstant.RelayModeRealtime {
 		if strings.HasPrefix(info.ChannelBaseUrl, "https://") {
 			baseUrl := strings.TrimPrefix(info.ChannelBaseUrl, "https://")

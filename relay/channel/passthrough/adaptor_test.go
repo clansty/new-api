@@ -62,6 +62,24 @@ func TestAdaptorGetRequestURL_whenAdvancedOpenAIEntry(t *testing.T) {
 	require.Equal(t, "https://openai-upstream.example/v1/chat/completions", url)
 }
 
+func TestAdaptorGetRequestURL_whenAlphaSearchAlias(t *testing.T) {
+	adaptor := &Adaptor{}
+	info := &relaycommon.RelayInfo{
+		RequestURLPath: "/backend-api/codex/alpha/search?feature=standalone",
+		RelayFormat:    types.RelayFormatOpenAIAlphaSearch,
+		RelayMode:      relayconstant.RelayModeAlphaSearch,
+		ChannelMeta: &relaycommon.ChannelMeta{
+			ChannelType:    constant.ChannelTypePassThrough,
+			ChannelBaseUrl: "https://upstream.example",
+		},
+	}
+
+	url, err := adaptor.GetRequestURL(info)
+
+	require.NoError(t, err)
+	require.Equal(t, "https://upstream.example/v1/alpha/search?feature=standalone", url)
+}
+
 func TestAdaptorGetRequestURL_whenAdvancedClaudeEntry(t *testing.T) {
 	// Given: an advanced pass-through channel receives an Anthropic Messages request.
 	adaptor := &Adaptor{}

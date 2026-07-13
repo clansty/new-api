@@ -32,6 +32,17 @@ func (a *Adaptor) GetRequestURL(info *relaycommon.RelayInfo) (string, error) {
 	if !isSupportedRelayFormat(info.RelayFormat) {
 		return "", fmt.Errorf("unsupported pass-through relay format: %s", info.RelayFormat)
 	}
+	if info.RelayMode == relayconstant.RelayModeAlphaSearch {
+		requestPath := relaycommon.AppendSafeRequestQuery("/v1/alpha/search", info.RequestURLPath)
+		if info.ChannelType == constant.ChannelTypeAdvancedPassThrough {
+			baseURL, err := getAdvancedBaseURL(info)
+			if err != nil {
+				return "", err
+			}
+			return relaycommon.GetFullRequestURL(strings.TrimRight(baseURL, "/"), requestPath, info.ChannelType), nil
+		}
+		return relaycommon.GetFullRequestURL(strings.TrimRight(info.ChannelBaseUrl, "/"), requestPath, info.ChannelType), nil
+	}
 	if info.ChannelType == constant.ChannelTypeAdvancedPassThrough {
 		return getAdvancedRequestURL(info)
 	}
@@ -60,7 +71,7 @@ func getAdvancedBaseURL(info *relaycommon.RelayInfo) (string, error) {
 			return "", errors.New("advanced pass-through Anthropic base URL is empty")
 		}
 		return baseURL, nil
-	case types.RelayFormatOpenAI, types.RelayFormatOpenAIResponses, types.RelayFormatOpenAIResponsesCompaction:
+	case types.RelayFormatOpenAI, types.RelayFormatOpenAIResponses, types.RelayFormatOpenAIResponsesCompaction, types.RelayFormatOpenAIAlphaSearch:
 		baseURL := strings.TrimSpace(info.ChannelOtherSettings.AdvancedOpenAIBaseURL)
 		if baseURL == "" {
 			return "", errors.New("advanced pass-through OpenAI base URL is empty")
@@ -110,7 +121,8 @@ func isSupportedRelayFormat(format types.RelayFormat) bool {
 		types.RelayFormatGemini,
 		types.RelayFormatOpenAI,
 		types.RelayFormatOpenAIResponses,
-		types.RelayFormatOpenAIResponsesCompaction:
+		types.RelayFormatOpenAIResponsesCompaction,
+		types.RelayFormatOpenAIAlphaSearch:
 		return true
 	default:
 		return false

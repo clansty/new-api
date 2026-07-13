@@ -404,6 +404,67 @@ func TestComposeTieredTextQuotaKeepsToolCallSurcharges(t *testing.T) {
 	require.Equal(t, 14000, quota)
 }
 
+func TestCalculateTextQuotaSummary_whenStandaloneWebSearch(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(w)
+	relayInfo := &relaycommon.RelayInfo{
+		OriginModelName: "gpt-5.6-sol",
+		PriceData: types.PriceData{
+			GroupRatioInfo: types.GroupRatioInfo{GroupRatio: 1},
+		},
+		ResponsesUsageInfo: &relaycommon.ResponsesUsageInfo{
+			BuiltInTools: map[string]*relaycommon.BuildInToolInfo{
+				"web_search": {
+					ToolName:  "web_search",
+					CallCount: 1,
+				},
+			},
+		},
+		StartTime: time.Now(),
+	}
+
+	summary := calculateTextQuotaSummary(ctx, relayInfo, &dto.Usage{})
+
+	// standalone search 必须使用 web_search 的管理员配置，不能静默按免费调用结算。
+	require.Equal(t, 1, summary.WebSearchCallCount)
+	require.Equal(t, 10.0, summary.WebSearchPrice)
+	require.Equal(t, int64(5000), summary.ToolCallSurchargeQuota.Round(0).IntPart())
+	require.Equal(t, 5000, summary.Quota)
+}
+
+func TestCalculateTextQuotaSummary_whenBothWebSearchToolVariants(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(w)
+	relayInfo := &relaycommon.RelayInfo{
+		OriginModelName: "gpt-5.6-sol",
+		PriceData: types.PriceData{
+			GroupRatioInfo: types.GroupRatioInfo{GroupRatio: 1},
+		},
+		ResponsesUsageInfo: &relaycommon.ResponsesUsageInfo{
+			BuiltInTools: map[string]*relaycommon.BuildInToolInfo{
+				dto.BuildInToolWebSearch: {
+					ToolName:  dto.BuildInToolWebSearch,
+					CallCount: 1,
+				},
+				dto.BuildInToolWebSearchPreview: {
+					ToolName:  dto.BuildInToolWebSearchPreview,
+					CallCount: 2,
+				},
+			},
+		},
+		StartTime: time.Now(),
+	}
+
+	summary := calculateTextQuotaSummary(ctx, relayInfo, &dto.Usage{})
+
+	require.Equal(t, 3, summary.WebSearchCallCount)
+	require.Equal(t, 10.0, summary.WebSearchPrice)
+	require.Equal(t, int64(15000), summary.ToolCallSurchargeQuota.Round(0).IntPart())
+	require.Equal(t, 15000, summary.Quota)
+}
+
 func TestComposeTieredTextQuotaFallbackKeepsToolCallSurcharges(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	w := httptest.NewRecorder()
