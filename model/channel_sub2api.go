@@ -38,6 +38,9 @@ func (channel *Channel) ApplySub2APIState(state ChannelSub2APIState) {
 }
 
 func (channel *Channel) SaveSub2APIState(state ChannelSub2APIState) error {
+	state.AccessToken = ""
+	state.RefreshToken = ""
+	state.AccessTokenExpiresAt = 0
 	err := DB.Model(channel).Updates(map[string]any{
 		"sub2api_username":                state.Username,
 		"sub2api_password":                state.Password,
@@ -52,21 +55,6 @@ func (channel *Channel) SaveSub2APIState(state ChannelSub2APIState) error {
 		return err
 	}
 	channel.ApplySub2APIState(state)
-	return nil
-}
-
-func (channel *Channel) SaveSub2APITokens(state ChannelSub2APIState) error {
-	err := DB.Model(channel).Updates(map[string]any{
-		"sub2api_access_token":            state.AccessToken,
-		"sub2api_refresh_token":           state.RefreshToken,
-		"sub2api_access_token_expires_at": state.AccessTokenExpiresAt,
-	}).Error
-	if err != nil {
-		return err
-	}
-	channel.Sub2APIAccessToken = state.AccessToken
-	channel.Sub2APIRefreshToken = state.RefreshToken
-	channel.Sub2APIAccessTokenExpiresAt = state.AccessTokenExpiresAt
 	return nil
 }
 

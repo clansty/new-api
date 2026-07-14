@@ -4,6 +4,8 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -103,4 +105,56 @@ func TestSub2APIClientQueryMetadata_whenRefreshTokenRotates(t *testing.T) {
 	require.Equal(t, 0.8, metadata.RateMultiplier)
 	require.Equal(t, "refresh-2", updatedAuth.RefreshToken)
 	require.Equal(t, int64(1_700_001_800), updatedAuth.AccessTokenExpiresAt)
+}
+
+func TestSub2APIClientQueryMetadata_reusesAuthForSameCredentials(t *testing.T) {
+	// Given: 两个渠道指向同一上游，并使用相同的登录账号。
+	var loginCalls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v1/auth/login":
+			loginCalls.Add(1)
+			_, err := w.Write([]byte(`{"code":0,"message":"success","data":{"access_token":"shared-access","refresh_token":"shared-refresh","expires_in":3600}}`))
+			require.NoError(t, err)
+		case "/api/v1/keys":
+			apiKey := r.URL.Query().Get("search")
+			_, err := w.Write([]byte(`{"code":0,"message":"success","data":{"items":[{"key":"` + apiKey + `","group":{"id":7,"name":"共享分组","rate_multiplier":0.8}}]}}`))
+			require.NoError(t, err)
+		case "/api/v1/groups/rates":
+			_, err := w.Write([]byte(`{"code":0,"message":"success","data":{}}`))
+			require.NoError(t, err)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	firstClient, err := NewSub2APIClient(server.URL, "")
+	require.NoError(t, err)
+	secondClient, err := NewSub2APIClient(server.URL+"/v1", "")
+	require.NoError(t, err)
+	auth := Sub2APIAuthState{Email: "user@example.com", Password: "secret"}
+
+	// When: 两条渠道并发查询各自 API Key 的分组。
+	start := make(chan struct{})
+	queryErrors := make(chan error, 2)
+	var waitGroup sync.WaitGroup
+	waitGroup.Add(2)
+	for index, client := range []*Sub2APIClient{firstClient, secondClient} {
+		go func() {
+			defer waitGroup.Done()
+			<-start
+			_, _, queryErr := client.QueryMetadata(context.Background(), "sk-"+[]string{"first", "second"}[index], auth)
+			queryErrors <- queryErr
+		}()
+	}
+	close(start)
+	waitGroup.Wait()
+	close(queryErrors)
+
+	// Then: 规范化后相同的上游账号只登录一次。
+	for queryErr := range queryErrors {
+		require.NoError(t, queryErr)
+	}
+	require.Equal(t, int32(1), loginCalls.Load())
 }

@@ -6,10 +6,27 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/pkg/sub2apiauth"
+
+	"github.com/samber/go-singleflightx"
 )
+
+type sub2APICachedTokens struct {
+	AccessToken          string
+	RefreshToken         string
+	AccessTokenExpiresAt int64
+}
+
+var sub2APIAuthCache = struct {
+	sync.RWMutex
+	tokens map[string]sub2APICachedTokens
+}{tokens: make(map[string]sub2APICachedTokens)}
+
+var sub2APIAuthRequests singleflightx.Group[string, sub2APICachedTokens]
 
 type sub2APITokenData struct {
 	AccessToken  string `json:"access_token"`
@@ -28,9 +45,37 @@ type sub2APIRefreshRequest struct {
 }
 
 func (client *Sub2APIClient) ensureAccessToken(ctx context.Context, auth Sub2APIAuthState) (Sub2APIAuthState, error) {
+	key := sub2apiauth.Identity{
+		BaseURL:  client.rootURL,
+		Username: auth.Email,
+		Password: auth.Password,
+	}.Key()
+	auth = applySub2APICachedTokens(auth, loadSub2APICachedTokens(key))
 	if auth.AccessToken != "" && auth.AccessTokenExpiresAt > client.now().Add(time.Minute).Unix() {
+		storeSub2APICachedTokens(key, cachedTokensFromAuth(auth))
 		return auth, nil
 	}
+
+	tokens, err, _ := sub2APIAuthRequests.Do(key, func() (sub2APICachedTokens, error) {
+		candidate := applySub2APICachedTokens(auth, loadSub2APICachedTokens(key))
+		if candidate.AccessToken != "" && candidate.AccessTokenExpiresAt > client.now().Add(time.Minute).Unix() {
+			return cachedTokensFromAuth(candidate), nil
+		}
+		updated, err := client.acquireAccessToken(ctx, candidate)
+		if err != nil {
+			return sub2APICachedTokens{}, err
+		}
+		cached := cachedTokensFromAuth(updated)
+		storeSub2APICachedTokens(key, cached)
+		return cached, nil
+	})
+	if err != nil {
+		return auth, err
+	}
+	return applySub2APICachedTokens(auth, tokens), nil
+}
+
+func (client *Sub2APIClient) acquireAccessToken(ctx context.Context, auth Sub2APIAuthState) (Sub2APIAuthState, error) {
 	if auth.RefreshToken != "" {
 		refreshed, err := client.refreshToken(ctx, auth)
 		if err == nil {
@@ -38,6 +83,43 @@ func (client *Sub2APIClient) ensureAccessToken(ctx context.Context, auth Sub2API
 		}
 	}
 	return client.login(ctx, auth)
+}
+
+func loadSub2APICachedTokens(key string) sub2APICachedTokens {
+	sub2APIAuthCache.RLock()
+	defer sub2APIAuthCache.RUnlock()
+	return sub2APIAuthCache.tokens[key]
+}
+
+func storeSub2APICachedTokens(key string, tokens sub2APICachedTokens) {
+	sub2APIAuthCache.Lock()
+	defer sub2APIAuthCache.Unlock()
+	current := sub2APIAuthCache.tokens[key]
+	if current.AccessTokenExpiresAt > tokens.AccessTokenExpiresAt {
+		return
+	}
+	sub2APIAuthCache.tokens[key] = tokens
+}
+
+func applySub2APICachedTokens(auth Sub2APIAuthState, cached sub2APICachedTokens) Sub2APIAuthState {
+	if cached.AccessTokenExpiresAt < auth.AccessTokenExpiresAt {
+		return auth
+	}
+	if cached.AccessToken == "" || cached.RefreshToken == "" {
+		return auth
+	}
+	auth.AccessToken = cached.AccessToken
+	auth.RefreshToken = cached.RefreshToken
+	auth.AccessTokenExpiresAt = cached.AccessTokenExpiresAt
+	return auth
+}
+
+func cachedTokensFromAuth(auth Sub2APIAuthState) sub2APICachedTokens {
+	return sub2APICachedTokens{
+		AccessToken:          auth.AccessToken,
+		RefreshToken:         auth.RefreshToken,
+		AccessTokenExpiresAt: auth.AccessTokenExpiresAt,
+	}
 }
 
 func (client *Sub2APIClient) login(ctx context.Context, auth Sub2APIAuthState) (Sub2APIAuthState, error) {

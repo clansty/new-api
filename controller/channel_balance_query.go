@@ -67,7 +67,10 @@ func updateChannelBalanceByQueryMode(ctx context.Context, channel *model.Channel
 		lock.Lock()
 		defer lock.Unlock()
 
-		snapshot, err := querySub2APIChannelSnapshot(ctx, channel)
+		sharedAuthFound, err := channel.LoadSharedSub2APIAuth()
+		if err != nil {
+			return 0, true, err
+		}
 		currentAuth := service.Sub2APIAuthState{
 			Email:                channel.Sub2APIUsername,
 			Password:             channel.Sub2APIPassword,
@@ -75,12 +78,16 @@ func updateChannelBalanceByQueryMode(ctx context.Context, channel *model.Channel
 			RefreshToken:         channel.Sub2APIRefreshToken,
 			AccessTokenExpiresAt: channel.Sub2APIAccessTokenExpiresAt,
 		}
-		if snapshot.Auth != currentAuth {
+		snapshot, err := querySub2APIChannelSnapshot(ctx, channel)
+		hasCompleteAuth := snapshot.Auth.AccessToken != "" &&
+			snapshot.Auth.RefreshToken != "" &&
+			snapshot.Auth.AccessTokenExpiresAt > 0
+		if hasCompleteAuth && (!sharedAuthFound || snapshot.Auth != currentAuth) {
 			state := channel.Sub2APIState()
 			state.AccessToken = snapshot.Auth.AccessToken
 			state.RefreshToken = snapshot.Auth.RefreshToken
 			state.AccessTokenExpiresAt = snapshot.Auth.AccessTokenExpiresAt
-			if saveErr := channel.SaveSub2APITokens(state); saveErr != nil {
+			if saveErr := channel.SaveSharedSub2APIAuth(state); saveErr != nil {
 				return 0, true, saveErr
 			}
 		}

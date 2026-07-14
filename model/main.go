@@ -345,6 +345,7 @@ func migrateDB() error {
 
 	err := DB.AutoMigrate(
 		&Channel{},
+		&Sub2APIAuthCredential{},
 		&Token{},
 		&User{},
 		&PasskeyCredential{},
@@ -372,6 +373,9 @@ func migrateDB() error {
 	if err != nil {
 		return err
 	}
+	if err := migrateSub2APIAuthCredentials(); err != nil {
+		return err
+	}
 	if common.UsingSQLite {
 		if err := ensureSubscriptionPlanTableSQLite(); err != nil {
 			return err
@@ -393,6 +397,7 @@ func migrateDBFast() error {
 		name  string
 	}{
 		{&Channel{}, "Channel"},
+		{&Sub2APIAuthCredential{}, "Sub2APIAuthCredential"},
 		{&Token{}, "Token"},
 		{&User{}, "User"},
 		{&PasskeyCredential{}, "PasskeyCredential"},
@@ -439,6 +444,9 @@ func migrateDBFast() error {
 		if err != nil {
 			return err
 		}
+	}
+	if err := migrateSub2APIAuthCredentials(); err != nil {
+		return err
 	}
 	if common.UsingSQLite {
 		if err := ensureSubscriptionPlanTableSQLite(); err != nil {

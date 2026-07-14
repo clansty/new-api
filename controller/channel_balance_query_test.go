@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -11,7 +12,9 @@ import (
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/model"
 
+	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 )
 
 func Test_queryOpenAICompatibleBalanceAt_whenUpstreamImplementsNewAPIDashboard(t *testing.T) {
@@ -123,6 +126,63 @@ func Test_querySub2APIChannelSnapshot_whenCredentialsAreConfigured(t *testing.T)
 	require.Equal(t, "专属 Claude 组", snapshot.GroupName)
 	require.Equal(t, "Claude 专属低倍率分组", snapshot.GroupDescription)
 	require.Equal(t, "refresh-1", snapshot.Auth.RefreshToken)
+}
+
+func Test_updateChannelBalanceByQueryMode_reusesSharedSub2APIAuthAcrossChannels(t *testing.T) {
+	// Given: 两条已持久化渠道共享同一个 sub2api 登录账号。
+	originalDB := model.DB
+	db, err := gorm.Open(sqlite.Open(t.TempDir()+"/sub2api.db"), &gorm.Config{})
+	require.NoError(t, err)
+	model.DB = db
+	t.Cleanup(func() { model.DB = originalDB })
+	require.NoError(t, db.AutoMigrate(&model.Channel{}, &model.Sub2APIAuthCredential{}))
+
+	var loginCalls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/usage":
+			_, err := w.Write([]byte(`{"remaining":88.5,"unit":"USD"}`))
+			require.NoError(t, err)
+		case "/api/v1/auth/login":
+			loginCalls.Add(1)
+			_, err := w.Write([]byte(`{"code":0,"message":"success","data":{"access_token":"shared-access","refresh_token":"shared-refresh","expires_in":3600}}`))
+			require.NoError(t, err)
+		case "/api/v1/keys":
+			apiKey := r.URL.Query().Get("search")
+			_, err := w.Write([]byte(`{"code":0,"message":"success","data":{"items":[{"key":"` + apiKey + `","group":{"id":7,"name":"共享分组","rate_multiplier":0.8}}]}}`))
+			require.NoError(t, err)
+		case "/api/v1/groups/rates":
+			_, err := w.Write([]byte(`{"code":0,"message":"success","data":{}}`))
+			require.NoError(t, err)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	setting := common.GetPointer(`{"balance_query_mode":"sub2api"}`)
+	channels := []model.Channel{
+		{Name: "first", Key: "sk-first", BaseURL: common.GetPointer(server.URL), Setting: setting, Sub2APIUsername: "user@example.com", Sub2APIPassword: "secret"},
+		{Name: "second", Key: "sk-second", BaseURL: common.GetPointer(server.URL + "/v1"), Setting: setting, Sub2APIUsername: "user@example.com", Sub2APIPassword: "secret"},
+	}
+	require.NoError(t, db.Create(&channels).Error)
+
+	// When: 两条渠道依次刷新余额和分组信息。
+	_, _, firstErr := updateChannelBalanceByQueryMode(context.Background(), &channels[0])
+	_, _, secondErr := updateChannelBalanceByQueryMode(context.Background(), &channels[1])
+
+	// Then: 登录只发生一次，Token 只存在共享表而不回写渠道表。
+	require.NoError(t, firstErr)
+	require.NoError(t, secondErr)
+	require.Equal(t, int32(1), loginCalls.Load())
+	var sharedCount int64
+	require.NoError(t, db.Table("sub2_api_auth_credentials").Count(&sharedCount).Error)
+	require.Equal(t, int64(1), sharedCount)
+	var tokenCopies int64
+	require.NoError(t, db.Model(&model.Channel{}).
+		Where("sub2api_access_token <> '' OR sub2api_refresh_token <> ''").
+		Count(&tokenCopies).Error)
+	require.Zero(t, tokenCopies)
 }
 
 func Test_sub2APIUsageResponseRemainingBalance_whenQuotaRemainingIsPresent(t *testing.T) {

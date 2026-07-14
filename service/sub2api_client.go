@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/pkg/sub2apiauth"
 )
 
 var ErrSub2API2FARequired = errors.New("sub2api account requires two-factor authentication")
@@ -70,10 +71,8 @@ func NewSub2APIClient(baseURL, proxyURL string) (*Sub2APIClient, error) {
 	if err != nil {
 		return nil, fmt.Errorf("create sub2api client: %w", err)
 	}
-	trimmedBase := strings.TrimRight(strings.TrimSpace(baseURL), "/")
-	rootURL := strings.TrimSuffix(trimmedBase, "/v1")
 	return &Sub2APIClient{
-		rootURL:    rootURL,
+		rootURL:    sub2apiauth.NormalizeRootURL(baseURL),
 		httpClient: client,
 		now:        time.Now,
 	}, nil
