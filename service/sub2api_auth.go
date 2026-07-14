@@ -36,8 +36,9 @@ type sub2APITokenData struct {
 }
 
 type sub2APILoginRequest struct {
-	Email    string `json:"email"`
-	Password string `json:"password"`
+	Email            string `json:"email"`
+	Password         string `json:"password"`
+	NotInCNConfirmed bool   `json:"not_in_cn_confirmed"`
 }
 
 type sub2APIRefreshRequest struct {
@@ -126,7 +127,11 @@ func (client *Sub2APIClient) login(ctx context.Context, auth Sub2APIAuthState) (
 	if strings.TrimSpace(auth.Email) == "" || auth.Password == "" {
 		return auth, errors.New("sub2api username and password are required")
 	}
-	payload, err := common.Marshal(sub2APILoginRequest{Email: auth.Email, Password: auth.Password})
+	payload, err := common.Marshal(sub2APILoginRequest{
+		Email:            auth.Email,
+		Password:         auth.Password,
+		NotInCNConfirmed: true,
+	})
 	if err != nil {
 		return auth, err
 	}

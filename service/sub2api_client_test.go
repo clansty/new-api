@@ -20,12 +20,14 @@ func TestSub2APIClientQueryMetadata_whenUserHasCustomGroupRate(t *testing.T) {
 		switch r.URL.Path {
 		case "/api/v1/auth/login":
 			var payload struct {
-				Email    string `json:"email"`
-				Password string `json:"password"`
+				Email            string `json:"email"`
+				Password         string `json:"password"`
+				NotInCNConfirmed bool   `json:"not_in_cn_confirmed"`
 			}
 			require.NoError(t, common.DecodeJson(r.Body, &payload))
 			require.Equal(t, "user@example.com", payload.Email)
 			require.Equal(t, "secret", payload.Password)
+			require.True(t, payload.NotInCNConfirmed)
 			_, err := w.Write([]byte(`{"code":0,"message":"success","data":{"access_token":"access-1","refresh_token":"refresh-1","expires_in":3600}}`))
 			require.NoError(t, err)
 		case "/api/v1/keys":
