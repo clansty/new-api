@@ -1205,7 +1205,7 @@ const EditChannelModal = (props) => {
 
   const fetchGroups = async () => {
     try {
-      let res = await API.get(`/api/group/`);
+      let res = await API.get(`/api/group/channel`);
       if (res === undefined) {
         return;
       }
@@ -3747,10 +3747,6 @@ const EditChannelModal = (props) => {
                     label={t('分组')}
                     placeholder={t('请选择可以使用该渠道的分组')}
                     multiple
-                    allowAdditions
-                    additionLabel={t(
-                      '请在系统设置页面编辑分组倍率以添加新的分组：',
-                    )}
                     optionList={groupOptions}
                     style={{ width: '100%' }}
                     position='top'

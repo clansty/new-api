@@ -14,8 +14,19 @@ import (
 )
 
 func GetGroups(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "",
+		"data":    getGroupNames(),
+	})
+}
+
+func GetChannelGroups(c *gin.Context) {
 	groupNames := make([]string, 0)
-	for groupName := range ratio_setting.GetGroupRatioCopy() {
+	for _, groupName := range getGroupNames() {
+		if setting.ContainsUserSelfUnusableGroup(groupName) {
+			continue
+		}
 		groupNames = append(groupNames, groupName)
 	}
 	c.JSON(http.StatusOK, gin.H{
@@ -23,6 +34,14 @@ func GetGroups(c *gin.Context) {
 		"message": "",
 		"data":    groupNames,
 	})
+}
+
+func getGroupNames() []string {
+	groupNames := make([]string, 0)
+	for groupName := range ratio_setting.GetGroupRatioCopy() {
+		groupNames = append(groupNames, groupName)
+	}
+	return groupNames
 }
 
 func GetUserGroups(c *gin.Context) {
