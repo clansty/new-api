@@ -29,3 +29,17 @@ func TestSetRelayRouter_whenAlphaSearchAliases(t *testing.T) {
 		require.True(t, routes[path], "POST %s should be registered", path)
 	}
 }
+
+func TestSetRelayRouter_whenImageEdit(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	SetRelayRouter(router)
+
+	for _, route := range router.Routes() {
+		if route.Method == http.MethodPost && route.Path == "/v1/images/edits" {
+			return
+		}
+	}
+
+	t.Fatal("POST /v1/images/edits should be registered")
+}

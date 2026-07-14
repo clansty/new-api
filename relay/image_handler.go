@@ -12,12 +12,21 @@ import (
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/logger"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relay/helper"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/types"
 
 	"github.com/gin-gonic/gin"
 )
+
+type jsonImageRequestConverter interface {
+	ConvertJSONImageRequest(request dto.ImageRequest) dto.ImageRequest
+}
+
+type imageResponseAdaptor interface {
+	DoImageResponse(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Response) (*dto.Usage, *types.NewAPIError)
+}
 
 func ImageHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *types.NewAPIError) {
 	info.InitChannelMeta(c)
@@ -52,9 +61,15 @@ func ImageHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *type
 		}
 		requestBody = common.ReaderOnly(storage)
 	} else {
-		convertedRequest, err := adaptor.ConvertImageRequest(c, info, *request)
-		if err != nil {
-			return types.NewError(err, types.ErrorCodeConvertRequestFailed)
+		var convertedRequest any
+		if converter, ok := adaptor.(jsonImageRequestConverter); ok &&
+			info.RelayMode == relayconstant.RelayModeImagesEdits && c.ContentType() == gin.MIMEJSON {
+			convertedRequest = converter.ConvertJSONImageRequest(*request)
+		} else {
+			convertedRequest, err = adaptor.ConvertImageRequest(c, info, *request)
+			if err != nil {
+				return types.NewError(err, types.ErrorCodeConvertRequestFailed)
+			}
 		}
 		relaycommon.AppendRequestConversionFromRequest(info, convertedRequest)
 
@@ -105,7 +120,12 @@ func ImageHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *type
 		}
 	}
 
-	usage, newAPIError := adaptor.DoResponse(c, httpResp, info)
+	var usage any
+	if imageAdaptor, ok := adaptor.(imageResponseAdaptor); ok {
+		usage, newAPIError = imageAdaptor.DoImageResponse(c, info, httpResp)
+	} else {
+		usage, newAPIError = adaptor.DoResponse(c, httpResp, info)
+	}
 	if newAPIError != nil {
 		// reset status code 重置状态码
 		service.ResetStatusCode(newAPIError, statusCodeMappingStr)
