@@ -23,6 +23,7 @@ import { API, showError, showSuccess } from '../../helpers';
 import { ITEMS_PER_PAGE } from '../../constants';
 import { useTableCompactMode } from '../common/useTableCompactMode';
 import { useLocalStorageState } from '../common/useLocalStorageState';
+import { buildUsersExtraParams } from './usersQueryParams';
 
 export const useUsersData = () => {
   const { t } = useTranslation();
@@ -82,15 +83,17 @@ export const useUsersData = () => {
     };
   };
 
-  const buildExtraParams = () => {
-    let params = '';
-    if (hideZeroQuota) params += '&hide_zero_quota=true';
-    if (hideFullQuota) params += '&hide_full_quota=true';
-    if (hideDeleted) params += '&hide_deleted=true';
-    if (sortBy) params += `&sort_by=${sortBy}`;
-    params += `&sort_order=${sortOrder}`;
-    return params;
-  };
+  const buildExtraParams = (includeHiddenFilters = true) =>
+    buildUsersExtraParams(
+      {
+        hideZeroQuota,
+        hideFullQuota,
+        hideDeleted,
+        sortBy,
+        sortOrder,
+      },
+      includeHiddenFilters,
+    );
 
   // Set user format with key field
   const setUserFormat = (users) => {
@@ -103,7 +106,9 @@ export const useUsersData = () => {
   // Load users data
   const loadUsers = async (startIdx, pageSize) => {
     setLoading(true);
-    const res = await API.get(`/api/user/?p=${startIdx}&page_size=${pageSize}${buildExtraParams()}`);
+    const res = await API.get(
+      `/api/user/?p=${startIdx}&page_size=${pageSize}${buildExtraParams()}`,
+    );
     const { success, message, data } = res.data;
     if (success) {
       const newPageData = data.items;
@@ -137,7 +142,7 @@ export const useUsersData = () => {
     }
     setSearching(true);
     const res = await API.get(
-      `/api/user/search?keyword=${searchKeyword}&group=${searchGroup}&p=${startIdx}&page_size=${pageSize}${buildExtraParams()}`,
+      `/api/user/search?keyword=${searchKeyword}&group=${searchGroup}&p=${startIdx}&page_size=${pageSize}${buildExtraParams(false)}`,
     );
     const { success, message, data } = res.data;
     if (success) {

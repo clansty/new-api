@@ -43,8 +43,8 @@ func idsOf(users []*User) []int {
 func seedUsers(t *testing.T) map[string]int {
 	t.Helper()
 	ids := map[string]int{}
-	ids["full"] = makeUser(t, "full", 100, 0, 1, false, false)   // 满额度：从未消费
-	ids["zero"] = makeUser(t, "zero", 0, 50, 1, false, false)    // 0额度：已耗尽
+	ids["full"] = makeUser(t, "full", 100, 0, 1, false, false) // 满额度：从未消费
+	ids["zero"] = makeUser(t, "zero", 0, 50, 1, false, false)  // 0额度：已耗尽
 	ids["active"] = makeUser(t, "active", 50, 50, 1, false, false)
 	ids["disabled"] = makeUser(t, "disabled", 200, 10, 2, false, false)
 	ids["deleted"] = makeUser(t, "deleted", 30, 5, 1, false, true)
@@ -55,13 +55,15 @@ func seedUsers(t *testing.T) map[string]int {
 func TestGetUsers_HideZeroQuota(t *testing.T) {
 	truncateTables(t)
 	ids := seedUsers(t)
+	negativeID := makeUser(t, "negative", -10, 60, 1, false, false)
 
 	users, total, err := GetUsers(UserQueryParams{HideZeroQuota: true}, 0, 100)
 	require.NoError(t, err)
 	assert.EqualValues(t, 5, total)
 	for _, u := range users {
 		assert.NotEqual(t, ids["zero"], u.Id, "quota==0 用户应被隐藏")
-		assert.NotZero(t, u.Quota)
+		assert.NotEqual(t, negativeID, u.Id, "quota<0 用户应被隐藏")
+		assert.Positive(t, u.Quota)
 	}
 }
 

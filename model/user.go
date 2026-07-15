@@ -205,7 +205,7 @@ const (
 type UserQueryParams struct {
 	Keyword       string
 	Group         string
-	HideZeroQuota bool // quota == 0，已耗尽
+	HideZeroQuota bool // quota <= 0，已耗尽或透支
 	HideFullQuota bool // used_quota == 0，从未消费过（满额度）
 	HideDeleted   bool // 已注销，即软删除
 	SortBy        string
@@ -258,7 +258,7 @@ func buildUserListQuery(tx *gorm.DB, params UserQueryParams) *gorm.DB {
 		query = query.Where(commonGroupCol+" = ?", params.Group)
 	}
 	if params.HideZeroQuota {
-		query = query.Where("quota != ?", 0)
+		query = query.Where("quota > ?", 0)
 	}
 	if params.HideFullQuota {
 		query = query.Where("used_quota != ?", 0)
