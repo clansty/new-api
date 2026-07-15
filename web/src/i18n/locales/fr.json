@@ -3875,6 +3875,23 @@
     "开启后，自动禁用的渠道会纳入定时检测，测试成功后自动启用": "Une fois activé, les canaux désactivés automatiquement sont inclus dans les contrôles planifiés et réactivés après un test réussi.",
     "已批量更新 ${count} 个渠道！": "${count} canaux mis à jour par lot !",
     "请先选择要批量编辑的渠道！": "Veuillez d’abord sélectionner les canaux à modifier par lot !",
-    "请至少选择一个要批量修改的项目！": "Veuillez sélectionner au moins un élément à modifier par lot !"
+    "请至少选择一个要批量修改的项目！": "Veuillez sélectionner au moins un élément à modifier par lot !",
+    "性能分析": "Performances",
+    "按消费日志统计": "Basé sur les journaux d'utilisation",
+    "指标": "Métrique",
+    "百分位": "Percentile",
+    "按模型": "Par modèle",
+    "按渠道": "Par canal",
+    "最近一天": "Dernières 24 h",
+    "最近七天": "7 derniers jours",
+    "最近三十天": "30 derniers jours",
+    "暂无性能数据": "Aucune donnée de performance",
+    "请求数": "Requêtes",
+    "TTFT": "TTFT",
+    "TPS": "TPS",
+    "p50": "p50",
+    "p95": "p95",
+    "p99": "p99",
+    "全部渠道": "Tous les canaux"
   }
 }

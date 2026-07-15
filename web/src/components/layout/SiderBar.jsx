@@ -39,6 +39,7 @@ const routerMap = {
   user: '/console/user',
   subscription: '/console/subscription',
   log: '/console/log',
+  performance: '/console/performance',
   midjourney: '/console/midjourney',
   setting: '/console/setting',
   about: '/about',
@@ -100,6 +101,13 @@ const SiderBar = ({ onNavigate = () => {} }) => {
         to: '/log',
       },
       {
+        text: t('性能分析'),
+        itemKey: 'performance',
+        moduleKey: 'log',
+        to: '/console/performance',
+        className: isAdmin() ? '' : 'tableHiddle',
+      },
+      {
         text: t('绘图日志'),
         itemKey: 'midjourney',
         to: '/midjourney',
@@ -121,7 +129,10 @@ const SiderBar = ({ onNavigate = () => {} }) => {
     const filteredItems = items.filter((item) => {
       // 分流为数据看板的附属页, 不进入模块配置, 仅按 className 控制可见性
       if (item.itemKey === 'flow') return true;
-      const configVisible = isModuleVisible('console', item.itemKey);
+      const configVisible = isModuleVisible(
+        'console',
+        item.moduleKey || item.itemKey,
+      );
       return configVisible;
     });
 

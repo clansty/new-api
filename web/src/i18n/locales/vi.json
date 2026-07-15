@@ -4403,6 +4403,23 @@
     "开启后，自动禁用的渠道会纳入定时检测，测试成功后自动启用": "Khi bật, các kênh bị tự động tắt sẽ được đưa vào kiểm tra định kỳ và tự bật lại sau khi kiểm tra thành công.",
     "已批量更新 ${count} 个渠道！": "Đã cập nhật hàng loạt ${count} kênh!",
     "请先选择要批量编辑的渠道！": "Vui lòng chọn kênh cần chỉnh sửa hàng loạt trước!",
-    "请至少选择一个要批量修改的项目！": "Vui lòng chọn ít nhất một mục để cập nhật hàng loạt!"
+    "请至少选择一个要批量修改的项目！": "Vui lòng chọn ít nhất một mục để cập nhật hàng loạt!",
+    "性能分析": "Hiệu năng",
+    "按消费日志统计": "Dựa trên nhật ký sử dụng",
+    "指标": "Chỉ số",
+    "百分位": "Phân vị",
+    "按模型": "Theo mô hình",
+    "按渠道": "Theo kênh",
+    "最近一天": "24 giờ qua",
+    "最近七天": "7 ngày qua",
+    "最近三十天": "30 ngày qua",
+    "暂无性能数据": "Không có dữ liệu hiệu năng",
+    "请求数": "Số yêu cầu",
+    "TTFT": "TTFT",
+    "TPS": "TPS",
+    "p50": "p50",
+    "p95": "p95",
+    "p99": "p99",
+    "全部渠道": "Tất cả kênh"
   }
 }

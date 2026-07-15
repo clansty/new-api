@@ -4031,6 +4031,22 @@
     "开启后，自动禁用的渠道会纳入定时检测，测试成功后自动启用": "When enabled, auto-disabled channels are included in scheduled checks and re-enabled after a successful test.",
     "已批量更新 ${count} 个渠道！": "Batch updated ${count} channels!",
     "请先选择要批量编辑的渠道！": "Please select channels to batch edit first!",
-    "请至少选择一个要批量修改的项目！": "Please select at least one item to batch update!"
+    "请至少选择一个要批量修改的项目！": "Please select at least one item to batch update!",
+    "性能分析": "Performance",
+    "按消费日志统计": "Based on usage logs",
+    "指标": "Metric",
+    "百分位": "Percentile",
+    "按模型": "By model",
+    "按渠道": "By channel",
+    "最近一天": "Last day",
+    "最近七天": "Last 7 days",
+    "最近三十天": "Last 30 days",
+    "暂无性能数据": "No performance data",
+    "TTFT": "TTFT",
+    "TPS": "TPS",
+    "p50": "p50",
+    "p95": "p95",
+    "p99": "p99",
+    "全部渠道": "All Channels"
   }
 }
