@@ -207,6 +207,15 @@ func UpdateOption(c *gin.Context) {
 			})
 			return
 		}
+	case "ModelPurpose":
+		err = ratio_setting.ValidateModelPurposeJSONString(option.Value.(string))
+		if err != nil {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": "模型用途设置失败: " + err.Error(),
+			})
+			return
+		}
 	case "ImageRatio":
 		err = ratio_setting.UpdateImageRatioByJSONString(option.Value.(string))
 		if err != nil {

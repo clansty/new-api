@@ -36,6 +36,23 @@ func Distribute() func(c *gin.Context) {
 			abortWithOpenAiMessage(c, http.StatusBadRequest, i18n.T(c, i18n.MsgDistributorInvalidRequest, map[string]any{"Error": err.Error()}))
 			return
 		}
+		relayMode := c.GetInt("relay_mode")
+		if relayMode == relayconstant.RelayModeUnknown {
+			relayMode = relayconstant.Path2RelayMode(c.Request.URL.Path)
+		}
+		purpose := requestModelPurpose(c.Request.URL.Path, relayMode)
+		if purpose != "" && !ratio_setting.IsModelPurposeAllowed(modelRequest.Model, purpose) {
+			abortWithOpenAiMessage(
+				c,
+				http.StatusBadRequest,
+				i18n.T(c, i18n.MsgDistributorModelPurposeMismatch, map[string]any{
+					"Model":   modelRequest.Model,
+					"Purpose": purpose,
+				}),
+				types.ErrorCodeInvalidRequest,
+			)
+			return
+		}
 		if ok {
 			id, err := strconv.Atoi(channelId.(string))
 			if err != nil {

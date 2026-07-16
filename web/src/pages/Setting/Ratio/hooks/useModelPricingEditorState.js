@@ -29,6 +29,7 @@ const EMPTY_CANDIDATE_MODEL_NAMES = [];
 
 const EMPTY_MODEL = {
   name: '',
+  purposes: [],
   billingMode: 'per-token',
   fixedPrice: '',
   inputPrice: '',
@@ -122,6 +123,9 @@ const normalizeCompletionRatioMeta = (rawMeta) => {
 };
 
 const buildModelState = (name, sourceMaps) => {
+  const purposes = Array.isArray(sourceMaps.ModelPurpose?.[name])
+    ? sourceMaps.ModelPurpose[name]
+    : [];
   const billingMode = sourceMaps.ModelBillingMode?.[name];
   if (billingMode === 'tiered_expr') {
     const fullBillingExpr = sourceMaps.ModelBillingExpr?.[name] || '';
@@ -130,6 +134,7 @@ const buildModelState = (name, sourceMaps) => {
     return {
       ...EMPTY_MODEL,
       name,
+      purposes,
       billingMode: 'tiered_expr',
       billingExpr,
       requestRuleExpr,
@@ -161,6 +166,7 @@ const buildModelState = (name, sourceMaps) => {
   return {
     ...EMPTY_MODEL,
     name,
+    purposes,
     billingMode: hasValue(fixedPrice) ? 'per-request' : 'per-token',
     fixedPrice,
     inputPrice,
@@ -225,7 +231,8 @@ const buildModelState = (name, sourceMaps) => {
 
 export const isBasePricingUnset = (model) =>
   model.billingMode !== 'tiered_expr' &&
-  !hasValue(model.fixedPrice) && !hasValue(model.inputPrice);
+  !hasValue(model.fixedPrice) &&
+  !hasValue(model.inputPrice);
 
 export const getModelWarnings = (model, t) => {
   if (!model) {
@@ -291,8 +298,8 @@ export const getModelWarnings = (model, t) => {
 export const buildSummaryText = (model, t) => {
   const requestRuleSuffix =
     model.billingMode === 'tiered_expr' && model.requestRuleExpr
-    ? `，${t('请求规则')}`
-    : '';
+      ? `，${t('请求规则')}`
+      : '';
   if (model.billingMode === 'tiered_expr') {
     const expr = model.billingExpr;
     if (!expr) return `${t('表达式计费')}${requestRuleSuffix}`;
@@ -638,6 +645,7 @@ export function useModelPricingEditorState({
   useEffect(() => {
     const sourceMaps = {
       ModelPrice: parseOptionJSON(options.ModelPrice),
+      ModelPurpose: parseOptionJSON(options.ModelPurpose),
       ModelRatio: parseOptionJSON(options.ModelRatio),
       CompletionRatio: parseOptionJSON(options.CompletionRatio),
       CompletionRatioMeta: parseOptionJSON(options.CompletionRatioMeta),
@@ -646,13 +654,18 @@ export function useModelPricingEditorState({
       ImageRatio: parseOptionJSON(options.ImageRatio),
       AudioRatio: parseOptionJSON(options.AudioRatio),
       AudioCompletionRatio: parseOptionJSON(options.AudioCompletionRatio),
-      ModelBillingMode: parseOptionJSON(options['billing_setting.billing_mode']),
-      ModelBillingExpr: parseOptionJSON(options['billing_setting.billing_expr']),
+      ModelBillingMode: parseOptionJSON(
+        options['billing_setting.billing_mode'],
+      ),
+      ModelBillingExpr: parseOptionJSON(
+        options['billing_setting.billing_expr'],
+      ),
     };
 
     const names = new Set([
       ...candidateModelNames,
       ...Object.keys(sourceMaps.ModelPrice),
+      ...Object.keys(sourceMaps.ModelPurpose),
       ...Object.keys(sourceMaps.ModelRatio),
       ...Object.keys(sourceMaps.CompletionRatio),
       ...Object.keys(sourceMaps.CompletionRatioMeta),
@@ -883,6 +896,11 @@ export function useModelPricingEditorState({
     });
   };
 
+  const handlePurposesChange = (purposes) => {
+    if (!selectedModel) return;
+    upsertModel(selectedModel.name, (model) => ({ ...model, purposes }));
+  };
+
   const handleBillingExprChange = (newExpr) => {
     if (!selectedModel) return;
     upsertModel(selectedModel.name, (model) => ({
@@ -1025,6 +1043,7 @@ export function useModelPricingEditorState({
     try {
       const output = {
         ModelPrice: {},
+        ModelPurpose: {},
         ModelRatio: {},
         CompletionRatio: {},
         CacheRatio: {},
@@ -1040,14 +1059,19 @@ export function useModelPricingEditorState({
       };
 
       for (const model of models) {
+        if (model.purposes.length > 0) {
+          output.ModelPurpose[model.name] = model.purposes;
+        }
         if (model.billingMode === 'tiered_expr') {
           const finalBillingExpr = combineBillingExpr(
             model.billingExpr,
             model.requestRuleExpr,
           );
           if (finalBillingExpr) {
-            tieredOutput['billing_setting.billing_mode'][model.name] = 'tiered_expr';
-            tieredOutput['billing_setting.billing_expr'][model.name] = finalBillingExpr;
+            tieredOutput['billing_setting.billing_mode'][model.name] =
+              'tiered_expr';
+            tieredOutput['billing_setting.billing_expr'][model.name] =
+              finalBillingExpr;
           }
         }
 
@@ -1123,6 +1147,7 @@ export function useModelPricingEditorState({
     handleOptionalFieldToggle,
     handleNumericFieldChange,
     handleBillingModeChange,
+    handlePurposesChange,
     handleBillingExprChange,
     handleRequestRuleExprChange,
     handleSubmit,

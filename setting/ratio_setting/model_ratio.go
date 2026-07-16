@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/setting/billing_setting"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/types"
 )
@@ -341,6 +342,7 @@ var defaultCompletionRatio = map[string]float64{
 
 // InitRatioSettings initializes all model related settings maps
 func InitRatioSettings() {
+	modelPurposeMap.AddAll(defaultModelPurpose)
 	modelPriceMap.AddAll(defaultModelPrice)
 	modelRatioMap.AddAll(defaultModelRatio)
 	completionRatioMap.AddAll(defaultCompletionRatio)
@@ -815,6 +817,39 @@ func FilterUncoveredModels(declaredModels []string) (changed map[string]string, 
 		jsonBytes, err := common.Marshal(filtered)
 		if err != nil {
 			common.SysError("error marshalling filtered ratio config " + cfg.key + ": " + err.Error())
+			continue
+		}
+		changed[cfg.key] = string(jsonBytes)
+		removed += localRemoved
+	}
+
+	stringConfigs := []struct {
+		key string
+		m   map[string]string
+	}{
+		{"billing_setting.billing_mode", billing_setting.GetBillingModeCopy()},
+		{"billing_setting.billing_expr", billing_setting.GetBillingExprCopy()},
+	}
+	for _, cfg := range stringConfigs {
+		filtered := make(map[string]string, len(cfg.m))
+		localRemoved := 0
+		for name, value := range cfg.m {
+			if covered[name] {
+				filtered[name] = value
+				continue
+			}
+			localRemoved++
+			if !removedSet[name] {
+				removedSet[name] = true
+				removedModels = append(removedModels, name)
+			}
+		}
+		if localRemoved == 0 {
+			continue
+		}
+		jsonBytes, err := common.Marshal(filtered)
+		if err != nil {
+			common.SysError("error marshalling filtered pricing config " + cfg.key + ": " + err.Error())
 			continue
 		}
 		changed[cfg.key] = string(jsonBytes)

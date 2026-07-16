@@ -1,5 +1,18 @@
 {
   "translation": {
+    "删除无渠道模型价格": "删除无渠道模型价格",
+    "模型用途": "模型用途",
+    "未配置时不限制用途": "未配置时不限制用途",
+    "接口须匹配所选用途，可多选；留空不拦截。": "接口须匹配所选用途，可多选；留空不拦截。",
+    "普通计费直接填价格；动态价格：": "普通计费直接填价格；动态价格：",
+    "例如：{\"gpt-image-2\":[\"image\"],\"gpt-4o\":[\"chat\"]}": "例如：{\"gpt-image-2\":[\"image\"],\"gpt-4o\":[\"chat\"]}",
+    "键为模型名称，值为用途数组；未配置的模型不限制用途。可用值：chat、image、embedding、audio、rerank、moderation、video、music": "键为模型名称，值为用途数组；未配置的模型不限制用途。可用值：chat、image、embedding、audio、rerank、moderation、video、music",
+    "生图": "生图",
+    "嵌入": "嵌入",
+    "音频": "音频",
+    "重排": "重排",
+    "内容审核": "内容审核",
+    "音乐": "音乐",
     " + 图片生成调用 {{symbol}}{{price}} / 1次 * {{ratioType}} {{ratio}}": " + 图片生成调用 {{symbol}}{{price}} / 1次 * {{ratioType}} {{ratio}}",
     " + 文件搜索 {{count}}次 / 1K 次 * {{symbol}}{{price}} * {{ratioType}} {{ratio}}_other": " + 文件搜索 {{count}}次 / 1K 次 * {{symbol}}{{price}} * {{ratioType}} {{ratio}}",
     " + Web搜索 {{count}}次 / 1K 次 * {{symbol}}{{price}} * {{ratioType}} {{ratio}}_other": " + Web搜索 {{count}}次 / 1K 次 * {{symbol}}{{price}} * {{ratioType}} {{ratio}}",

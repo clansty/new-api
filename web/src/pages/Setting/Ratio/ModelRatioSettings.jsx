@@ -41,6 +41,7 @@ export default function ModelRatioSettings(props) {
   const [loading, setLoading] = useState(false);
   const [inputs, setInputs] = useState({
     ModelPrice: '',
+    ModelPurpose: '',
     ModelRatio: '',
     CacheRatio: '',
     CreateCacheRatio: '',
@@ -122,23 +123,6 @@ export default function ModelRatioSettings(props) {
     }
   }
 
-  async function clearUncoveredRatio() {
-    setLoading(true);
-    try {
-      let res = await API.post(`/api/option/clear_uncovered_ratio`);
-      if (res.data.success) {
-        showSuccess(res.data.message);
-        props.refresh();
-      } else {
-        showError(res.data.message);
-      }
-    } catch (error) {
-      showError(error);
-    } finally {
-      setLoading(false);
-    }
-  }
-
   useEffect(() => {
     const currentInputs = {};
     for (let key in props.options) {
@@ -177,6 +161,32 @@ export default function ModelRatioSettings(props) {
                 },
               ]}
               onChange={(value) => setInputs({ ...inputs, ModelPrice: value })}
+            />
+          </Col>
+        </Row>
+        <Row gutter={16}>
+          <Col xs={24} sm={16}>
+            <Form.TextArea
+              label={t('模型用途')}
+              extraText={t(
+                '键为模型名称，值为用途数组；未配置的模型不限制用途。可用值：chat、image、embedding、audio、rerank、moderation、video、music',
+              )}
+              placeholder={t(
+                '例如：{"gpt-image-2":["image"],"gpt-4o":["chat"]}',
+              )}
+              field='ModelPurpose'
+              autosize={{ minRows: 6, maxRows: 12 }}
+              trigger='blur'
+              stopValidateWithError
+              rules={[
+                {
+                  validator: (rule, value) => verifyJSON(value),
+                  message: '不是合法的 JSON 字符串',
+                },
+              ]}
+              onChange={(value) =>
+                setInputs({ ...inputs, ModelPurpose: value })
+              }
             />
           </Col>
         </Row>
@@ -350,17 +360,6 @@ export default function ModelRatioSettings(props) {
       </Form>
       <Space>
         <Button onClick={onSubmit}>{t('保存模型倍率设置')}</Button>
-        <Popconfirm
-          title={t('确定清空未覆盖的价格吗？')}
-          content={t(
-            '将删除所有未被任何现有渠道（含已禁用）声明的模型的价格与倍率配置，此操作不可逆',
-          )}
-          okType={'danger'}
-          position={'top'}
-          onConfirm={clearUncoveredRatio}
-        >
-          <Button type={'warning'}>{t('清空未覆盖的价格')}</Button>
-        </Popconfirm>
         <Popconfirm
           title={t('确定重置模型倍率吗？')}
           content={t('此修改将不可逆')}

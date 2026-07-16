@@ -317,6 +317,7 @@ const (
 	MsgDistributorNoAvailableChannel      = "distributor.no_available_channel"
 	MsgDistributorInvalidMidjourney       = "distributor.invalid_midjourney_request"
 	MsgDistributorInvalidParseModel       = "distributor.invalid_request_parse_model"
+	MsgDistributorModelPurposeMismatch    = "distributor.model_purpose_mismatch"
 )
 
 // Custom OAuth provider related messages
