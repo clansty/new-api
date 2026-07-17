@@ -103,6 +103,35 @@ func sendStreamData(c *gin.Context, info *relaycommon.RelayInfo, data string, fo
 	return helper.ObjectData(c, lastStreamResponse)
 }
 
+func extractStreamUsage(streamItems []string) *dto.Usage {
+	var latestUsage *dto.Usage
+	var latestUsageWithOutput *dto.Usage
+	var completedUsage *dto.Usage
+	for _, item := range streamItems {
+		var streamResponse dto.ChatCompletionsStreamResponse
+		if err := common.UnmarshalJsonStr(item, &streamResponse); err != nil || !service.ValidUsage(streamResponse.Usage) {
+			continue
+		}
+		latestUsage = streamResponse.Usage
+		if streamResponse.Usage.CompletionTokens > 0 {
+			latestUsageWithOutput = streamResponse.Usage
+			for _, choice := range streamResponse.Choices {
+				if choice.FinishReason != nil && *choice.FinishReason != "" {
+					completedUsage = streamResponse.Usage
+					break
+				}
+			}
+		}
+	}
+	if completedUsage != nil {
+		return completedUsage
+	}
+	if latestUsageWithOutput != nil {
+		return latestUsageWithOutput
+	}
+	return latestUsage
+}
+
 func OaiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Response) (*dto.Usage, *types.NewAPIError) {
 	if resp == nil || resp.Body == nil {
 		logger.LogError(c, "invalid response or response body")
@@ -167,6 +196,10 @@ func OaiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
 	if err := handleLastResponse(lastStreamData, &responseId, &createAt, &systemFingerprint, &model, &usage,
 		&containStreamUsage, info, &shouldSendLastResp); err != nil {
 		logger.LogError(c, fmt.Sprintf("error handling last response: %s, lastStreamData: [%s]", err.Error(), lastStreamData))
+	}
+	if streamUsage := extractStreamUsage(streamItems); streamUsage != nil {
+		usage = streamUsage
+		containStreamUsage = true
 	}
 
 	if info.RelayFormat == types.RelayFormatOpenAI {

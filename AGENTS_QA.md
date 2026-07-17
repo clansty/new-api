@@ -15,3 +15,8 @@
 ## Semi Dropdown 与 Tooltip
 
 - 同一图标按钮同时需要 Dropdown 和 Tooltip 时，应让 Tooltip 包裹 Dropdown。反向嵌套会让点击只触发 Tooltip，Dropdown 菜单无法打开。
+
+## 本地登录限流与浏览器 QA
+
+- 短时间反复创建无痕浏览器并登录会触发全局 API 限流，随后静态资源也可能返回 429，表现为登录页空白或 Playwright 定位超时。
+- 应在同一 browser context 中完成登录和页面验证；隔离实例已被限流时，可重启实例清空临时限流状态后一次完成 QA。
