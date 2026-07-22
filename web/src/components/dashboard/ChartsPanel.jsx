@@ -33,6 +33,8 @@ const ChartsPanel = ({
   spec_token_pie,
   spec_channel_bar,
   spec_channel_pie,
+  spec_cost_bar,
+  spec_channel_cost_bar,
   spec_user_rank,
   spec_user_trend,
   CARD_PROPS,
@@ -89,6 +91,12 @@ const ChartsPanel = ({
             {isAdminUser && (
               <TabPane tab={<span>{t('用户消耗趋势')}</span>} itemKey='10' />
             )}
+            {isAdminUser && (
+              <TabPane tab={<span>{t('成本分布')}</span>} itemKey='11' />
+            )}
+            {isAdminUser && (
+              <TabPane tab={<span>{t('渠道成本分布')}</span>} itemKey='12' />
+            )}
           </Tabs>
         </div>
       }
@@ -124,6 +132,12 @@ const ChartsPanel = ({
         )}
         {activeChartTab === '10' && isAdminUser && (
           <VChart spec={spec_user_trend} option={CHART_CONFIG} />
+        )}
+        {activeChartTab === '11' && isAdminUser && (
+          <VChart spec={spec_cost_bar} option={CHART_CONFIG} />
+        )}
+        {activeChartTab === '12' && isAdminUser && (
+          <VChart spec={spec_channel_cost_bar} option={CHART_CONFIG} />
         )}
       </div>
     </Card>

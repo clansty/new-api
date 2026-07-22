@@ -46,6 +46,115 @@ const USER_COLORS = [
   '#ec4899', '#06b6d4', '#f97316', '#6366f1', '#14b8a6',
 ];
 
+const createCostBarSpec = (t, title, dataId) => ({
+  type: 'bar',
+  data: [{ id: dataId, values: [] }],
+  xField: 'Time',
+  yField: 'Usage',
+  seriesField: 'Series',
+  stack: true,
+  legends: {
+    visible: true,
+    selectMode: 'single',
+  },
+  title: {
+    visible: true,
+    text: title,
+    subtext: `${t('总计')}：${renderQuota(0, 2)}`,
+  },
+  bar: {
+    state: {
+      hover: {
+        stroke: '#000',
+        lineWidth: 1,
+      },
+    },
+  },
+  tooltip: {
+    mark: {
+      content: [
+        {
+          key: (datum) => datum['Series'],
+          value: (datum) => renderQuota(datum['rawCost'] || 0, 4),
+        },
+      ],
+    },
+    dimension: {
+      content: [
+        {
+          key: (datum) => datum['Series'],
+          value: (datum) => datum['rawCost'] || 0,
+        },
+      ],
+      updateContent: (array) => {
+        array.sort((a, b) => b.value - a.value);
+        let sum = 0;
+        for (let i = 0; i < array.length; i++) {
+          let value = parseFloat(array[i].value);
+          if (isNaN(value)) value = 0;
+          if (array[i].datum && array[i].datum.TimeSum !== undefined) {
+            sum = array[i].datum.TimeSum;
+          }
+          array[i].value = renderQuota(value, 4);
+        }
+        array.unshift({ key: t('总计'), value: renderQuota(sum, 4) });
+        return array;
+      },
+    },
+  },
+  color: {
+    specified: {},
+  },
+});
+
+const buildCostBarData = (data, dataExportDefaultTime, getSeries) => {
+  const uniqueSeries = new Set();
+  const aggregatedData = new Map();
+  let totalCost = 0;
+  const showYear = isDataCrossYear(data.map((item) => item.created_at));
+
+  data.forEach((item) => {
+    const series = getSeries(item);
+    const cost = Number(item.cost) || 0;
+    const time = timestamp2string1(
+      item.created_at,
+      dataExportDefaultTime,
+      showYear,
+    );
+    const key = JSON.stringify([time, series]);
+    uniqueSeries.add(series);
+    totalCost += cost;
+    if (!aggregatedData.has(key)) {
+      aggregatedData.set(key, { time, series, cost: 0 });
+    }
+    aggregatedData.get(key).cost += cost;
+  });
+
+  const chartTimePoints = generateChartTimePoints(
+    aggregatedData,
+    data,
+    dataExportDefaultTime,
+  );
+  const values = [];
+  chartTimePoints.forEach((time) => {
+    const timeData = Array.from(uniqueSeries).map((series) => {
+      const aggregated = aggregatedData.get(JSON.stringify([time, series]));
+      const rawCost = aggregated?.cost || 0;
+      return {
+        Time: time,
+        Series: series,
+        rawCost,
+        Usage: rawCost ? getQuotaWithUnit(rawCost, 4) : 0,
+      };
+    });
+    const timeSum = timeData.reduce((sum, item) => sum + item.rawCost, 0);
+    timeData.sort((a, b) => b.rawCost - a.rawCost);
+    values.push(...timeData.map((item) => ({ ...item, TimeSum: timeSum })));
+  });
+  values.sort((a, b) => a.Time.localeCompare(b.Time));
+  return { uniqueSeries, totalCost, values };
+};
+
 export const useDashboardCharts = (
   dataExportDefaultTime,
   setTrendData,
@@ -450,6 +559,13 @@ export const useDashboardCharts = (
       specified: {},
     },
   });
+
+  const [spec_cost_bar, setSpecCostBar] = useState(() =>
+    createCostBarSpec(t, t('模型成本分布'), 'costBarData'),
+  );
+  const [spec_channel_cost_bar, setSpecChannelCostBar] = useState(() =>
+    createCostBarSpec(t, t('渠道成本分布'), 'channelCostBarData'),
+  );
 
   // 模型消耗趋势折线图
   const [spec_model_line, setSpecModelLine] = useState({
@@ -1031,6 +1147,39 @@ export const useDashboardCharts = (
     ],
   );
 
+  const updateCostChartData = useCallback(
+    (data) => {
+      const modelData = buildCostBarData(
+        data,
+        dataExportDefaultTime,
+        (item) => item.model_name || t('未知'),
+      );
+      const channelData = buildCostBarData(
+        data,
+        dataExportDefaultTime,
+        (item) => item.channel_name || `#${item.channel_id}`,
+      );
+      const modelColors = generateModelColors(modelData.uniqueSeries, {});
+      const channelColors = generateModelColors(channelData.uniqueSeries, {});
+
+      updateChartSpec(
+        setSpecCostBar,
+        modelData.values,
+        `${t('总计')}：${renderQuota(modelData.totalCost, 2)}`,
+        modelColors,
+        'costBarData',
+      );
+      updateChartSpec(
+        setSpecChannelCostBar,
+        channelData.values,
+        `${t('总计')}：${renderQuota(channelData.totalCost, 2)}`,
+        channelColors,
+        'channelCostBarData',
+      );
+    },
+    [dataExportDefaultTime, generateModelColors, t],
+  );
+
   // ========== 用户维度图表数据处理 ==========
   const updateUserChartData = useCallback(
     (data) => {
@@ -1092,6 +1241,8 @@ export const useDashboardCharts = (
     spec_token_pie,
     spec_channel_bar,
     spec_channel_pie,
+    spec_cost_bar,
+    spec_channel_cost_bar,
     spec_user_rank,
     spec_user_trend,
 
@@ -1099,6 +1250,7 @@ export const useDashboardCharts = (
     updateChartData,
     updateTokenChartData,
     updateChannelChartData,
+    updateCostChartData,
     updateUserChartData,
     generateModelColors,
   };

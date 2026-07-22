@@ -81,6 +81,7 @@ export const useDashboardData = (userState, userDispatch, statusState) => {
 
   // ========== 渠道数据状态 ==========
   const [channelStatsData, setChannelStatsData] = useState([]);
+  const [costStatsData, setCostStatsData] = useState([]);
 
   // ========== 图表状态 ==========
   const [activeChartTab, setActiveChartTab] = useState('1');
@@ -354,13 +355,40 @@ export const useDashboardData = (userState, userDispatch, statusState) => {
     }
   }, [inputs, isAdminUser]);
 
+  const loadCostStats = useCallback(async () => {
+    if (!isAdminUser) return [];
+    try {
+      const { start_timestamp, end_timestamp, username } = inputs;
+      const localStartTimestamp = Date.parse(start_timestamp) / 1000;
+      const localEndTimestamp = Date.parse(end_timestamp) / 1000;
+      const url = `/api/data/cost_stats?username=${encodeURIComponent(username)}&start_timestamp=${localStartTimestamp}&end_timestamp=${localEndTimestamp}`;
+      const res = await API.get(url);
+      const { success, message, data } = res.data;
+      if (success) {
+        setCostStatsData(data || []);
+        return data || [];
+      }
+      showError(message);
+      return [];
+    } catch (err) {
+      return [];
+    }
+  }, [inputs, isAdminUser]);
+
   const refresh = useCallback(async () => {
     loadTokenStats();
     loadChannelStats();
+    loadCostStats();
     const data = await loadQuotaData();
     await loadUptimeData();
     return data;
-  }, [loadQuotaData, loadTokenStats, loadChannelStats, loadUptimeData]);
+  }, [
+    loadQuotaData,
+    loadTokenStats,
+    loadChannelStats,
+    loadCostStats,
+    loadUptimeData,
+  ]);
 
   const handleSearchConfirm = useCallback(
     async (updateChartDataCallback) => {
@@ -419,6 +447,7 @@ export const useDashboardData = (userState, userDispatch, statusState) => {
     showAllTokens,
     setShowAllTokens,
     channelStatsData,
+    costStatsData,
 
     // 图表状态
     activeChartTab,
@@ -458,6 +487,7 @@ export const useDashboardData = (userState, userDispatch, statusState) => {
     loadUptimeData,
     loadTokenStats,
     loadChannelStats,
+    loadCostStats,
     getUserData,
     refresh,
     handleSearchConfirm,

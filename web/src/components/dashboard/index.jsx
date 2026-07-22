@@ -101,6 +101,7 @@ const Dashboard = () => {
     async ({ includeUptime = false } = {}) => {
       dashboardData.loadTokenStats();
       dashboardData.loadChannelStats();
+      dashboardData.loadCostStats();
       const data = await dashboardData.loadQuotaData();
       dashboardCharts.updateChartData(data || []);
       await loadUserData();
@@ -111,6 +112,7 @@ const Dashboard = () => {
     [
       dashboardData.loadTokenStats,
       dashboardData.loadChannelStats,
+      dashboardData.loadCostStats,
       dashboardData.loadQuotaData,
       dashboardData.loadUptimeData,
       dashboardCharts.updateChartData,
@@ -190,6 +192,12 @@ const Dashboard = () => {
     }
   }, [dashboardData.channelStatsData, dashboardCharts.updateChannelChartData]);
 
+  useEffect(() => {
+    if (dashboardData.costStatsData) {
+      dashboardCharts.updateCostChartData(dashboardData.costStatsData);
+    }
+  }, [dashboardData.costStatsData, dashboardCharts.updateCostChartData]);
+
   return (
     <div className='h-full'>
       <DashboardHeader
@@ -243,6 +251,8 @@ const Dashboard = () => {
             spec_token_pie={dashboardCharts.spec_token_pie}
             spec_channel_bar={dashboardCharts.spec_channel_bar}
             spec_channel_pie={dashboardCharts.spec_channel_pie}
+            spec_cost_bar={dashboardCharts.spec_cost_bar}
+            spec_channel_cost_bar={dashboardCharts.spec_channel_cost_bar}
             spec_user_rank={dashboardCharts.spec_user_rank}
             spec_user_trend={dashboardCharts.spec_user_trend}
             CARD_PROPS={CARD_PROPS}
