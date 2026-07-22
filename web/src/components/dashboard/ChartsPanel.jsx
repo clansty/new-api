@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import React from 'react';
-import { Card, Tabs, TabPane, Switch, Typography } from '@douyinfe/semi-ui';
+import { Card, Select, Switch, Typography } from '@douyinfe/semi-ui';
 import { PieChart } from 'lucide-react';
 import { VChart } from '@visactor/react-vchart';
 
@@ -46,6 +46,21 @@ const ChartsPanel = ({
   onToggleAllTokens,
   t,
 }) => {
+  const chartOptions = [
+    { value: '1', label: t('消耗分布') },
+    { value: '2', label: t('调用趋势') },
+    { value: '3', label: t('调用次数分布') },
+    { value: '4', label: t('调用次数排行') },
+    { value: '5', label: t('令牌消耗分布') },
+    { value: '6', label: t('令牌消耗占比') },
+    { value: '7', label: t('渠道消耗分布'), adminOnly: true },
+    { value: '8', label: t('渠道消耗占比'), adminOnly: true },
+    { value: '9', label: t('用户消耗排行'), adminOnly: true },
+    { value: '10', label: t('用户消耗趋势'), adminOnly: true },
+    { value: '11', label: t('成本分布'), adminOnly: true },
+    { value: '12', label: t('渠道成本分布'), adminOnly: true },
+  ].filter((option) => isAdminUser || !option.adminOnly);
+
   return (
     <Card
       {...CARD_PROPS}
@@ -68,36 +83,13 @@ const ChartsPanel = ({
               </div>
             )}
           </div>
-          <Tabs
-            type='slash'
-            activeKey={activeChartTab}
+          <Select
+            value={activeChartTab}
             onChange={setActiveChartTab}
-          >
-            <TabPane tab={<span>{t('消耗分布')}</span>} itemKey='1' />
-            <TabPane tab={<span>{t('调用趋势')}</span>} itemKey='2' />
-            <TabPane tab={<span>{t('调用次数分布')}</span>} itemKey='3' />
-            <TabPane tab={<span>{t('调用次数排行')}</span>} itemKey='4' />
-            <TabPane tab={<span>{t('令牌消耗分布')}</span>} itemKey='5' />
-            <TabPane tab={<span>{t('令牌消耗占比')}</span>} itemKey='6' />
-            {isAdminUser && (
-              <TabPane tab={<span>{t('渠道消耗分布')}</span>} itemKey='7' />
-            )}
-            {isAdminUser && (
-              <TabPane tab={<span>{t('渠道消耗占比')}</span>} itemKey='8' />
-            )}
-            {isAdminUser && (
-              <TabPane tab={<span>{t('用户消耗排行')}</span>} itemKey='9' />
-            )}
-            {isAdminUser && (
-              <TabPane tab={<span>{t('用户消耗趋势')}</span>} itemKey='10' />
-            )}
-            {isAdminUser && (
-              <TabPane tab={<span>{t('成本分布')}</span>} itemKey='11' />
-            )}
-            {isAdminUser && (
-              <TabPane tab={<span>{t('渠道成本分布')}</span>} itemKey='12' />
-            )}
-          </Tabs>
+            optionList={chartOptions}
+            className='w-full lg:w-56'
+            aria-label={t('模型数据分析')}
+          />
         </div>
       }
       bodyStyle={{ padding: 0 }}

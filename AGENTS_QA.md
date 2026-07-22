@@ -21,6 +21,12 @@
 - 短时间反复创建无痕浏览器并登录会触发全局 API 限流，随后静态资源也可能返回 429，表现为登录页空白或 Playwright 定位超时。
 - 应在同一 browser context 中完成登录和页面验证；隔离实例已被限流时，可重启实例清空临时限流状态后一次完成 QA。
 
+## 会话鉴权与 Playwright API 请求
+
+- `/api/user/login` 返回的 session cookie 不能单独通过 `UserAuth`；Playwright context 还需要从登录响应的 `data.id` 设置 `New-Api-User` 请求头，这与前端 API helper 的行为一致。
+- 登录后的页面状态依赖 `localStorage.user`，直接用 context request 登录时应把响应中的 `data` 注入 localStorage，避免 `PrivateRoute` 跳回登录页。
+- 移动端 Semi `Select` 的 portal 在无头 Chromium 中可能已可交互但未进入截图合成层；对选项列表做一次 1px 预滚动再滚到目标位置，可稳定捕获顶部和底部菜单状态。
+
 ## Gin 路由尾斜杠与 curl
 
 - 日志路由的尾斜杠并不统一：`/api/log/self/` 会重定向到 `/api/log/self`，而管理员列表使用 `/api/log/`。`curl` 管道接 `jq` 验证时应使用准确路径或加 `-L`，否则 301 HTML 会表现为 JSON 解析失败。
