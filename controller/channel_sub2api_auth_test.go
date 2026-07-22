@@ -69,3 +69,16 @@ func TestPatchChannelJSON_whenPasswordWasSubmitted(t *testing.T) {
 	require.NotContains(t, string(payload), "sub2api_password")
 	require.NotContains(t, string(payload), "password-secret")
 }
+
+func TestPatchChannelJSON_whenManualUpstreamRateIsCleared(t *testing.T) {
+	// Given: 编辑请求显式清空手动上游倍率。
+	request := PatchChannel{}
+
+	// When: 控制器解析请求。
+	err := common.Unmarshal([]byte(`{"id":12,"manual_upstream_rate_multiplier":null}`), &request)
+
+	// Then: 空值和字段存在状态都被保留，数据库更新可据此写入 NULL。
+	require.NoError(t, err)
+	require.Nil(t, request.ManualUpstreamRateMultiplier)
+	require.True(t, request.ManualUpstreamRateMultiplierSet)
+}

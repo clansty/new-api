@@ -94,3 +94,15 @@ func TestValidateChannel_whenAdvancedPassThroughBaseURLsAreSet(t *testing.T) {
 	// Then: the advanced pass-through-specific validation accepts it.
 	require.NoError(t, err)
 }
+
+func TestValidateChannel_whenManualUpstreamRateIsNegative(t *testing.T) {
+	// Given: 渠道提交了无效的负数上游倍率。
+	rate := -0.1
+	channel := &model.Channel{ManualUpstreamRateMultiplier: &rate}
+
+	// When: 后端校验渠道。
+	err := validateChannel(channel, false)
+
+	// Then: 负数倍率不会进入成本计算。
+	require.Error(t, err)
+}

@@ -3905,6 +3905,11 @@
     "p50": "p50",
     "p95": "p95",
     "p99": "p99",
-    "全部渠道": "Tous les canaux"
+    "全部渠道": "Tous les canaux",
+    "手动上游倍率": "Multiplicateur amont manuel",
+    "手动填写": "Saisie manuelle",
+    "自动获取": "Récupéré automatiquement",
+    "已自动获取上游倍率，自动值优先生效": "Un multiplicateur amont a été récupéré automatiquement et reste prioritaire",
+    "仅在无法自动获取上游倍率时用于成本统计": "Utilisé pour les statistiques de coût uniquement si le multiplicateur amont ne peut pas être récupéré automatiquement"
   }
 }

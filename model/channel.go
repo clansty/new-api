@@ -19,33 +19,34 @@ import (
 )
 
 type Channel struct {
-	Id                          int      `json:"id"`
-	Type                        int      `json:"type" gorm:"default:0"`
-	Key                         string   `json:"key" gorm:"not null"`
-	OpenAIOrganization          *string  `json:"openai_organization"`
-	TestModel                   *string  `json:"test_model"`
-	Status                      int      `json:"status" gorm:"default:1"`
-	Name                        string   `json:"name" gorm:"index"`
-	Weight                      *uint    `json:"weight" gorm:"default:0"`
-	CreatedTime                 int64    `json:"created_time" gorm:"bigint"`
-	TestTime                    int64    `json:"test_time" gorm:"bigint"`
-	ResponseTime                int      `json:"response_time"` // in milliseconds
-	BaseURL                     *string  `json:"base_url" gorm:"column:base_url;default:''"`
-	Other                       string   `json:"other"`
-	Balance                     float64  `json:"balance"` // in USD
-	BalanceUpdatedTime          int64    `json:"balance_updated_time" gorm:"bigint"`
-	Sub2APIUsername             string   `json:"sub2api_username,omitempty" gorm:"column:sub2api_username;type:varchar(255)"`
-	Sub2APIPassword             string   `json:"-" gorm:"column:sub2api_password;type:text"`
-	Sub2APIAccessToken          string   `json:"-" gorm:"column:sub2api_access_token;type:text"`
-	Sub2APIRefreshToken         string   `json:"-" gorm:"column:sub2api_refresh_token;type:text"`
-	Sub2APIAccessTokenExpiresAt int64    `json:"-" gorm:"column:sub2api_access_token_expires_at;bigint"`
-	UpstreamRateMultiplier      *float64 `json:"upstream_rate_multiplier,omitempty"`
-	UpstreamGroupName           string   `json:"upstream_group_name,omitempty" gorm:"type:varchar(255)"`
-	UpstreamGroupDescription    string   `json:"upstream_group_description,omitempty" gorm:"type:text"`
-	Models                      string   `json:"models"`
-	Group                       string   `json:"group" gorm:"type:varchar(64);default:'default'"`
-	UsedQuota                   int64    `json:"used_quota" gorm:"bigint;default:0"`
-	ModelMapping                *string  `json:"model_mapping" gorm:"type:text"`
+	Id                           int      `json:"id"`
+	Type                         int      `json:"type" gorm:"default:0"`
+	Key                          string   `json:"key" gorm:"not null"`
+	OpenAIOrganization           *string  `json:"openai_organization"`
+	TestModel                    *string  `json:"test_model"`
+	Status                       int      `json:"status" gorm:"default:1"`
+	Name                         string   `json:"name" gorm:"index"`
+	Weight                       *uint    `json:"weight" gorm:"default:0"`
+	CreatedTime                  int64    `json:"created_time" gorm:"bigint"`
+	TestTime                     int64    `json:"test_time" gorm:"bigint"`
+	ResponseTime                 int      `json:"response_time"` // in milliseconds
+	BaseURL                      *string  `json:"base_url" gorm:"column:base_url;default:''"`
+	Other                        string   `json:"other"`
+	Balance                      float64  `json:"balance"` // in USD
+	BalanceUpdatedTime           int64    `json:"balance_updated_time" gorm:"bigint"`
+	Sub2APIUsername              string   `json:"sub2api_username,omitempty" gorm:"column:sub2api_username;type:varchar(255)"`
+	Sub2APIPassword              string   `json:"-" gorm:"column:sub2api_password;type:text"`
+	Sub2APIAccessToken           string   `json:"-" gorm:"column:sub2api_access_token;type:text"`
+	Sub2APIRefreshToken          string   `json:"-" gorm:"column:sub2api_refresh_token;type:text"`
+	Sub2APIAccessTokenExpiresAt  int64    `json:"-" gorm:"column:sub2api_access_token_expires_at;bigint"`
+	UpstreamRateMultiplier       *float64 `json:"upstream_rate_multiplier,omitempty"`
+	ManualUpstreamRateMultiplier *float64 `json:"manual_upstream_rate_multiplier,omitempty"`
+	UpstreamGroupName            string   `json:"upstream_group_name,omitempty" gorm:"type:varchar(255)"`
+	UpstreamGroupDescription     string   `json:"upstream_group_description,omitempty" gorm:"type:text"`
+	Models                       string   `json:"models"`
+	Group                        string   `json:"group" gorm:"type:varchar(64);default:'default'"`
+	UsedQuota                    int64    `json:"used_quota" gorm:"bigint;default:0"`
+	ModelMapping                 *string  `json:"model_mapping" gorm:"type:text"`
 	//MaxInputTokens     *int    `json:"max_input_tokens" gorm:"default:0"`
 	StatusCodeMapping *string `json:"status_code_mapping" gorm:"type:varchar(1024);default:''"`
 	Priority          *int64  `json:"priority" gorm:"bigint;default:0"`
@@ -570,6 +571,21 @@ func (channel *Channel) UpdateBalance(balance float64) {
 	channel.UpstreamRateMultiplier = nil
 	channel.UpstreamGroupName = ""
 	channel.UpstreamGroupDescription = ""
+}
+
+func (channel *Channel) EffectiveUpstreamRateMultiplier() (*float64, bool) {
+	if channel.UpstreamRateMultiplier != nil {
+		return channel.UpstreamRateMultiplier, false
+	}
+	return channel.ManualUpstreamRateMultiplier, channel.ManualUpstreamRateMultiplier != nil
+}
+
+func (channel *Channel) UpdateManualUpstreamRateMultiplier(rate *float64) error {
+	if err := DB.Model(channel).Update("manual_upstream_rate_multiplier", rate).Error; err != nil {
+		return err
+	}
+	channel.ManualUpstreamRateMultiplier = rate
+	return nil
 }
 
 func (channel *Channel) Delete() error {

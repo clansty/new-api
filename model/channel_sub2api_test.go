@@ -35,3 +35,35 @@ func TestChannelJSON_whenSub2APIAuthIsConfigured(t *testing.T) {
 	require.NotContains(t, string(payload), "access-secret")
 	require.NotContains(t, string(payload), "refresh-secret")
 }
+
+func TestChannelEffectiveUpstreamRateMultiplier_whenAutomaticRateIsMissing(t *testing.T) {
+	// Given: 渠道仅配置了手动上游倍率。
+	manualRate := 0.6
+	channel := Channel{ManualUpstreamRateMultiplier: &manualRate}
+
+	// When: 读取成本计算使用的有效上游倍率。
+	rate, manual := channel.EffectiveUpstreamRateMultiplier()
+
+	// Then: 使用手动倍率并标记来源。
+	require.NotNil(t, rate)
+	require.Equal(t, 0.6, *rate)
+	require.True(t, manual)
+}
+
+func TestChannelEffectiveUpstreamRateMultiplier_whenAutomaticRateExists(t *testing.T) {
+	// Given: 渠道同时保留了自动倍率和手动兜底倍率。
+	automaticRate := 0.45
+	manualRate := 0.6
+	channel := Channel{
+		UpstreamRateMultiplier:       &automaticRate,
+		ManualUpstreamRateMultiplier: &manualRate,
+	}
+
+	// When: 读取成本计算使用的有效上游倍率。
+	rate, manual := channel.EffectiveUpstreamRateMultiplier()
+
+	// Then: 自动倍率优先，手动倍率仅作为兜底。
+	require.NotNil(t, rate)
+	require.Equal(t, 0.45, *rate)
+	require.False(t, manual)
+}

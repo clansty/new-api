@@ -481,6 +481,9 @@ func validateChannel(channel *model.Channel, isAdd bool) error {
 	if channel.Type == constant.ChannelTypePassThrough && strings.TrimSpace(channel.GetBaseURL()) == "" {
 		return fmt.Errorf("透传渠道必须设置上游地址")
 	}
+	if channel.ManualUpstreamRateMultiplier != nil && *channel.ManualUpstreamRateMultiplier < 0 {
+		return fmt.Errorf("手动上游倍率不能小于 0")
+	}
 	if channel.Type == constant.ChannelTypeAdvancedPassThrough {
 		settings := channel.GetOtherSettings()
 		if strings.TrimSpace(settings.AdvancedOpenAIBaseURL) == "" {
@@ -941,9 +944,10 @@ func BatchSetChannelAutoRecover(c *gin.Context) {
 
 type PatchChannel struct {
 	model.Channel
-	MultiKeyMode    *string `json:"multi_key_mode"`
-	KeyMode         *string `json:"key_mode"` // 多key模式下密钥覆盖或者追加
-	Sub2APIPassword *string `json:"-"`
+	MultiKeyMode                    *string `json:"multi_key_mode"`
+	KeyMode                         *string `json:"key_mode"` // 多key模式下密钥覆盖或者追加
+	Sub2APIPassword                 *string `json:"-"`
+	ManualUpstreamRateMultiplierSet bool    `json:"-"`
 }
 
 func (channel *PatchChannel) UnmarshalJSON(data []byte) error {
@@ -957,6 +961,11 @@ func (channel *PatchChannel) UnmarshalJSON(data []byte) error {
 	if err := common.Unmarshal(data, &payload); err != nil {
 		return err
 	}
+	var fields map[string]json.RawMessage
+	if err := common.Unmarshal(data, &fields); err != nil {
+		return err
+	}
+	_, channel.ManualUpstreamRateMultiplierSet = fields["manual_upstream_rate_multiplier"]
 	channel.Sub2APIPassword = payload.Sub2APIPassword
 	return nil
 }
@@ -1088,6 +1097,12 @@ func UpdateChannel(c *gin.Context) {
 	if err := channel.SaveSub2APIState(sub2APIState); err != nil {
 		common.ApiError(c, err)
 		return
+	}
+	if channel.ManualUpstreamRateMultiplierSet {
+		if err := channel.UpdateManualUpstreamRateMultiplier(channel.ManualUpstreamRateMultiplier); err != nil {
+			common.ApiError(c, err)
+			return
+		}
 	}
 	model.InitChannelCache()
 	service.ResetProxyClientCache()

@@ -4433,6 +4433,11 @@
     "p50": "p50",
     "p95": "p95",
     "p99": "p99",
-    "全部渠道": "Tất cả kênh"
+    "全部渠道": "Tất cả kênh",
+    "手动上游倍率": "Hệ số thượng nguồn thủ công",
+    "手动填写": "Nhập thủ công",
+    "自动获取": "Tự động lấy",
+    "已自动获取上游倍率，自动值优先生效": "Đã tự động lấy hệ số thượng nguồn và giá trị tự động được ưu tiên",
+    "仅在无法自动获取上游倍率时用于成本统计": "Chỉ dùng cho thống kê chi phí khi không thể tự động lấy hệ số thượng nguồn"
   }
 }

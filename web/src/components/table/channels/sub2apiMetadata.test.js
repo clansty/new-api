@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import { describe, expect, test } from 'bun:test';
-import { formatSub2APIRate } from './sub2apiMetadata';
+import { formatSub2APIRate, resolveUpstreamRate } from './sub2apiMetadata';
 
 describe('formatSub2APIRate', () => {
   test('preserves a free zero multiplier', () => {
@@ -33,5 +33,25 @@ describe('formatSub2APIRate', () => {
   test('hides missing or invalid values', () => {
     expect(formatSub2APIRate(null)).toBeNull();
     expect(formatSub2APIRate('invalid')).toBeNull();
+  });
+});
+
+describe('resolveUpstreamRate', () => {
+  test('prefers the automatically queried rate', () => {
+    expect(resolveUpstreamRate(0.45, 0.6)).toEqual({
+      rate: 0.45,
+      source: 'automatic',
+    });
+  });
+
+  test('uses the manual rate only when no automatic rate exists', () => {
+    expect(resolveUpstreamRate(null, 0.6)).toEqual({
+      rate: 0.6,
+      source: 'manual',
+    });
+  });
+
+  test('returns no rate when neither source is configured', () => {
+    expect(resolveUpstreamRate(undefined, null)).toBeNull();
   });
 });

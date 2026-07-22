@@ -203,6 +203,7 @@ const EditChannelModal = (props) => {
     balance_query_mode: '',
     sub2api_username: '',
     sub2api_password: '',
+    manual_upstream_rate_multiplier: null,
     settings: '',
     // 仅 Vertex: 密钥格式（存入 settings.vertex_key_type）
     vertex_key_type: 'json',
@@ -1065,6 +1066,8 @@ const EditChannelModal = (props) => {
         data.advanced_responses_supported ||
         data.balance_query_mode ||
         data.sub2api_username ||
+        (data.manual_upstream_rate_multiplier !== null &&
+          data.manual_upstream_rate_multiplier !== undefined) ||
         data.system_prompt_override;
       if (hasAdvancedValues) {
         setAdvancedSettingsOpen(true);
@@ -2640,6 +2643,29 @@ const EditChannelModal = (props) => {
                       />
                     </>
                   )}
+
+                  <Form.InputNumber
+                    field='manual_upstream_rate_multiplier'
+                    label={t('手动上游倍率')}
+                    min={0}
+                    step={0.01}
+                    disabled={
+                      inputs.upstream_rate_multiplier !== null &&
+                      inputs.upstream_rate_multiplier !== undefined
+                    }
+                    onChange={(value) =>
+                      handleInputChange(
+                        'manual_upstream_rate_multiplier',
+                        value ?? null,
+                      )
+                    }
+                    extraText={
+                      inputs.upstream_rate_multiplier !== null &&
+                      inputs.upstream_rate_multiplier !== undefined
+                        ? t('已自动获取上游倍率，自动值优先生效')
+                        : t('仅在无法自动获取上游倍率时用于成本统计')
+                    }
+                  />
 
                   <Form.Switch field='thinking_to_content' label={t('思考内容转换')} checkedText={t('开')} uncheckedText={t('关')} onChange={(value) => handleChannelSettingsChange('thinking_to_content', value)} extraText={t('将 reasoning_content 转换为 <think> 标签拼接到内容中')} />
                   {inputs.type !== 60 && (

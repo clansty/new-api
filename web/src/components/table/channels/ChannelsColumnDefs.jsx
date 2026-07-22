@@ -45,7 +45,7 @@ import {
 } from '../../../constants';
 import { parseUpstreamUpdateMeta } from '../../../hooks/channels/upstreamUpdateUtils';
 import { isCollapsedChannelsRow } from '../../../hooks/channels/channelCollapseRows';
-import { formatSub2APIRate } from './sub2apiMetadata';
+import { formatSub2APIRate, resolveUpstreamRate } from './sub2apiMetadata';
 import {
   IconTreeTriangleDown,
   IconMore,
@@ -593,8 +593,9 @@ export const getChannelsColumns = ({
       dataIndex: 'expired_time',
       render: (text, record, index) => {
         if (record.children === undefined) {
-          const upstreamRate = formatSub2APIRate(
+          const upstreamRate = resolveUpstreamRate(
             record.upstream_rate_multiplier,
+            record.manual_upstream_rate_multiplier,
           );
           return (
             <div>
@@ -631,18 +632,35 @@ export const getChannelsColumns = ({
                     content={
                       <div className='max-w-xs whitespace-normal'>
                         <div className='font-medium'>
-                          {record.upstream_group_name || '-'}
+                          {upstreamRate.source === 'manual'
+                            ? t('手动填写')
+                            : t('自动获取')}
                         </div>
-                        {record.upstream_group_description && (
-                          <div className='mt-1'>
-                            {record.upstream_group_description}
-                          </div>
-                        )}
+                        {upstreamRate.source === 'automatic' &&
+                          record.upstream_group_name && (
+                            <div className='mt-1'>
+                              {record.upstream_group_name}
+                            </div>
+                          )}
+                        {upstreamRate.source === 'automatic' &&
+                          record.upstream_group_description && (
+                            <div className='mt-1'>
+                              {record.upstream_group_description}
+                            </div>
+                          )}
                       </div>
                     }
                   >
-                    <Tag color='light-blue' type='light' shape='circle'>
-                      {upstreamRate}
+                    <Tag
+                      color={
+                        upstreamRate.source === 'manual'
+                          ? 'yellow'
+                          : 'light-blue'
+                      }
+                      type='light'
+                      shape='circle'
+                    >
+                      {formatSub2APIRate(upstreamRate.rate)}
                     </Tag>
                   </Tooltip>
                 )}

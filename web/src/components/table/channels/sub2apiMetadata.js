@@ -27,3 +27,13 @@ export function formatSub2APIRate(value) {
   }
   return `${Number(rate.toFixed(4))}x`;
 }
+
+export function resolveUpstreamRate(automaticValue, manualValue) {
+  if (formatSub2APIRate(automaticValue) !== null) {
+    return { rate: Number(automaticValue), source: 'automatic' };
+  }
+  if (formatSub2APIRate(manualValue) !== null) {
+    return { rate: Number(manualValue), source: 'manual' };
+  }
+  return null;
+}
