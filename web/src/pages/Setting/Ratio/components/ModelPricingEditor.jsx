@@ -139,6 +139,7 @@ export default function ModelPricingEditor({
     handlePurposesChange,
     handleBillingExprChange,
     handleRequestRuleExprChange,
+    handleIgnoreGroupSpecialRatioChange,
     handleSubmit,
     addModel,
     deleteModel,
@@ -476,6 +477,23 @@ export default function ModelPricingEditor({
                       {t('表达式/阶梯计费')}
                     </span>
                   </div>
+                </div>
+                <div className='mb-4 flex items-center justify-between gap-4'>
+                  <div>
+                    <div className='font-medium text-gray-700'>
+                      {t('忽略用户分组特殊倍率')}
+                    </div>
+                    <div className='mt-1 text-xs text-gray-500'>
+                      {t(
+                        '开启后，即使用户分组配置了特殊倍率，该模型仍按实际使用分组的基础倍率计费。',
+                      )}
+                    </div>
+                  </div>
+                  <Switch
+                    aria-label={t('忽略用户分组特殊倍率')}
+                    checked={selectedModel.ignoreGroupSpecialRatio}
+                    onChange={handleIgnoreGroupSpecialRatioChange}
+                  />
                 </div>
 
                 {selectedWarnings.length > 0 ? (
@@ -825,8 +843,15 @@ export default function ModelPricingEditor({
                   >
                     {previewRows.map((row) => (
                       <React.Fragment key={row.key}>
-                        <Text strong>{row.label}</Text>
-                        <Text>{row.value}</Text>
+                        <Text
+                          strong
+                          style={{ minWidth: 0, overflowWrap: 'anywhere' }}
+                        >
+                          {row.label}
+                        </Text>
+                        <Text style={{ minWidth: 0, overflowWrap: 'anywhere' }}>
+                          {row.value}
+                        </Text>
                       </React.Fragment>
                     ))}
                   </div>

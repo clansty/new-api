@@ -823,6 +823,38 @@ func FilterUncoveredModels(declaredModels []string) (changed map[string]string, 
 		removed += localRemoved
 	}
 
+	boolConfigs := []struct {
+		key string
+		m   map[string]bool
+	}{
+		{"ModelIgnoreGroupSpecialRatio", GetModelIgnoreGroupSpecialRatioCopy()},
+	}
+	for _, cfg := range boolConfigs {
+		filtered := make(map[string]bool, len(cfg.m))
+		localRemoved := 0
+		for name, value := range cfg.m {
+			if covered[name] {
+				filtered[name] = value
+				continue
+			}
+			localRemoved++
+			if !removedSet[name] {
+				removedSet[name] = true
+				removedModels = append(removedModels, name)
+			}
+		}
+		if localRemoved == 0 {
+			continue
+		}
+		jsonBytes, err := common.Marshal(filtered)
+		if err != nil {
+			common.SysError("error marshalling filtered ratio config " + cfg.key + ": " + err.Error())
+			continue
+		}
+		changed[cfg.key] = string(jsonBytes)
+		removed += localRemoved
+	}
+
 	stringConfigs := []struct {
 		key string
 		m   map[string]string

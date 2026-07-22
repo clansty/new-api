@@ -8,6 +8,7 @@
 ## Semi Tabs 与多选弹层
 
 - Semi Tabs 会保留隐藏面板 DOM，相同 placeholder/text 会触发 Playwright strict mode；应先用当前 tabpanel 的 label 限定 locator 范围。
+- Semi Tabs 中视觉上位于当前面板的工具栏按钮不一定是该 tabpanel 的可访问后代；面板内 role 定位为 0 时，可用 `button:visible` 配合精确文本筛选，并先断言数量为 1。
 - 响应式表格调整后，隐藏 TabPane 可能仍让按文本或角色定位的模型行等待超时；可用 `.semi-table-row:visible` 限定当前可见行，并通过整行点击验证选择行为。
 - Semi Select 多选后弹层保持打开，背景元素会暂时离开可访问树；当前版本在无头 Chrome 下无法通过 `Escape`、click-away 或箭头可靠关闭。需要验证后续独立状态时，应在同一登录 context 中新开 page，避免弹层污染后续证据。
 - 含 portal/fixed 图层的页面不要用 `fullPage` 作为视觉证据，否则弹层可能缺失、固定导航可能被合成到长图中部；应按目标 viewport 截图并等待弹层动画稳定。

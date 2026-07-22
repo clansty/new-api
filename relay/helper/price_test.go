@@ -10,10 +10,67 @@ import (
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/setting/billing_setting"
 	"github.com/QuantumNous/new-api/setting/config"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
+
+func TestHandleGroupRatioUsesSpecialRatioByDefault(t *testing.T) {
+	originalGroupRatio := ratio_setting.GroupRatio2JSONString()
+	originalGroupGroupRatio := ratio_setting.GroupGroupRatio2JSONString()
+	originalModelIgnoreGroupSpecialRatio := ratio_setting.ModelIgnoreGroupSpecialRatio2JSONString()
+	t.Cleanup(func() {
+		require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(originalGroupRatio))
+		require.NoError(t, ratio_setting.UpdateGroupGroupRatioByJSONString(originalGroupGroupRatio))
+		require.NoError(t, ratio_setting.UpdateModelIgnoreGroupSpecialRatioByJSONString(originalModelIgnoreGroupSpecialRatio))
+	})
+
+	require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(`{"standard":1.25}`))
+	require.NoError(t, ratio_setting.UpdateGroupGroupRatioByJSONString(`{"vip":{"standard":0.5}}`))
+	require.NoError(t, ratio_setting.UpdateModelIgnoreGroupSpecialRatioByJSONString(`{}`))
+
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	info := &relaycommon.RelayInfo{
+		OriginModelName: "discounted-model",
+		UserGroup:       "vip",
+		UsingGroup:      "standard",
+	}
+
+	ratioInfo := HandleGroupRatio(ctx, info)
+
+	require.Equal(t, 0.5, ratioInfo.GroupRatio)
+	require.Equal(t, 0.5, ratioInfo.GroupSpecialRatio)
+	require.True(t, ratioInfo.HasSpecialRatio)
+}
+
+func TestHandleGroupRatioUsesBaseRatioWhenModelIgnoresSpecialRatio(t *testing.T) {
+	originalGroupRatio := ratio_setting.GroupRatio2JSONString()
+	originalGroupGroupRatio := ratio_setting.GroupGroupRatio2JSONString()
+	originalModelIgnoreGroupSpecialRatio := ratio_setting.ModelIgnoreGroupSpecialRatio2JSONString()
+	t.Cleanup(func() {
+		require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(originalGroupRatio))
+		require.NoError(t, ratio_setting.UpdateGroupGroupRatioByJSONString(originalGroupGroupRatio))
+		require.NoError(t, ratio_setting.UpdateModelIgnoreGroupSpecialRatioByJSONString(originalModelIgnoreGroupSpecialRatio))
+	})
+
+	require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(`{"standard":1.25}`))
+	require.NoError(t, ratio_setting.UpdateGroupGroupRatioByJSONString(`{"vip":{"standard":0.5}}`))
+	require.NoError(t, ratio_setting.UpdateModelIgnoreGroupSpecialRatioByJSONString(`{"full-price-model":true}`))
+
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	info := &relaycommon.RelayInfo{
+		OriginModelName: "full-price-model",
+		UserGroup:       "vip",
+		UsingGroup:      "standard",
+	}
+
+	ratioInfo := HandleGroupRatio(ctx, info)
+
+	require.Equal(t, 1.25, ratioInfo.GroupRatio)
+	require.Equal(t, -1.0, ratioInfo.GroupSpecialRatio)
+	require.False(t, ratioInfo.HasSpecialRatio)
+}
 
 func TestModelPriceHelperTieredUsesPreloadedRequestInput(t *testing.T) {
 	gin.SetMode(gin.TestMode)

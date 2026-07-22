@@ -43,6 +43,7 @@ const EMPTY_MODEL = {
   audioOutputPrice: '',
   billingExpr: '',
   requestRuleExpr: '',
+  ignoreGroupSpecialRatio: false,
   rawRatios: {
     modelRatio: '',
     completionRatio: '',
@@ -127,6 +128,8 @@ const buildModelState = (name, sourceMaps) => {
     ? sourceMaps.ModelPurpose[name]
     : [];
   const billingMode = sourceMaps.ModelBillingMode?.[name];
+  const ignoreGroupSpecialRatio =
+    sourceMaps.ModelIgnoreGroupSpecialRatio?.[name] === true;
   if (billingMode === 'tiered_expr') {
     const fullBillingExpr = sourceMaps.ModelBillingExpr?.[name] || '';
     const { billingExpr, requestRuleExpr } =
@@ -138,6 +141,7 @@ const buildModelState = (name, sourceMaps) => {
       billingMode: 'tiered_expr',
       billingExpr,
       requestRuleExpr,
+      ignoreGroupSpecialRatio,
       rawRatios: { ...EMPTY_MODEL.rawRatios },
       hasConflict: false,
     };
@@ -169,6 +173,7 @@ const buildModelState = (name, sourceMaps) => {
     purposes,
     billingMode: hasValue(fixedPrice) ? 'per-request' : 'per-token',
     fixedPrice,
+    ignoreGroupSpecialRatio,
     inputPrice,
     completionRatioLocked: completionRatioMeta.locked,
     lockedCompletionRatio: completionRatioMeta.ratio,
@@ -351,6 +356,7 @@ const serializeModel = (model, t) => {
     ImageRatio: null,
     AudioRatio: null,
     AudioCompletionRatio: null,
+    ModelIgnoreGroupSpecialRatio: model.ignoreGroupSpecialRatio ? true : null,
   };
 
   if (model.billingMode === 'per-request') {
@@ -465,6 +471,15 @@ export const buildPreviewRows = (model, t) => {
     model.billingExpr,
     model.requestRuleExpr,
   );
+  const groupRatioRows = model.ignoreGroupSpecialRatio
+    ? [
+        {
+          key: 'ModelIgnoreGroupSpecialRatio',
+          label: 'ModelIgnoreGroupSpecialRatio',
+          value: t('是'),
+        },
+      ]
+    : [];
 
   if (model.billingMode === 'tiered_expr') {
     const rows = [
@@ -491,7 +506,7 @@ export const buildPreviewRows = (model, t) => {
               : finalBillingExpr,
       });
     }
-    return rows;
+    return [...rows, ...groupRatioRows];
   }
 
   if (model.billingMode === 'per-request') {
@@ -502,7 +517,7 @@ export const buildPreviewRows = (model, t) => {
         value: hasValue(model.fixedPrice) ? model.fixedPrice : t('空'),
       },
     ];
-    return rows;
+    return [...rows, ...groupRatioRows];
   }
 
   const inputPrice = toNumberOrNull(model.inputPrice);
@@ -558,7 +573,7 @@ export const buildPreviewRows = (model, t) => {
           : t('空'),
       },
     ];
-    return rows;
+    return [...rows, ...groupRatioRows];
   }
 
   const completionPrice = toNumberOrNull(model.completionPrice);
@@ -622,7 +637,7 @@ export const buildPreviewRows = (model, t) => {
           : t('空'),
     },
   ];
-  return rows;
+  return [...rows, ...groupRatioRows];
 };
 
 export function useModelPricingEditorState({
@@ -645,6 +660,9 @@ export function useModelPricingEditorState({
   useEffect(() => {
     const sourceMaps = {
       ModelPrice: parseOptionJSON(options.ModelPrice),
+      ModelIgnoreGroupSpecialRatio: parseOptionJSON(
+        options.ModelIgnoreGroupSpecialRatio,
+      ),
       ModelPurpose: parseOptionJSON(options.ModelPurpose),
       ModelRatio: parseOptionJSON(options.ModelRatio),
       CompletionRatio: parseOptionJSON(options.CompletionRatio),
@@ -665,6 +683,7 @@ export function useModelPricingEditorState({
     const names = new Set([
       ...candidateModelNames,
       ...Object.keys(sourceMaps.ModelPrice),
+      ...Object.keys(sourceMaps.ModelIgnoreGroupSpecialRatio),
       ...Object.keys(sourceMaps.ModelPurpose),
       ...Object.keys(sourceMaps.ModelRatio),
       ...Object.keys(sourceMaps.CompletionRatio),
@@ -917,6 +936,14 @@ export function useModelPricingEditorState({
     }));
   };
 
+  const handleIgnoreGroupSpecialRatioChange = (checked) => {
+    if (!selectedModel) return;
+    upsertModel(selectedModel.name, (model) => ({
+      ...model,
+      ignoreGroupSpecialRatio: checked,
+    }));
+  };
+
   const addModel = (modelName) => {
     const trimmedName = modelName.trim();
     if (!trimmedName) {
@@ -991,6 +1018,7 @@ export function useModelPricingEditorState({
           audioOutputPrice: selectedModel.audioOutputPrice,
           billingExpr: selectedModel.billingExpr || '',
           requestRuleExpr: selectedModel.requestRuleExpr || '',
+          ignoreGroupSpecialRatio: selectedModel.ignoreGroupSpecialRatio,
         };
 
         if (
@@ -1043,6 +1071,7 @@ export function useModelPricingEditorState({
     try {
       const output = {
         ModelPrice: {},
+        ModelIgnoreGroupSpecialRatio: {},
         ModelPurpose: {},
         ModelRatio: {},
         CompletionRatio: {},
@@ -1150,6 +1179,7 @@ export function useModelPricingEditorState({
     handlePurposesChange,
     handleBillingExprChange,
     handleRequestRuleExprChange,
+    handleIgnoreGroupSpecialRatioChange,
     handleSubmit,
     addModel,
     deleteModel,
