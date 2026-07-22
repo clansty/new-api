@@ -4065,6 +4065,7 @@
     "手动填写": "Manual entry",
     "自动获取": "Automatically fetched",
     "已自动获取上游倍率，自动值优先生效": "An automatically fetched upstream multiplier is available and takes precedence",
-    "仅在无法自动获取上游倍率时用于成本统计": "Used for cost statistics only when the upstream multiplier cannot be fetched automatically"
+    "仅在无法自动获取上游倍率时用于成本统计": "Used for cost statistics only when the upstream multiplier cannot be fetched automatically",
+    "成本": "Cost"
   }
 }

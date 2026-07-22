@@ -198,6 +198,7 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 		for _, ra := range info.PriceData.OtherRatios {
 			if ra != 1.0 {
 				info.PriceData.Quota = int(float64(info.PriceData.Quota) * ra)
+				info.PriceData.OriginalQuota *= ra
 			}
 		}
 	}
@@ -262,19 +263,24 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 func recalcQuotaFromRatios(info *relaycommon.RelayInfo, ratios map[string]float64) int {
 	// 从 PriceData 获取不含 OtherRatios 的基础价格
 	baseQuota := info.PriceData.Quota
+	baseOriginalQuota := info.PriceData.OriginalQuota
 	// 先除掉原有的 OtherRatios 恢复基础额度
 	for _, ra := range info.PriceData.OtherRatios {
 		if ra != 1.0 && ra > 0 {
 			baseQuota = int(float64(baseQuota) / ra)
+			baseOriginalQuota /= ra
 		}
 	}
 	// 应用新的 ratios
 	result := float64(baseQuota)
+	originalResult := baseOriginalQuota
 	for _, ra := range ratios {
 		if ra != 1.0 {
 			result *= ra
+			originalResult *= ra
 		}
 	}
+	info.PriceData.OriginalQuota = originalResult
 	return int(result)
 }
 

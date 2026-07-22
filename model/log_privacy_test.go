@@ -24,6 +24,18 @@ func TestFormatUserLogs_HidesModelMappingDetails_whenLogUsesMappedModel(t *testi
 	require.Equal(t, float64(2), other["model_ratio"])
 }
 
+func TestFormatUserLogs_HidesCost(t *testing.T) {
+	// Given: 消费日志已经冻结了管理员成本。
+	cost := 450.0
+	logs := []*Log{{Cost: &cost}}
+
+	// When: 日志经过普通用户响应格式化。
+	formatUserLogs(logs, 0)
+
+	// Then: 普通用户响应不包含成本。
+	require.Nil(t, logs[0].Cost)
+}
+
 func TestGetAllLogs_PreservesModelMappingDetails_forAdminQuery(t *testing.T) {
 	// Given: 管理员需要映射详情诊断实际转发模型。
 	truncateTables(t)

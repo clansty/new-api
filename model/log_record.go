@@ -126,6 +126,7 @@ func RecordErrorLog(c *gin.Context, userId int, channelId int, modelName string,
 
 type RecordConsumeLogParams struct {
 	ChannelId        int            `json:"channel_id"`
+	OriginalQuota    float64        `json:"original_quota"`
 	PromptTokens     int            `json:"prompt_tokens"`
 	CompletionTokens int            `json:"completion_tokens"`
 	ModelName        string         `json:"model_name"`
@@ -137,6 +138,22 @@ type RecordConsumeLogParams struct {
 	IsStream         bool           `json:"is_stream"`
 	Group            string         `json:"group"`
 	Other            map[string]any `json:"other"`
+}
+
+func calculateRequestCost(channelId int, originalQuota float64) *float64 {
+	if channelId <= 0 {
+		return nil
+	}
+	channel, err := CacheGetChannel(channelId)
+	if err != nil {
+		return nil
+	}
+	rate, _ := channel.EffectiveUpstreamRateMultiplier()
+	if rate == nil {
+		return nil
+	}
+	cost := originalQuota * *rate
+	return &cost
 }
 
 func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams) {
@@ -166,6 +183,7 @@ func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams)
 		TokenName:        params.TokenName,
 		ModelName:        params.ModelName,
 		Quota:            params.Quota,
+		Cost:             calculateRequestCost(params.ChannelId, params.OriginalQuota),
 		ChannelId:        params.ChannelId,
 		TokenId:          params.TokenId,
 		UseTime:          params.UseTimeSeconds,
@@ -204,15 +222,16 @@ func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams)
 }
 
 type RecordTaskBillingLogParams struct {
-	UserId    int
-	LogType   int
-	Content   string
-	ChannelId int
-	ModelName string
-	Quota     int
-	TokenId   int
-	Group     string
-	Other     map[string]any
+	UserId        int
+	LogType       int
+	Content       string
+	ChannelId     int
+	ModelName     string
+	Quota         int
+	OriginalQuota *float64
+	TokenId       int
+	Group         string
+	Other         map[string]any
 }
 
 func RecordTaskBillingLog(params RecordTaskBillingLogParams) {
@@ -236,6 +255,12 @@ func RecordTaskBillingLog(params RecordTaskBillingLogParams) {
 		TokenName: tokenName,
 		ModelName: params.ModelName,
 		Quota:     params.Quota,
+		Cost: func() *float64 {
+			if params.OriginalQuota == nil {
+				return nil
+			}
+			return calculateRequestCost(params.ChannelId, *params.OriginalQuota)
+		}(),
 		ChannelId: params.ChannelId,
 		TokenId:   params.TokenId,
 		Group:     params.Group,

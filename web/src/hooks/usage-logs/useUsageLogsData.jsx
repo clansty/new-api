@@ -118,6 +118,7 @@ export const useLogsData = () => {
     COMPLETION: 'completion',
     CACHE_HIT_RATE: 'cache_hit_rate',
     COST: 'cost',
+    UPSTREAM_COST: 'upstream_cost',
     RETRY: 'retry',
     IP: 'ip',
     DETAILS: 'details',
@@ -127,6 +128,7 @@ export const useLogsData = () => {
     COLUMN_KEYS.CHANNEL,
     COLUMN_KEYS.USERNAME,
     COLUMN_KEYS.CACHE_HIT_RATE,
+    COLUMN_KEYS.UPSTREAM_COST,
     COLUMN_KEYS.RETRY,
   ]);
 
@@ -198,6 +200,7 @@ export const useLogsData = () => {
       [COLUMN_KEYS.COMPLETION]: true,
       [COLUMN_KEYS.CACHE_HIT_RATE]: isAdminUser,
       [COLUMN_KEYS.COST]: true,
+      [COLUMN_KEYS.UPSTREAM_COST]: isAdminUser,
       [COLUMN_KEYS.RETRY]: isAdminUser,
       [COLUMN_KEYS.IP]: true,
       [COLUMN_KEYS.DETAILS]: true,

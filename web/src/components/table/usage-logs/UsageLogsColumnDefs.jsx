@@ -812,6 +812,21 @@ export const getLogsColumns = ({
         return <>{renderQuota(text, 6)}</>;
       },
     },
+    ...(isAdminUser
+      ? [
+          {
+            key: COLUMN_KEYS.UPSTREAM_COST,
+            title: t('成本'),
+            dataIndex: 'cost',
+            render: (text, record) => {
+              if (text === null || text === undefined) {
+                return '-';
+              }
+              return <>{renderQuota(text, 6)}</>;
+            },
+          },
+        ]
+      : []),
     {
       key: COLUMN_KEYS.IP,
       title: (

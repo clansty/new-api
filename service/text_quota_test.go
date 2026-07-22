@@ -68,6 +68,29 @@ func TestCalculateTextQuotaSummaryUnifiedForClaudeSemantic(t *testing.T) {
 	require.Equal(t, 1488, chatSummary.Quota)
 }
 
+func TestCalculateTextQuotaSummaryPreservesOriginalQuota_whenGroupIsFree(t *testing.T) {
+	// Given: 用户分组倍率为 0，但模型本身仍产生上游成本。
+	gin.SetMode(gin.TestMode)
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	relayInfo := &relaycommon.RelayInfo{
+		OriginModelName: "cost-model",
+		StartTime:       time.Now(),
+		PriceData: types.PriceData{
+			ModelRatio:      2,
+			CompletionRatio: 2,
+			GroupRatioInfo:  types.GroupRatioInfo{GroupRatio: 0},
+		},
+	}
+	usage := &dto.Usage{PromptTokens: 100, CompletionTokens: 50}
+
+	// When: 结算文本请求。
+	summary := calculateTextQuotaSummary(ctx, relayInfo, usage)
+
+	// Then: 用户扣费为 0，但未乘分组倍率的原价仍为 400。
+	require.Zero(t, summary.Quota)
+	require.InDelta(t, 400, summary.OriginalQuota, 0.0001)
+}
+
 func TestCalculateTextQuotaSummaryUsesSplitClaudeCacheCreationRatios(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	w := httptest.NewRecorder()

@@ -48,23 +48,16 @@ func hasCustomModelRatio(modelName string, currentRatio float64) bool {
 	return currentRatio != defaultRatio
 }
 
-func calculateAudioQuota(info QuotaInfo) int {
+func calculateAudioOriginalQuotaDecimal(info QuotaInfo) decimal.Decimal {
 	if info.UsePrice {
-		modelPrice := decimal.NewFromFloat(info.ModelPrice)
-		quotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
-		groupRatio := decimal.NewFromFloat(info.GroupRatio)
-
-		quota := modelPrice.Mul(quotaPerUnit).Mul(groupRatio)
-		return int(quota.IntPart())
+		return decimal.NewFromFloat(info.ModelPrice).Mul(decimal.NewFromFloat(common.QuotaPerUnit))
 	}
 
 	completionRatio := decimal.NewFromFloat(ratio_setting.GetCompletionRatio(info.ModelName))
 	audioRatio := decimal.NewFromFloat(ratio_setting.GetAudioRatio(info.ModelName))
 	audioCompletionRatio := decimal.NewFromFloat(ratio_setting.GetAudioCompletionRatio(info.ModelName))
 
-	groupRatio := decimal.NewFromFloat(info.GroupRatio)
 	modelRatio := decimal.NewFromFloat(info.ModelRatio)
-	ratio := groupRatio.Mul(modelRatio)
 
 	inputTextTokens := decimal.NewFromInt(int64(info.InputDetails.TextTokens))
 	outputTextTokens := decimal.NewFromInt(int64(info.OutputDetails.TextTokens))
@@ -77,7 +70,20 @@ func calculateAudioQuota(info QuotaInfo) int {
 	quota = quota.Add(inputAudioTokens.Mul(audioRatio))
 	quota = quota.Add(outputAudioTokens.Mul(audioRatio).Mul(audioCompletionRatio))
 
-	quota = quota.Mul(ratio)
+	return quota.Mul(modelRatio)
+}
+
+func calculateAudioOriginalQuota(info QuotaInfo) float64 {
+	return calculateAudioOriginalQuotaDecimal(info).InexactFloat64()
+}
+
+func calculateAudioQuota(info QuotaInfo) int {
+	quota := calculateAudioOriginalQuotaDecimal(info).Mul(decimal.NewFromFloat(info.GroupRatio))
+	if info.UsePrice {
+		return int(quota.IntPart())
+	}
+
+	ratio := decimal.NewFromFloat(info.GroupRatio).Mul(decimal.NewFromFloat(info.ModelRatio))
 
 	// If ratio is not zero and quota is less than or equal to zero, set quota to 1
 	if !ratio.IsZero() && quota.LessThanOrEqual(decimal.Zero) {
@@ -85,6 +91,16 @@ func calculateAudioQuota(info QuotaInfo) int {
 	}
 
 	return int(quota.Round(0).IntPart())
+}
+
+func resolveAudioOriginalQuota(relayInfo *relaycommon.RelayInfo, info QuotaInfo, tiered bool, result *billingexpr.TieredResult) float64 {
+	if result != nil {
+		return result.ActualQuotaBeforeGroup
+	}
+	if tiered && relayInfo.TieredBillingSnapshot != nil {
+		return relayInfo.TieredBillingSnapshot.EstimatedQuotaBeforeGroup
+	}
+	return calculateAudioOriginalQuota(info)
 }
 
 func PreWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usage *dto.RealtimeUsage) error {
@@ -201,6 +217,7 @@ func PostWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, mod
 	}
 
 	quota := calculateAudioQuota(quotaInfo)
+	originalQuota := resolveAudioOriginalQuota(relayInfo, quotaInfo, tieredOk, tieredResult)
 	if tieredOk {
 		quota = tieredQuota
 	}
@@ -219,6 +236,7 @@ func PostWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, mod
 		// in this case, must be some error happened
 		// we cannot just return, because we may have to return the pre-consumed quota
 		quota = 0
+		originalQuota = 0
 		logContent += fmt.Sprintf("（可能是上游超时）")
 		logger.LogError(ctx, fmt.Sprintf("total tokens is 0, cannot consume quota, userId %d, channelId %d, "+
 			"tokenId %d, model %s， pre-consumed quota %d", relayInfo.UserId, relayInfo.ChannelId, relayInfo.TokenId, modelName, relayInfo.FinalPreConsumedQuota))
@@ -247,6 +265,7 @@ func PostWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, mod
 		ModelName:        logModel,
 		TokenName:        tokenName,
 		Quota:            quota,
+		OriginalQuota:    originalQuota,
 		Content:          logContent,
 		TokenId:          relayInfo.TokenId,
 		UseTimeSeconds:   int(useTimeSeconds),
@@ -322,6 +341,7 @@ func PostAudioConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, u
 	}
 
 	quota := calculateAudioQuota(quotaInfo)
+	originalQuota := resolveAudioOriginalQuota(relayInfo, quotaInfo, tieredOk, tieredResult)
 	if tieredOk {
 		quota = tieredQuota
 	}
@@ -340,6 +360,7 @@ func PostAudioConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, u
 		// in this case, must be some error happened
 		// we cannot just return, because we may have to return the pre-consumed quota
 		quota = 0
+		originalQuota = 0
 		logContent += fmt.Sprintf("（可能是上游超时）")
 		logger.LogError(ctx, fmt.Sprintf("total tokens is 0, cannot consume quota, userId %d, channelId %d, "+
 			"tokenId %d, model %s， pre-consumed quota %d", relayInfo.UserId, relayInfo.ChannelId, relayInfo.TokenId, relayInfo.OriginModelName, relayInfo.FinalPreConsumedQuota))
@@ -368,6 +389,7 @@ func PostAudioConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, u
 		ModelName:        logModel,
 		TokenName:        tokenName,
 		Quota:            quota,
+		OriginalQuota:    originalQuota,
 		Content:          logContent,
 		TokenId:          relayInfo.TokenId,
 		UseTimeSeconds:   int(useTimeSeconds),
