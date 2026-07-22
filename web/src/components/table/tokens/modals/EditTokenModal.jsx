@@ -32,6 +32,7 @@ import {
   quotaToDisplayAmount,
   displayAmountToQuota,
 } from '../../../../helpers/quota';
+import { buildTokenGroupOptions } from '../../../../helpers/tokenGroupOptions';
 import { useIsMobile } from '../../../../hooks/common/useIsMobile';
 import {
   Button,
@@ -148,11 +149,7 @@ const EditTokenModal = (props) => {
     const { success, message, data } = res.data;
     if (success) {
       setGroupRequired(!!res.data.group_required);
-      let localGroupOptions = Object.entries(data).map(([group, info]) => ({
-        label: info.desc,
-        value: group,
-        ratio: info.ratio,
-      }));
+      let localGroupOptions = buildTokenGroupOptions(data);
       if (statusState?.status?.default_use_auto_group) {
         if (localGroupOptions.some((group) => group.value === 'auto')) {
           localGroupOptions.sort((a, b) => (a.value === 'auto' ? -1 : 1));
@@ -415,7 +412,9 @@ const EditTokenModal = (props) => {
                           return (
                             option.value?.toLowerCase().includes(q) ||
                             (typeof option.label === 'string' &&
-                              option.label.toLowerCase().includes(q))
+                              option.label.toLowerCase().includes(q)) ||
+                            (typeof option.description === 'string' &&
+                              option.description.toLowerCase().includes(q))
                           );
                         }}
                         showClear

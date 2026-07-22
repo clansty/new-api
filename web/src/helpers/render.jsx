@@ -935,6 +935,8 @@ export const renderGroupOption = (item) => {
     selected,
     label,
     value,
+    description,
+    fullLabel,
     focused,
     className,
     style,
@@ -944,6 +946,7 @@ export const renderGroupOption = (item) => {
     emptyContent,
     ...rest
   } = item;
+  const secondaryLabel = description ?? fullLabel ?? label;
 
   const baseStyle = {
     display: 'flex',
@@ -983,9 +986,11 @@ export const renderGroupOption = (item) => {
         <Typography.Text strong type={disabled ? 'tertiary' : undefined}>
           {value}
         </Typography.Text>
-        <Typography.Text type='secondary' size='small'>
-          {label}
-        </Typography.Text>
+        {secondaryLabel && (
+          <Typography.Text type='secondary' size='small'>
+            {secondaryLabel}
+          </Typography.Text>
+        )}
       </div>
       {item.ratio && renderRatio(item.ratio)}
     </div>
