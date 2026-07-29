@@ -1,9 +1,11 @@
 package openai
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
@@ -236,6 +238,7 @@ func OpenaiHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Respo
 	if common.DebugEnabled {
 		println("upstream response body:", string(responseBody))
 	}
+	responseBody = unwrapClineResponse(info.ChannelBaseUrl, responseBody)
 	// Unmarshal to simpleResponse
 	if info.ChannelType == constant.ChannelTypeOpenRouter && info.ChannelOtherSettings.IsOpenRouterEnterprise() {
 		// 尝试解析为 openrouter enterprise
@@ -330,6 +333,21 @@ func OpenaiHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Respo
 	service.IOCopyBytesGracefully(c, resp, responseBody)
 
 	return &simpleResponse.Usage, nil
+}
+
+func unwrapClineResponse(baseURL string, responseBody []byte) []byte {
+	parsedURL, err := url.Parse(baseURL)
+	if err != nil || !strings.EqualFold(parsedURL.Hostname(), "api.cline.bot") {
+		return responseBody
+	}
+	var envelope struct {
+		Success bool            `json:"success"`
+		Data    json.RawMessage `json:"data"`
+	}
+	if err := common.Unmarshal(responseBody, &envelope); err != nil || !envelope.Success || len(envelope.Data) == 0 {
+		return responseBody
+	}
+	return envelope.Data
 }
 
 func streamTTSResponse(c *gin.Context, resp *http.Response) {

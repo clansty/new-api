@@ -7,7 +7,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/dto"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/types"
@@ -62,4 +64,46 @@ func TestOaiStreamHandler_keepsFinishChunkUsage_whenTrailingUsageDiffers(t *test
 	require.Equal(t, 15, usage.CompletionTokens)
 	require.Equal(t, 103, usage.TotalTokens)
 	require.Contains(t, recorder.Body.String(), `"output_tokens":15`)
+}
+
+func TestOpenaiHandler_whenClineWrapsNonStreamResponse(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Body: io.NopCloser(strings.NewReader(`{
+			"success": true,
+			"data": {
+				"id": "chatcmpl-1",
+				"object": "chat.completion",
+				"created": 1,
+				"model": "qwen3.7-plus",
+				"choices": [{"index": 0, "message": {"role": "assistant", "content": "OK"}, "finish_reason": "stop"}],
+				"usage": {"prompt_tokens": 13, "completion_tokens": 32, "total_tokens": 45}
+			}
+		}`)),
+	}
+	info := &relaycommon.RelayInfo{
+		RelayFormat: types.RelayFormatOpenAI,
+		ChannelMeta: &relaycommon.ChannelMeta{
+			ChannelBaseUrl:    "https://api.cline.bot/api",
+			ChannelType:       constant.ChannelTypeOpenAI,
+			UpstreamModelName: "cline-pass/qwen3.7-plus",
+		},
+	}
+
+	usage, relayErr := OpenaiHandler(c, info, resp)
+
+	require.Nil(t, relayErr)
+	require.Equal(t, 13, usage.PromptTokens)
+	require.Equal(t, 32, usage.CompletionTokens)
+	require.Equal(t, 45, usage.TotalTokens)
+
+	var response dto.OpenAITextResponse
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	require.Equal(t, "chatcmpl-1", response.Id)
+	require.Len(t, response.Choices, 1)
+	require.Equal(t, "OK", response.Choices[0].Message.StringContent())
 }

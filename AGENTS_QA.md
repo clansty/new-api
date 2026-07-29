@@ -31,3 +31,8 @@
 ## Gin 路由尾斜杠与 curl
 
 - 日志路由的尾斜杠并不统一：`/api/log/self/` 会重定向到 `/api/log/self`，而管理员列表使用 `/api/log/`。`curl` 管道接 `jq` 验证时应使用准确路径或加 `-L`，否则 301 HTML 会表现为 JSON 解析失败。
+
+## Cline 中继 QA
+
+- 新建 SQLite 实例的管理 API 除会话 Cookie 外，还需携带与会话用户 ID 一致的 `New-Api-User` 请求头。
+- 未配置模型价格的隔离实例会在转发前返回 400；端到端中继 QA 可通过临时开启 `SelfUseModeEnabled` 放行未配置价格的模型。
