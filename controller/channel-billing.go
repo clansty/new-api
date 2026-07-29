@@ -417,12 +417,14 @@ func UpdateChannelBalance(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{
-		"success":                    true,
-		"message":                    "",
-		"balance":                    balance,
-		"upstream_rate_multiplier":   channel.UpstreamRateMultiplier,
-		"upstream_group_name":        channel.UpstreamGroupName,
-		"upstream_group_description": channel.UpstreamGroupDescription,
+		"success":                           true,
+		"message":                           "",
+		"balance":                           balance,
+		"upstream_rate_multiplier":          channel.UpstreamRateMultiplier,
+		"upstream_declared_rate_multiplier": channel.UpstreamDeclaredRateMultiplier,
+		"upstream_login_rate_multiplier":    channel.UpstreamLoginRateMultiplier,
+		"upstream_group_name":               channel.UpstreamGroupName,
+		"upstream_group_description":        channel.UpstreamGroupDescription,
 	})
 }
 

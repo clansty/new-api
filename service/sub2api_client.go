@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"net/url"
 	"strings"
@@ -66,6 +67,13 @@ type sub2APIKeyPage struct {
 	Items []sub2APIKey `json:"items"`
 }
 
+type sub2APIKeyBillingResponse struct {
+	Object                  string   `json:"object"`
+	SchemaVersion           int      `json:"schema_version"`
+	BillingScope            string   `json:"billing_scope"`
+	EffectiveRateMultiplier *float64 `json:"effective_rate_multiplier"`
+}
+
 func NewSub2APIClient(baseURL, proxyURL string) (*Sub2APIClient, error) {
 	client, err := NewProxyHttpClient(proxyURL)
 	if err != nil {
@@ -102,6 +110,43 @@ func (client *Sub2APIClient) QueryMetadata(ctx context.Context, apiKey string, a
 		GroupName:        group.Name,
 		GroupDescription: group.Description,
 	}, updatedAuth, nil
+}
+
+func (client *Sub2APIClient) QueryDeclaredRateMultiplier(ctx context.Context, apiKey string) (float64, error) {
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, client.rootURL+"/v1/sub2api/billing", nil)
+	if err != nil {
+		return 0, fmt.Errorf("create sub2api billing request: %w", err)
+	}
+	request.Header.Set("Authorization", "Bearer "+apiKey)
+
+	response, err := client.httpClient.Do(request)
+	if err != nil {
+		return 0, fmt.Errorf("query sub2api declared billing: %w", err)
+	}
+	body, readErr := io.ReadAll(io.LimitReader(response.Body, 1<<20))
+	closeErr := response.Body.Close()
+	if readErr != nil {
+		return 0, fmt.Errorf("read sub2api declared billing: %w", readErr)
+	}
+	if closeErr != nil {
+		return 0, fmt.Errorf("close sub2api declared billing: %w", closeErr)
+	}
+	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
+		return 0, fmt.Errorf("query sub2api declared billing: %s", response.Status)
+	}
+
+	var result sub2APIKeyBillingResponse
+	if err := common.Unmarshal(body, &result); err != nil {
+		return 0, fmt.Errorf("parse sub2api declared billing: %w", err)
+	}
+	if result.Object != "sub2api.key_billing" || result.SchemaVersion != 1 || result.BillingScope != "token" || result.EffectiveRateMultiplier == nil {
+		return 0, errors.New("unexpected sub2api declared billing response")
+	}
+	rate := *result.EffectiveRateMultiplier
+	if rate < 0 || math.IsNaN(rate) || math.IsInf(rate, 0) {
+		return 0, errors.New("invalid sub2api declared rate multiplier")
+	}
+	return rate, nil
 }
 
 func (client *Sub2APIClient) queryAPIKeyGroup(ctx context.Context, apiKey, accessToken string) (*sub2APIGroup, error) {

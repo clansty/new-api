@@ -597,6 +597,12 @@ export const getChannelsColumns = ({
             record.upstream_rate_multiplier,
             record.manual_upstream_rate_multiplier,
           );
+          const declaredRate = formatSub2APIRate(
+            record.upstream_declared_rate_multiplier,
+          );
+          const loginRate = formatSub2APIRate(
+            record.upstream_login_rate_multiplier,
+          );
           return (
             <div>
               <Space spacing={1}>
@@ -636,6 +642,18 @@ export const getChannelsColumns = ({
                             ? t('手动填写')
                             : t('自动获取')}
                         </div>
+                        {upstreamRate.source === 'automatic' &&
+                          declaredRate !== null && (
+                            <div className='mt-1'>
+                              {t('上游声明接口')}: {declaredRate}
+                            </div>
+                          )}
+                        {upstreamRate.source === 'automatic' &&
+                          loginRate !== null && (
+                            <div className='mt-1'>
+                              {t('sub2api 登录接口')}: {loginRate}
+                            </div>
+                          )}
                         {upstreamRate.source === 'automatic' &&
                           record.upstream_group_name && (
                             <div className='mt-1'>

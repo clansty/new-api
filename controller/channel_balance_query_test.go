@@ -94,6 +94,10 @@ func Test_querySub2APIChannelSnapshot_whenCredentialsAreConfigured(t *testing.T)
 		case "/v1/usage":
 			_, err := w.Write([]byte(`{"remaining":88.5,"unit":"USD"}`))
 			require.NoError(t, err)
+		case "/v1/sub2api/billing":
+			require.Equal(t, "Bearer sk-upstream", r.Header.Get("Authorization"))
+			_, err := w.Write([]byte(`{"object":"sub2api.key_billing","schema_version":1,"billing_scope":"token","group_rate_multiplier":0.8,"user_rate_multiplier":0.45,"resolved_rate_multiplier":0.45,"peak_rate_enabled":true,"effective_rate_multiplier":0.675,"observed_at":"2026-07-29T12:00:00Z"}`))
+			require.NoError(t, err)
 		case "/api/v1/auth/login":
 			_, err := w.Write([]byte(`{"code":0,"message":"success","data":{"access_token":"access-1","refresh_token":"refresh-1","expires_in":3600}}`))
 			require.NoError(t, err)
@@ -118,14 +122,48 @@ func Test_querySub2APIChannelSnapshot_whenCredentialsAreConfigured(t *testing.T)
 	// When: 余额查询模式获取完整的上游快照。
 	snapshot, err := querySub2APIChannelSnapshot(context.Background(), channel)
 
-	// Then: 余额、实际倍率、分组名和新 Token 在一次查询中返回。
+	// Then: 声明接口优先用于成本倍率，登录结果仍提供分组说明和登录倍率。
 	require.NoError(t, err)
 	require.Equal(t, 88.5, snapshot.Balance)
 	require.NotNil(t, snapshot.RateMultiplier)
-	require.Equal(t, 0.45, *snapshot.RateMultiplier)
+	require.Equal(t, 0.675, *snapshot.RateMultiplier)
+	require.NotNil(t, snapshot.DeclaredRateMultiplier)
+	require.Equal(t, 0.675, *snapshot.DeclaredRateMultiplier)
+	require.NotNil(t, snapshot.LoginRateMultiplier)
+	require.Equal(t, 0.45, *snapshot.LoginRateMultiplier)
 	require.Equal(t, "专属 Claude 组", snapshot.GroupName)
 	require.Equal(t, "Claude 专属低倍率分组", snapshot.GroupDescription)
 	require.Equal(t, "refresh-1", snapshot.Auth.RefreshToken)
+}
+
+func Test_querySub2APIChannelSnapshot_whenUpstreamDeclaresEffectiveRate(t *testing.T) {
+	// Given: sub2api 上游可通过渠道 API Key 直接声明实时生效倍率，无需登录管理接口。
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/usage":
+			_, err := w.Write([]byte(`{"remaining":88.5,"unit":"USD"}`))
+			require.NoError(t, err)
+		case "/v1/sub2api/billing":
+			require.Equal(t, "Bearer sk-upstream", r.Header.Get("Authorization"))
+			_, err := w.Write([]byte(`{"object":"sub2api.key_billing","schema_version":1,"billing_scope":"token","group_rate_multiplier":0.8,"resolved_rate_multiplier":0.8,"peak_rate_enabled":true,"effective_rate_multiplier":1.2,"observed_at":"2026-07-29T12:00:00Z"}`))
+			require.NoError(t, err)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	channel := &model.Channel{
+		Key:     "sk-upstream",
+		BaseURL: common.GetPointer(server.URL + "/v1"),
+	}
+
+	// When: 余额查询模式同步 sub2api 渠道快照。
+	snapshot, err := querySub2APIChannelSnapshot(context.Background(), channel)
+
+	// Then: 无需用户名密码即可持久化上游声明的有效倍率。
+	require.NoError(t, err)
+	require.NotNil(t, snapshot.RateMultiplier)
+	require.Equal(t, 1.2, *snapshot.RateMultiplier)
 }
 
 func Test_updateChannelBalanceByQueryMode_reusesSharedSub2APIAuthAcrossChannels(t *testing.T) {

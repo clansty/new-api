@@ -26,11 +26,13 @@ type sub2APIUsageResponse struct {
 }
 
 type sub2APIChannelSnapshot struct {
-	Balance          float64
-	RateMultiplier   *float64
-	GroupName        string
-	GroupDescription string
-	Auth             service.Sub2APIAuthState
+	Balance                float64
+	RateMultiplier         *float64
+	DeclaredRateMultiplier *float64
+	LoginRateMultiplier    *float64
+	GroupName              string
+	GroupDescription       string
+	Auth                   service.Sub2APIAuthState
 }
 
 type hyl2APIQuotaBucket struct {
@@ -94,7 +96,13 @@ func updateChannelBalanceByQueryMode(ctx context.Context, channel *model.Channel
 		if err != nil {
 			return 0, true, err
 		}
-		if err := channel.SaveSub2APIBalance(snapshot.Balance, snapshot.RateMultiplier, snapshot.GroupName, snapshot.GroupDescription); err != nil {
+		if err := channel.SaveSub2APIBalance(model.Sub2APIBalanceSnapshot{
+			Balance:                snapshot.Balance,
+			DeclaredRateMultiplier: snapshot.DeclaredRateMultiplier,
+			LoginRateMultiplier:    snapshot.LoginRateMultiplier,
+			GroupName:              snapshot.GroupName,
+			GroupDescription:       snapshot.GroupDescription,
+		}); err != nil {
 			return 0, true, err
 		}
 		return snapshot.Balance, true, nil
@@ -201,22 +209,32 @@ func querySub2APIChannelSnapshot(ctx context.Context, channel *model.Channel) (s
 		AccessTokenExpiresAt: channel.Sub2APIAccessTokenExpiresAt,
 	}
 	snapshot := sub2APIChannelSnapshot{Balance: balance, Auth: auth}
-	if auth.Email == "" || auth.Password == "" {
-		return snapshot, nil
-	}
 	client, err := service.NewSub2APIClient(channel.GetBaseURL(), channel.GetSetting().Proxy)
 	if err != nil {
 		return snapshot, err
 	}
 	queryCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
+	if declaredRate, declaredErr := client.QueryDeclaredRateMultiplier(queryCtx, channel.Key); declaredErr == nil {
+		snapshot.DeclaredRateMultiplier = &declaredRate
+		snapshot.RateMultiplier = &declaredRate
+	}
+	if auth.Email == "" || auth.Password == "" {
+		return snapshot, nil
+	}
 	metadata, updatedAuth, err := client.QueryMetadata(queryCtx, channel.Key, auth)
 	snapshot.Auth = updatedAuth
 	if err != nil {
+		if snapshot.DeclaredRateMultiplier != nil {
+			return snapshot, nil
+		}
 		return snapshot, err
 	}
 	rateMultiplier := metadata.RateMultiplier
-	snapshot.RateMultiplier = &rateMultiplier
+	snapshot.LoginRateMultiplier = &rateMultiplier
+	if snapshot.RateMultiplier == nil {
+		snapshot.RateMultiplier = &rateMultiplier
+	}
 	snapshot.GroupName = metadata.GroupName
 	snapshot.GroupDescription = metadata.GroupDescription
 	return snapshot, nil

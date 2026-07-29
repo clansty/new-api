@@ -1937,6 +1937,8 @@ const EditChannelModal = (props) => {
     delete localInputs.upstream_model_update_last_detected_models;
     delete localInputs.upstream_model_update_ignored_models;
     delete localInputs.upstream_rate_multiplier;
+    delete localInputs.upstream_declared_rate_multiplier;
+    delete localInputs.upstream_login_rate_multiplier;
     delete localInputs.upstream_group_name;
     delete localInputs.upstream_group_description;
 

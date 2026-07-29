@@ -63,6 +63,28 @@ func TestSub2APIClientQueryMetadata_whenUserHasCustomGroupRate(t *testing.T) {
 	require.Equal(t, int64(1_700_003_600), updatedAuth.AccessTokenExpiresAt)
 }
 
+func TestSub2APIClientQueryDeclaredRateMultiplier_whenUpstreamPublishesEffectiveRate(t *testing.T) {
+	// Given: 支持新计费声明接口的 sub2api 上游，当前处于高峰倍率时段。
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, http.MethodGet, r.Method)
+		require.Equal(t, "/v1/sub2api/billing", r.URL.Path)
+		require.Equal(t, "Bearer sk-upstream", r.Header.Get("Authorization"))
+		_, err := w.Write([]byte(`{"object":"sub2api.key_billing","schema_version":1,"billing_scope":"token","group_rate_multiplier":0.8,"user_rate_multiplier":0.45,"resolved_rate_multiplier":0.45,"peak_rate_enabled":true,"effective_rate_multiplier":0.675,"observed_at":"2026-07-29T12:00:00Z"}`))
+		require.NoError(t, err)
+	}))
+	defer server.Close()
+
+	client, err := NewSub2APIClient(server.URL+"/v1", "")
+	require.NoError(t, err)
+
+	// When: new-api 读取当前 API Key 上游声明的实际生效倍率。
+	rate, err := client.QueryDeclaredRateMultiplier(context.Background(), "sk-upstream")
+
+	// Then: 返回已经包含用户专属和高峰附加倍率的最终值。
+	require.NoError(t, err)
+	require.Equal(t, 0.675, rate)
+}
+
 func TestSub2APIClientQueryMetadata_whenRefreshTokenRotates(t *testing.T) {
 	// Given: Access Token 已过期，但 Refresh Token 仍有效且上游会轮换它。
 	loginCalled := false

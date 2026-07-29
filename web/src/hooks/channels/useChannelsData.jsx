@@ -800,6 +800,8 @@ export const useChannelsData = () => {
       message,
       balance,
       upstream_rate_multiplier,
+      upstream_declared_rate_multiplier,
+      upstream_login_rate_multiplier,
       upstream_group_name,
       upstream_group_description,
     } = res.data;
@@ -808,6 +810,9 @@ export const useChannelsData = () => {
         channel.balance = balance;
         channel.balance_updated_time = Date.now() / 1000;
         channel.upstream_rate_multiplier = upstream_rate_multiplier;
+        channel.upstream_declared_rate_multiplier =
+          upstream_declared_rate_multiplier;
+        channel.upstream_login_rate_multiplier = upstream_login_rate_multiplier;
         channel.upstream_group_name = upstream_group_name;
         channel.upstream_group_description = upstream_group_description;
       });
