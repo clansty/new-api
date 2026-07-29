@@ -40,6 +40,7 @@ type ChannelOtherSettings struct {
 	AdvancedOpenAIBaseURL                 string        `json:"advanced_openai_base_url,omitempty"`
 	AdvancedAnthropicBaseURL              string        `json:"advanced_anthropic_base_url,omitempty"`
 	AdvancedResponsesSupported            bool          `json:"advanced_responses_supported,omitempty"`
+	ResponsesViaChatCompletions           bool          `json:"responses_via_chat_completions,omitempty"`
 	OpenRouterEnterprise                  *bool         `json:"openrouter_enterprise,omitempty"`
 	ClaudeBetaQuery                       bool          `json:"claude_beta_query,omitempty"`   // Claude 渠道是否强制追加 ?beta=true
 	AllowServiceTier                      bool          `json:"allow_service_tier,omitempty"`  // 是否允许 service_tier 透传（默认过滤以避免额外计费）

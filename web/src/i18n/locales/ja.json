@@ -3885,6 +3885,8 @@
     "成本": "コスト",
     "成本分布": "コスト分布",
     "模型成本分布": "モデル別コスト分布",
-    "渠道成本分布": "チャネル別コスト分布"
+    "渠道成本分布": "チャネル別コスト分布",
+    "将 Responses 转为 Chat Completions": "Responses を Chat Completions に変換",
+    "开启后 /v1/responses 会转为 Chat Completions 请求上游，并将响应还原为 Responses 协议；不支持 /v1/responses/compact": "有効にすると、/v1/responses は Chat Completions リクエストとして上流へ送信され、応答は Responses プロトコルに戻されます。/v1/responses/compact には対応していません。"
   }
 }

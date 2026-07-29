@@ -3909,6 +3909,8 @@
     "成本": "成本",
     "成本分布": "成本分佈",
     "模型成本分布": "模型成本分佈",
-    "渠道成本分布": "渠道成本分佈"
+    "渠道成本分布": "渠道成本分佈",
+    "将 Responses 转为 Chat Completions": "將 Responses 轉為 Chat Completions",
+    "开启后 /v1/responses 会转为 Chat Completions 请求上游，并将响应还原为 Responses 协议；不支持 /v1/responses/compact": "開啟後 /v1/responses 會轉為 Chat Completions 請求上游，並將回應還原為 Responses 協議；不支援 /v1/responses/compact"
   }
 }

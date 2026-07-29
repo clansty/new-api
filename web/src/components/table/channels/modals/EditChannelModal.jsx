@@ -223,6 +223,7 @@ const EditChannelModal = (props) => {
     advanced_openai_base_url: '',
     advanced_anthropic_base_url: '',
     advanced_responses_supported: false,
+    responses_via_chat_completions: false,
     upstream_model_update_check_enabled: false,
     upstream_model_update_auto_sync_enabled: false,
     upstream_model_update_last_check_time: 0,
@@ -922,6 +923,8 @@ const EditChannelModal = (props) => {
             parsedSettings.advanced_anthropic_base_url || '';
           data.advanced_responses_supported =
             parsedSettings.advanced_responses_supported === true;
+          data.responses_via_chat_completions =
+            parsedSettings.responses_via_chat_completions === true;
           data.upstream_model_update_check_enabled =
             parsedSettings.upstream_model_update_check_enabled === true;
           data.upstream_model_update_auto_sync_enabled =
@@ -955,6 +958,7 @@ const EditChannelModal = (props) => {
           data.advanced_openai_base_url = '';
           data.advanced_anthropic_base_url = '';
           data.advanced_responses_supported = false;
+          data.responses_via_chat_completions = false;
           data.upstream_model_update_check_enabled = false;
           data.upstream_model_update_auto_sync_enabled = false;
           data.upstream_model_update_last_check_time = 0;
@@ -976,6 +980,7 @@ const EditChannelModal = (props) => {
         data.advanced_openai_base_url = '';
         data.advanced_anthropic_base_url = '';
         data.advanced_responses_supported = false;
+        data.responses_via_chat_completions = false;
         data.upstream_model_update_check_enabled = false;
         data.upstream_model_update_auto_sync_enabled = false;
         data.upstream_model_update_last_check_time = 0;
@@ -1064,6 +1069,7 @@ const EditChannelModal = (props) => {
         data.advanced_openai_base_url ||
         data.advanced_anthropic_base_url ||
         data.advanced_responses_supported ||
+        data.responses_via_chat_completions ||
         data.balance_query_mode ||
         data.sub2api_username ||
         (data.manual_upstream_rate_multiplier !== null &&
@@ -1845,6 +1851,8 @@ const EditChannelModal = (props) => {
           localInputs.allow_safety_identifier === true;
         settings.allow_include_obfuscation =
           localInputs.allow_include_obfuscation === true;
+        settings.responses_via_chat_completions =
+          localInputs.responses_via_chat_completions === true;
       }
       if (localInputs.type === 14) {
         settings.allow_inference_geo = localInputs.allow_inference_geo === true;
@@ -1853,6 +1861,9 @@ const EditChannelModal = (props) => {
           localInputs.claude_cache_read_as_cache_creation === true;
         settings.claude_beta_query = localInputs.claude_beta_query === true;
       }
+    }
+    if (localInputs.type !== 1) {
+      delete settings.responses_via_chat_completions;
     }
 
     if (localInputs.type === 60) {
@@ -1919,6 +1930,7 @@ const EditChannelModal = (props) => {
     delete localInputs.advanced_openai_base_url;
     delete localInputs.advanced_anthropic_base_url;
     delete localInputs.advanced_responses_supported;
+    delete localInputs.responses_via_chat_completions;
     delete localInputs.upstream_model_update_check_enabled;
     delete localInputs.upstream_model_update_auto_sync_enabled;
     delete localInputs.upstream_model_update_last_check_time;
@@ -2603,6 +2615,10 @@ const EditChannelModal = (props) => {
 
                   {inputs.type === 1 && (
                     <Form.Switch field='force_format' label={t('强制格式化')} checkedText={t('开')} uncheckedText={t('关')} onChange={(value) => handleChannelSettingsChange('force_format', value)} extraText={t('强制将响应格式化为 OpenAI 标准格式（只适用于OpenAI渠道类型）')} />
+                  )}
+
+                  {inputs.type === 1 && (
+                    <Form.Switch field='responses_via_chat_completions' label={t('将 Responses 转为 Chat Completions')} checkedText={t('开')} uncheckedText={t('关')} onChange={(value) => handleChannelOtherSettingsChange('responses_via_chat_completions', value)} extraText={t('开启后 /v1/responses 会转为 Chat Completions 请求上游，并将响应还原为 Responses 协议；不支持 /v1/responses/compact')} />
                   )}
 
                   {inputs.type === 60 && (

@@ -4032,6 +4032,8 @@
     "成本": "成本",
     "成本分布": "成本分布",
     "模型成本分布": "模型成本分布",
-    "渠道成本分布": "渠道成本分布"
+    "渠道成本分布": "渠道成本分布",
+    "将 Responses 转为 Chat Completions": "将 Responses 转为 Chat Completions",
+    "开启后 /v1/responses 会转为 Chat Completions 请求上游，并将响应还原为 Responses 协议；不支持 /v1/responses/compact": "开启后 /v1/responses 会转为 Chat Completions 请求上游，并将响应还原为 Responses 协议；不支持 /v1/responses/compact"
   }
 }

@@ -70,6 +70,26 @@ func ResponsesHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *
 		return types.NewError(fmt.Errorf("invalid api type: %d", info.ApiType), types.ErrorCodeInvalidApiType, types.ErrOptionWithSkipRetry())
 	}
 	adaptor.Init(info)
+	if info.ChannelType == appconstant.ChannelTypeOpenAI && info.ChannelOtherSettings.ResponsesViaChatCompletions {
+		if info.RelayMode == relayconstant.RelayModeResponsesCompact {
+			return types.NewErrorWithStatusCode(
+				fmt.Errorf("/v1/responses/compact is not supported when responses are converted to chat completions"),
+				types.ErrorCodeInvalidRequest,
+				http.StatusBadRequest,
+				types.ErrOptionWithSkipRetry(),
+			)
+		}
+		usage, err := responsesViaChatCompletions(c, info, adaptor, request)
+		if err != nil {
+			return err
+		}
+		if strings.HasPrefix(info.OriginModelName, "gpt-4o-audio") {
+			service.PostAudioConsumeQuota(c, info, usage, "")
+		} else {
+			service.PostTextConsumeQuota(c, info, usage, nil)
+		}
+		return nil
+	}
 	var requestBody io.Reader
 	if relaycommon.ShouldPassThroughRequest(info) {
 		body, err := relaycommon.PassThroughRequestBody(c, info)

@@ -4071,6 +4071,8 @@
     "成本": "Cost",
     "成本分布": "Cost distribution",
     "模型成本分布": "Model cost distribution",
-    "渠道成本分布": "Channel cost distribution"
+    "渠道成本分布": "Channel cost distribution",
+    "将 Responses 转为 Chat Completions": "Convert Responses to Chat Completions",
+    "开启后 /v1/responses 会转为 Chat Completions 请求上游，并将响应还原为 Responses 协议；不支持 /v1/responses/compact": "When enabled, /v1/responses is sent upstream as Chat Completions and the response is converted back to the Responses protocol; /v1/responses/compact is unsupported."
   }
 }

@@ -3916,6 +3916,8 @@
     "成本": "Coût",
     "成本分布": "Répartition des coûts",
     "模型成本分布": "Répartition des coûts par modèle",
-    "渠道成本分布": "Répartition des coûts par canal"
+    "渠道成本分布": "Répartition des coûts par canal",
+    "将 Responses 转为 Chat Completions": "Convertir Responses en Chat Completions",
+    "开启后 /v1/responses 会转为 Chat Completions 请求上游，并将响应还原为 Responses 协议；不支持 /v1/responses/compact": "Une fois activé, /v1/responses est envoyé en amont sous forme de requête Chat Completions et la réponse est reconvertie au protocole Responses ; /v1/responses/compact n’est pas pris en charge."
   }
 }

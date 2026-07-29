@@ -3936,6 +3936,8 @@
     "成本": "Затраты",
     "成本分布": "Распределение затрат",
     "模型成本分布": "Распределение затрат по моделям",
-    "渠道成本分布": "Распределение затрат по каналам"
+    "渠道成本分布": "Распределение затрат по каналам",
+    "将 Responses 转为 Chat Completions": "Преобразовать Responses в Chat Completions",
+    "开启后 /v1/responses 会转为 Chat Completions 请求上游，并将响应还原为 Responses 协议；不支持 /v1/responses/compact": "После включения /v1/responses отправляется upstream как Chat Completions, а ответ преобразуется обратно в протокол Responses; /v1/responses/compact не поддерживается."
   }
 }

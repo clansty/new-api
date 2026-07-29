@@ -4444,6 +4444,8 @@
     "成本": "Chi phí",
     "成本分布": "Phân bổ chi phí",
     "模型成本分布": "Phân bổ chi phí theo mô hình",
-    "渠道成本分布": "Phân bổ chi phí theo kênh"
+    "渠道成本分布": "Phân bổ chi phí theo kênh",
+    "将 Responses 转为 Chat Completions": "Chuyển Responses sang Chat Completions",
+    "开启后 /v1/responses 会转为 Chat Completions 请求上游，并将响应还原为 Responses 协议；不支持 /v1/responses/compact": "Khi bật, /v1/responses được gửi lên upstream dưới dạng Chat Completions và phản hồi được chuyển lại giao thức Responses; /v1/responses/compact không được hỗ trợ."
   }
 }
