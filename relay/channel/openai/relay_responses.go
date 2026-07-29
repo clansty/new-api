@@ -76,17 +76,46 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 
 	defer service.CloseResponseBodyGracefully(resp)
 
-	var usage = &dto.Usage{}
-	var responseTextBuilder strings.Builder
+	var (
+		usage               = &dto.Usage{}
+		responseTextBuilder strings.Builder
+		pendingEvents       []dto.ResponsesStreamResponse
+		pendingEventData    []string
+		streamErr           *types.NewAPIError
+		hasVisibleOutput    bool
+	)
 
 	helper.StreamScannerHandler(c, resp, info, func(data string, sr *helper.StreamResult) {
+		if streamErr != nil {
+			sr.Stop(streamErr)
+			return
+		}
 
-		// 检查当前数据是否包含 completed 状态和 usage 信息
 		var streamResponse dto.ResponsesStreamResponse
 		if err := common.UnmarshalJsonStr(data, &streamResponse); err != nil {
-			logger.LogError(c, "failed to unmarshal stream response: "+err.Error())
-			sr.Error(err)
+			streamErr = types.NewOpenAIError(fmt.Errorf("unmarshal responses stream event: %w", err), types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
+			sr.Stop(streamErr)
 			return
+		}
+		if newAPIError := responsesStreamError(streamResponse); newAPIError != nil {
+			if hasVisibleOutput {
+				sendResponsesStreamData(c, streamResponse, data)
+				types.ErrOptionWithSkipRetry()(newAPIError)
+			}
+			streamErr = newAPIError
+			sr.Stop(streamErr)
+			return
+		}
+		if !hasVisibleOutput && isResponsesStreamLifecycleEvent(streamResponse.Type) {
+			pendingEvents = append(pendingEvents, streamResponse)
+			pendingEventData = append(pendingEventData, data)
+			return
+		}
+		if !hasVisibleOutput {
+			for index, pendingEvent := range pendingEvents {
+				sendResponsesStreamData(c, pendingEvent, pendingEventData[index])
+			}
+			hasVisibleOutput = true
 		}
 		sendResponsesStreamData(c, streamResponse, data)
 		switch streamResponse.Type {
@@ -129,6 +158,9 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 			}
 		}
 	})
+	if streamErr != nil {
+		return nil, streamErr
+	}
 
 	if usage.CompletionTokens == 0 {
 		// 计算输出文本的 token 数量
@@ -147,4 +179,31 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 	usage.TotalTokens = usage.PromptTokens + usage.CompletionTokens
 
 	return usage, nil
+}
+
+func isResponsesStreamLifecycleEvent(eventType string) bool {
+	switch eventType {
+	case "response.created", "response.in_progress", "response.queued":
+		return true
+	default:
+		return false
+	}
+}
+
+func responsesStreamError(streamResponse dto.ResponsesStreamResponse) *types.NewAPIError {
+	switch streamResponse.Type {
+	case "error", "response.error", "response.failed":
+	default:
+		return nil
+	}
+
+	if oaiErr := dto.GetOpenAIError(streamResponse.Error); oaiErr != nil && oaiErr.Message != "" {
+		return types.WithOpenAIError(*oaiErr, http.StatusInternalServerError)
+	}
+	if streamResponse.Response != nil {
+		if oaiErr := streamResponse.Response.GetOpenAIError(); oaiErr != nil && oaiErr.Message != "" {
+			return types.WithOpenAIError(*oaiErr, http.StatusInternalServerError)
+		}
+	}
+	return types.NewOpenAIError(fmt.Errorf("responses stream error: %s", streamResponse.Type), types.ErrorCodeBadResponse, http.StatusInternalServerError)
 }
