@@ -1,13 +1,20 @@
 package controller
 
 import (
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/model"
 
+	"github.com/gin-gonic/gin"
+	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 )
 
 func TestResolveSub2APIAuthUpdate_whenPasswordIsBlank(t *testing.T) {
@@ -81,4 +88,95 @@ func TestPatchChannelJSON_whenManualUpstreamRateIsCleared(t *testing.T) {
 	require.NoError(t, err)
 	require.Nil(t, request.ManualUpstreamRateMultiplier)
 	require.True(t, request.ManualUpstreamRateMultiplierSet)
+}
+
+func TestPatchChannelJSON_tracksSettingPresence(t *testing.T) {
+	withoutSetting := PatchChannel{}
+	withSetting := PatchChannel{}
+	withNullSetting := PatchChannel{}
+
+	require.NoError(t, common.Unmarshal([]byte(`{"id":12,"status":2}`), &withoutSetting))
+	require.NoError(t, common.Unmarshal([]byte(`{"id":12,"setting":"{\"balance_query_mode\":\"openai\"}"}`), &withSetting))
+	require.NoError(t, common.Unmarshal([]byte(`{"id":12,"setting":null}`), &withNullSetting))
+
+	require.False(t, withoutSetting.SettingSet)
+	require.True(t, withSetting.SettingSet)
+	require.True(t, withNullSetting.SettingSet)
+}
+
+func TestResolvePatchSub2APIState_whenSettingIsOmitted(t *testing.T) {
+	declaredRate := 0.675
+	loginRate := 0.45
+	origin := &model.Channel{
+		Sub2APIUsername:                "user@example.com",
+		Sub2APIPassword:                "saved-password",
+		UpstreamRateMultiplier:         &declaredRate,
+		UpstreamDeclaredRateMultiplier: &declaredRate,
+		UpstreamLoginRateMultiplier:    &loginRate,
+		UpstreamGroupName:              "专属 Claude 组",
+	}
+	incoming := PatchChannel{}
+	require.NoError(t, common.Unmarshal([]byte(`{"id":12,"status":2}`), &incoming))
+
+	state, err := resolvePatchSub2APIState(&incoming, origin)
+
+	require.NoError(t, err)
+	require.Equal(t, "saved-password", state.Password)
+	require.Same(t, origin.UpstreamRateMultiplier, state.RateMultiplier)
+	require.Same(t, origin.UpstreamDeclaredRateMultiplier, state.DeclaredRateMultiplier)
+	require.Same(t, origin.UpstreamLoginRateMultiplier, state.LoginRateMultiplier)
+	require.Equal(t, "专属 Claude 组", state.GroupName)
+}
+
+func TestUpdateChannel_whenStatusOnlyPatchPreservesSub2APIRates(t *testing.T) {
+	originalDB := model.DB
+	originalMemoryCacheEnabled := common.MemoryCacheEnabled
+	db, err := gorm.Open(sqlite.Open(t.TempDir()+"/channel.db"), &gorm.Config{})
+	require.NoError(t, err)
+	model.DB = db
+	common.MemoryCacheEnabled = false
+	t.Cleanup(func() {
+		model.DB = originalDB
+		common.MemoryCacheEnabled = originalMemoryCacheEnabled
+	})
+	require.NoError(t, db.AutoMigrate(&model.Channel{}, &model.Ability{}))
+
+	declaredRate := 0.675
+	loginRate := 0.45
+	setting := common.GetPointer(`{"balance_query_mode":"sub2api"}`)
+	channel := model.Channel{
+		Name:                           "sub2api channel",
+		Key:                            "sk-upstream",
+		Models:                         "gpt-4o",
+		Group:                          "default",
+		Setting:                        setting,
+		Status:                         common.ChannelStatusEnabled,
+		Sub2APIUsername:                "user@example.com",
+		Sub2APIPassword:                "saved-password",
+		UpstreamRateMultiplier:         &declaredRate,
+		UpstreamDeclaredRateMultiplier: &declaredRate,
+		UpstreamLoginRateMultiplier:    &loginRate,
+		UpstreamGroupName:              "专属 Claude 组",
+	}
+	require.NoError(t, db.Create(&channel).Error)
+
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(http.MethodPut, "/api/channel/", strings.NewReader(fmt.Sprintf(`{"id":%d,"status":2}`, channel.Id)))
+	ctx.Request.Header.Set("Content-Type", "application/json")
+
+	UpdateChannel(ctx)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	var updated model.Channel
+	require.NoError(t, db.First(&updated, channel.Id).Error)
+	require.Equal(t, common.ChannelStatusManuallyDisabled, updated.Status)
+	require.NotNil(t, updated.UpstreamRateMultiplier)
+	require.Equal(t, declaredRate, *updated.UpstreamRateMultiplier)
+	require.NotNil(t, updated.UpstreamDeclaredRateMultiplier)
+	require.Equal(t, declaredRate, *updated.UpstreamDeclaredRateMultiplier)
+	require.NotNil(t, updated.UpstreamLoginRateMultiplier)
+	require.Equal(t, loginRate, *updated.UpstreamLoginRateMultiplier)
+	require.Equal(t, "专属 Claude 组", updated.UpstreamGroupName)
 }

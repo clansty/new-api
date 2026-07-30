@@ -72,3 +72,36 @@ func TestChannelEffectiveUpstreamRateMultiplier_whenAutomaticRateExists(t *testi
 	require.Equal(t, 0.45, *rate)
 	require.False(t, manual)
 }
+
+func TestUpdateChannelStatus_whenAutoDisabledPreservesSub2APIRates(t *testing.T) {
+	truncateTables(t)
+	originalMemoryCacheEnabled := common.MemoryCacheEnabled
+	common.MemoryCacheEnabled = false
+	t.Cleanup(func() { common.MemoryCacheEnabled = originalMemoryCacheEnabled })
+
+	declaredRate := 0.675
+	loginRate := 0.45
+	channel := Channel{
+		Name:                           "sub2api channel",
+		Key:                            "sk-upstream",
+		Status:                         common.ChannelStatusEnabled,
+		UpstreamRateMultiplier:         &declaredRate,
+		UpstreamDeclaredRateMultiplier: &declaredRate,
+		UpstreamLoginRateMultiplier:    &loginRate,
+		UpstreamGroupName:              "专属 Claude 组",
+	}
+	require.NoError(t, DB.Create(&channel).Error)
+
+	require.True(t, UpdateChannelStatus(channel.Id, "", common.ChannelStatusAutoDisabled, "余额不足"))
+
+	var updated Channel
+	require.NoError(t, DB.First(&updated, channel.Id).Error)
+	require.Equal(t, common.ChannelStatusAutoDisabled, updated.Status)
+	require.NotNil(t, updated.UpstreamRateMultiplier)
+	require.Equal(t, declaredRate, *updated.UpstreamRateMultiplier)
+	require.NotNil(t, updated.UpstreamDeclaredRateMultiplier)
+	require.Equal(t, declaredRate, *updated.UpstreamDeclaredRateMultiplier)
+	require.NotNil(t, updated.UpstreamLoginRateMultiplier)
+	require.Equal(t, loginRate, *updated.UpstreamLoginRateMultiplier)
+	require.Equal(t, "专属 Claude 组", updated.UpstreamGroupName)
+}

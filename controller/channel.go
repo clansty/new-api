@@ -947,6 +947,7 @@ type PatchChannel struct {
 	MultiKeyMode                    *string `json:"multi_key_mode"`
 	KeyMode                         *string `json:"key_mode"` // 多key模式下密钥覆盖或者追加
 	Sub2APIPassword                 *string `json:"-"`
+	SettingSet                      bool    `json:"-"`
 	ManualUpstreamRateMultiplierSet bool    `json:"-"`
 }
 
@@ -965,9 +966,17 @@ func (channel *PatchChannel) UnmarshalJSON(data []byte) error {
 	if err := common.Unmarshal(data, &fields); err != nil {
 		return err
 	}
+	_, channel.SettingSet = fields["setting"]
 	_, channel.ManualUpstreamRateMultiplierSet = fields["manual_upstream_rate_multiplier"]
 	channel.Sub2APIPassword = payload.Sub2APIPassword
 	return nil
+}
+
+func resolvePatchSub2APIState(incoming *PatchChannel, origin *model.Channel) (model.ChannelSub2APIState, error) {
+	if !incoming.SettingSet {
+		return origin.Sub2APIState(), nil
+	}
+	return resolveSub2APIAuthUpdate(&incoming.Channel, origin, incoming.Sub2APIPassword)
 }
 
 func UpdateChannel(c *gin.Context) {
@@ -995,11 +1004,16 @@ func UpdateChannel(c *gin.Context) {
 		})
 		return
 	}
-	sub2APIState, err := resolveSub2APIAuthUpdate(&channel.Channel, originChannel, channel.Sub2APIPassword)
+	var sub2APIState model.ChannelSub2APIState
+	sub2APIState, err = resolvePatchSub2APIState(&channel, originChannel)
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
+	if !channel.SettingSet {
+		channel.Setting = originChannel.Setting
+	}
+	channel.ApplySub2APIState(sub2APIState)
 
 	// Always copy the original ChannelInfo so that fields like IsMultiKey and MultiKeySize are retained.
 	channel.ChannelInfo = originChannel.ChannelInfo
