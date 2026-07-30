@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/dto"
@@ -16,6 +17,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 )
+
+var responsesStreamErrorWaitDuration = 5 * time.Second
 
 func OaiResponsesHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Response) (*dto.Usage, *types.NewAPIError) {
 	defer service.CloseResponseBodyGracefully(resp)
@@ -82,8 +85,20 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 		pendingEvents       []dto.ResponsesStreamResponse
 		pendingEventData    []string
 		streamErr           *types.NewAPIError
-		hasVisibleOutput    bool
+		hasForwardedEvent   bool
+		errorWaitScheduled  bool
 	)
+	flushPendingEvents := func() {
+		if streamErr != nil || len(pendingEvents) == 0 {
+			return
+		}
+		for index, pendingEvent := range pendingEvents {
+			sendResponsesStreamData(c, pendingEvent, pendingEventData[index])
+		}
+		pendingEvents = nil
+		pendingEventData = nil
+		hasForwardedEvent = true
+	}
 
 	helper.StreamScannerHandler(c, resp, info, func(data string, sr *helper.StreamResult) {
 		if streamErr != nil {
@@ -98,7 +113,7 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 			return
 		}
 		if newAPIError := responsesStreamError(streamResponse); newAPIError != nil {
-			if hasVisibleOutput {
+			if hasForwardedEvent {
 				sendResponsesStreamData(c, streamResponse, data)
 				types.ErrOptionWithSkipRetry()(newAPIError)
 			}
@@ -106,18 +121,18 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 			sr.Stop(streamErr)
 			return
 		}
-		if !hasVisibleOutput && isResponsesStreamLifecycleEvent(streamResponse.Type) {
+		if !hasForwardedEvent && isResponsesStreamLifecycleEvent(streamResponse.Type) {
 			pendingEvents = append(pendingEvents, streamResponse)
 			pendingEventData = append(pendingEventData, data)
+			if !errorWaitScheduled {
+				errorWaitScheduled = true
+				sr.Schedule(responsesStreamErrorWaitDuration, flushPendingEvents)
+			}
 			return
 		}
-		if !hasVisibleOutput {
-			for index, pendingEvent := range pendingEvents {
-				sendResponsesStreamData(c, pendingEvent, pendingEventData[index])
-			}
-			hasVisibleOutput = true
-		}
+		flushPendingEvents()
 		sendResponsesStreamData(c, streamResponse, data)
+		hasForwardedEvent = true
 		switch streamResponse.Type {
 		case "response.completed":
 			if streamResponse.Response != nil {
@@ -161,6 +176,7 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 	if streamErr != nil {
 		return nil, streamErr
 	}
+	flushPendingEvents()
 
 	if usage.CompletionTokens == 0 {
 		// 计算输出文本的 token 数量
