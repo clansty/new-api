@@ -187,6 +187,7 @@ const EditChannelModal = (props) => {
     models: [],
     auto_ban: 1,
     auto_recover: true,
+    response_timeout: 0,
     test_model: '',
     groups: ['default'],
     priority: 0,
@@ -3865,6 +3866,20 @@ const EditChannelModal = (props) => {
                       '开启后，自动禁用的渠道会纳入定时检测，测试成功后自动启用',
                     )}
                     initValue={autoRecover}
+                  />
+
+                  <Form.InputNumber
+                    field='response_timeout'
+                    label={t('渠道超时时间（秒）')}
+                    min={0}
+                    precision={0}
+                    style={{ width: '100%' }}
+                    onChange={(value) =>
+                      handleInputChange('response_timeout', Number(value || 0))
+                    }
+                    extraText={t(
+                      '仅普通 chat、responses、messages 请求生效；0 表示不限制。超时后会记录错误并按重试配置更换渠道。',
+                    )}
                   />
 
                   {/* Test Model - Core Config */}

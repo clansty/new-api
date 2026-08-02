@@ -484,6 +484,9 @@ func validateChannel(channel *model.Channel, isAdd bool) error {
 	if channel.ManualUpstreamRateMultiplier != nil && *channel.ManualUpstreamRateMultiplier < 0 {
 		return fmt.Errorf("手动上游倍率不能小于 0")
 	}
+	if channel.GetResponseTimeout() < 0 {
+		return fmt.Errorf("渠道超时时间不能小于 0")
+	}
 	if channel.Type == constant.ChannelTypeAdvancedPassThrough {
 		settings := channel.GetOtherSettings()
 		if strings.TrimSpace(settings.AdvancedOpenAIBaseURL) == "" {

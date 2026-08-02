@@ -13,12 +13,13 @@ import (
 )
 
 type RetryParam struct {
-	Ctx              *gin.Context
-	TokenGroup       string
-	ModelName        string
-	Retry            *int
-	FailedChannelIDs map[int]struct{}
-	resetNextTry     bool
+	Ctx                     *gin.Context
+	TokenGroup              string
+	ModelName               string
+	Retry                   *int
+	FailedChannelIDs        map[int]struct{}
+	RequireDifferentChannel bool
+	resetNextTry            bool
 }
 
 func (p *RetryParam) GetRetry() int {
@@ -100,7 +101,11 @@ func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, 
 			}
 			logger.LogDebug(param.Ctx, "Auto selecting group: %s, groupRetry: %d", autoGroup, groupRetry)
 
-			channel, _ = model.GetRandomSatisfiedChannelExcludingFailed(autoGroup, param.ModelName, param.FailedChannelIDs, nextPriorityOnFailure)
+			if param.RequireDifferentChannel {
+				channel, _ = model.GetRandomSatisfiedChannelExcludingFailedStrict(autoGroup, param.ModelName, param.FailedChannelIDs, nextPriorityOnFailure)
+			} else {
+				channel, _ = model.GetRandomSatisfiedChannelExcludingFailed(autoGroup, param.ModelName, param.FailedChannelIDs, nextPriorityOnFailure)
+			}
 			if channel == nil {
 				logger.LogDebug(param.Ctx, "No available channel in group %s for model %s at groupRetry %d, trying next group", autoGroup, param.ModelName, groupRetry)
 				common.SetContextKey(param.Ctx, constant.ContextKeyAutoGroupIndex, i+1)
@@ -123,7 +128,11 @@ func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, 
 			break
 		}
 	} else {
-		channel, err = model.GetRandomSatisfiedChannelExcludingFailed(param.TokenGroup, param.ModelName, param.FailedChannelIDs, nextPriorityOnFailure)
+		if param.RequireDifferentChannel {
+			channel, err = model.GetRandomSatisfiedChannelExcludingFailedStrict(param.TokenGroup, param.ModelName, param.FailedChannelIDs, nextPriorityOnFailure)
+		} else {
+			channel, err = model.GetRandomSatisfiedChannelExcludingFailed(param.TokenGroup, param.ModelName, param.FailedChannelIDs, nextPriorityOnFailure)
+		}
 		if err != nil {
 			return nil, param.TokenGroup, err
 		}

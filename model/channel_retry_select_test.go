@@ -63,6 +63,30 @@ func TestGetRandomSatisfiedChannelExcludingFailed_whenSingleChannelAlreadyFailed
 	require.Equal(t, 1, channel.Id)
 }
 
+func TestGetRandomSatisfiedChannelExcludingFailedStrict_whenNoOtherChannelExists(t *testing.T) {
+	withRetrySelectionCache(t, []*Channel{
+		testRetryChannel(1, 2, 10),
+	})
+
+	channel, err := GetRandomSatisfiedChannelExcludingFailedStrict("default", "gpt-test", map[int]struct{}{1: {}}, false)
+
+	require.NoError(t, err)
+	require.Nil(t, channel)
+}
+
+func TestGetRandomSatisfiedChannelExcludingFailedStrict_whenOtherChannelExists(t *testing.T) {
+	withRetrySelectionCache(t, []*Channel{
+		testRetryChannel(1, 2, 10),
+		testRetryChannel(2, 2, 10),
+	})
+
+	channel, err := GetRandomSatisfiedChannelExcludingFailedStrict("default", "gpt-test", map[int]struct{}{1: {}}, false)
+
+	require.NoError(t, err)
+	require.NotNil(t, channel)
+	require.Equal(t, 2, channel.Id)
+}
+
 func TestGetRandomSatisfiedChannelExcludingFailed_whenMemoryCacheDisabled(t *testing.T) {
 	truncateTables(t)
 	require.NoError(t, DB.Exec("DELETE FROM abilities").Error)

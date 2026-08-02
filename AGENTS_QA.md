@@ -1,5 +1,11 @@
 # QA 经验
 
+## 大型旧 JSX 与 i18n 校验
+
+- `EditChannelModal.jsx` 等旧文件尚未整体符合当前 Prettier，直接 `--write` 会产生数千行无关格式变化；应保持局部改动，并用构建和浏览器验证代替全文件格式化。
+- `bun run i18n:extract` 会重排所有语言 JSON，新增少量文案时应精确补齐各 locale，随后用 `jq empty` 和生产构建验证，避免把纯格式噪音带入提交。
+- 当前 `bun run i18n:lint` 存在大量全仓硬编码基线告警，判断本次是否新增问题时需核对告警文件和行号，不能把全量非零退出直接归因于当前改动。
+
 ## Bun 全局缓存中的 Playwright
 
 - `bunx playwright` 可用但项目未安装 Playwright 时，直接导入 Bun 缓存里的 `playwright` 包可能因 Node 无法解析同级 `playwright-core` 而失败。

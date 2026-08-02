@@ -19,11 +19,19 @@ type retrySelectionCandidate struct {
 // nextPriorityOnFailure 为 true 时，本优先级只要有渠道已失败，就整层跳过、直接尝试下一优先级；
 // 为 false（默认）时，在同优先级内继续选择未失败的渠道，本层全部失败后才降级。
 func GetRandomSatisfiedChannelExcludingFailed(group string, modelName string, failedChannelIDs map[int]struct{}, nextPriorityOnFailure bool) (*Channel, error) {
+	return getRandomSatisfiedChannelExcludingFailed(group, modelName, failedChannelIDs, nextPriorityOnFailure, true)
+}
+
+func GetRandomSatisfiedChannelExcludingFailedStrict(group string, modelName string, failedChannelIDs map[int]struct{}, nextPriorityOnFailure bool) (*Channel, error) {
+	return getRandomSatisfiedChannelExcludingFailed(group, modelName, failedChannelIDs, nextPriorityOnFailure, false)
+}
+
+func getRandomSatisfiedChannelExcludingFailed(group string, modelName string, failedChannelIDs map[int]struct{}, nextPriorityOnFailure bool, allowFailedFallback bool) (*Channel, error) {
 	if len(failedChannelIDs) == 0 {
 		return GetRandomSatisfiedChannel(group, modelName, 0)
 	}
 	if !common.MemoryCacheEnabled {
-		return getChannelExcludingFailedDB(group, modelName, failedChannelIDs, nextPriorityOnFailure)
+		return getChannelExcludingFailedDB(group, modelName, failedChannelIDs, nextPriorityOnFailure, allowFailedFallback)
 	}
 
 	channelSyncLock.RLock()
@@ -47,7 +55,7 @@ func GetRandomSatisfiedChannelExcludingFailed(group string, modelName string, fa
 		})
 	}
 
-	channelID, ok, err := selectRetryCandidateID(candidates, failedChannelIDs, nextPriorityOnFailure)
+	channelID, ok, err := selectRetryCandidateID(candidates, failedChannelIDs, nextPriorityOnFailure, allowFailedFallback)
 	if err != nil || !ok {
 		return nil, err
 	}
@@ -70,7 +78,7 @@ func channelIDsForGroupModel(group string, modelName string) []int {
 	return group2model2channels[group][normalizedModel]
 }
 
-func getChannelExcludingFailedDB(group string, modelName string, failedChannelIDs map[int]struct{}, nextPriorityOnFailure bool) (*Channel, error) {
+func getChannelExcludingFailedDB(group string, modelName string, failedChannelIDs map[int]struct{}, nextPriorityOnFailure bool, allowFailedFallback bool) (*Channel, error) {
 	abilities, err := retryAbilitiesForGroupModel(group, modelName)
 	if err != nil || len(abilities) == 0 {
 		return nil, err
@@ -85,7 +93,7 @@ func getChannelExcludingFailedDB(group string, modelName string, failedChannelID
 		})
 	}
 
-	channelID, ok, err := selectRetryCandidateID(candidates, failedChannelIDs, nextPriorityOnFailure)
+	channelID, ok, err := selectRetryCandidateID(candidates, failedChannelIDs, nextPriorityOnFailure, allowFailedFallback)
 	if err != nil || !ok {
 		return nil, err
 	}
@@ -122,7 +130,7 @@ func abilityPriority(ability Ability) int64 {
 	return *ability.Priority
 }
 
-func selectRetryCandidateID(candidates []retrySelectionCandidate, failedChannelIDs map[int]struct{}, nextPriorityOnFailure bool) (int, bool, error) {
+func selectRetryCandidateID(candidates []retrySelectionCandidate, failedChannelIDs map[int]struct{}, nextPriorityOnFailure bool, allowFailedFallback bool) (int, bool, error) {
 	if len(candidates) == 0 {
 		return 0, false, nil
 	}
@@ -143,6 +151,9 @@ func selectRetryCandidateID(candidates []retrySelectionCandidate, failedChannelI
 	if len(preferredCandidates) > 0 {
 		id, err := weightedRetryCandidateID(preferredCandidates)
 		return id, err == nil, err
+	}
+	if !allowFailedFallback {
+		return 0, false, nil
 	}
 
 	highestPriority := candidates[0].priority

@@ -227,21 +227,21 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		}
 		c.Request.Body = io.NopCloser(bodyStorage)
 
-		func() {
+		newAPIError = relayWithChannelResponseTimeout(c, relayInfo, channel, func() *types.NewAPIError {
 			finishChannelInflight := service.BeginChannelInflight(channel.Id)
 			defer finishChannelInflight()
 
 			switch relayFormat {
 			case types.RelayFormatOpenAIRealtime:
-				newAPIError = relay.WssHelper(c, relayInfo)
+				return relay.WssHelper(c, relayInfo)
 			case types.RelayFormatClaude:
-				newAPIError = relay.ClaudeHelper(c, relayInfo)
+				return relay.ClaudeHelper(c, relayInfo)
 			case types.RelayFormatGemini:
-				newAPIError = geminiRelayHandler(c, relayInfo)
+				return geminiRelayHandler(c, relayInfo)
 			default:
-				newAPIError = relayHandler(c, relayInfo)
+				return relayHandler(c, relayInfo)
 			}
-		}()
+		})
 
 		if newAPIError == nil {
 			relayInfo.LastError = nil
@@ -315,10 +315,11 @@ func getChannel(c *gin.Context, info *relaycommon.RelayInfo, retryParam *service
 			autoBanInt = 0
 		}
 		return &model.Channel{
-			Id:      c.GetInt("channel_id"),
-			Type:    c.GetInt("channel_type"),
-			Name:    c.GetString("channel_name"),
-			AutoBan: &autoBanInt,
+			Id:              c.GetInt("channel_id"),
+			Type:            c.GetInt("channel_type"),
+			Name:            c.GetString("channel_name"),
+			AutoBan:         &autoBanInt,
+			ResponseTimeout: common.GetPointer(common.GetContextKeyInt(c, constant.ContextKeyChannelResponseTimeout)),
 		}, nil
 	}
 	channel, selectGroup, err := service.CacheGetRandomSatisfiedChannel(retryParam)
@@ -329,6 +330,9 @@ func getChannel(c *gin.Context, info *relaycommon.RelayInfo, retryParam *service
 		return nil, types.NewError(fmt.Errorf("获取分组 %s 下模型 %s 的可用渠道失败（retry）: %s", selectGroup, info.OriginModelName, err.Error()), types.ErrorCodeGetChannelFailed, types.ErrOptionWithSkipRetry())
 	}
 	if channel == nil {
+		if retryParam.RequireDifferentChannel && info.LastError != nil {
+			return nil, info.LastError
+		}
 		return nil, types.NewError(fmt.Errorf("分组 %s 下模型 %s 的可用渠道不存在（retry）", selectGroup, info.OriginModelName), types.ErrorCodeGetChannelFailed, types.ErrOptionWithSkipRetry())
 	}
 

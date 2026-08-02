@@ -514,6 +514,10 @@ func doRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http
 
 	resp, err := client.Do(req)
 	if err != nil {
+		if timeout := common.GetChannelResponseTimeout(req.Context()); timeout != nil && timeout.TimedOut() {
+			logger.LogError(c, "channel response timeout: "+err.Error())
+			return nil, types.NewErrorWithStatusCode(err, types.ErrorCodeChannelResponseTimeExceeded, http.StatusGatewayTimeout)
+		}
 		// 区分客户端主动断开和真正的上游错误
 		// 客户端断开时不记录错误日志、不重试、不影响渠道状态
 		if c.Request.Context().Err() != nil {
@@ -529,6 +533,7 @@ func doRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http
 	if resp == nil {
 		return nil, errors.New("resp is nil")
 	}
+	resp.Body = common.WrapChannelResponseBody(req.Context(), resp.Body)
 
 	_ = req.Body.Close()
 	_ = c.Request.Body.Close()

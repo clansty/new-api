@@ -106,3 +106,13 @@ func TestValidateChannel_whenManualUpstreamRateIsNegative(t *testing.T) {
 	// Then: 负数倍率不会进入成本计算。
 	require.Error(t, err)
 }
+
+func TestValidateChannel_whenResponseTimeoutIsNegative(t *testing.T) {
+	t.Parallel()
+
+	channel := &model.Channel{ResponseTimeout: common.GetPointer(-1)}
+
+	err := validateChannel(channel, false)
+
+	require.ErrorContains(t, err, "渠道超时时间不能小于 0")
+}
