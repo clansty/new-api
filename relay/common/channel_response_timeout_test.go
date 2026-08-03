@@ -21,22 +21,23 @@ func TestRelayInfo_ShouldUseChannelResponseTimeout_when_request_is_normal_text(t
 	}{
 		{
 			name: "chat completions",
-			info: &RelayInfo{RelayMode: relayconstant.RelayModeChatCompletions, Request: &dto.GeneralOpenAIRequest{}},
+			info: &RelayInfo{RelayMode: relayconstant.RelayModeChatCompletions, IsStream: true, Request: &dto.GeneralOpenAIRequest{}},
 		},
 		{
 			name: "chat completions with search disabled",
 			info: &RelayInfo{
 				RelayMode: relayconstant.RelayModeChatCompletions,
+				IsStream:  true,
 				Request:   &dto.GeneralOpenAIRequest{EnableSearch: []byte("false")},
 			},
 		},
 		{
 			name: "responses",
-			info: &RelayInfo{RelayMode: relayconstant.RelayModeResponses, Request: &dto.OpenAIResponsesRequest{}},
+			info: &RelayInfo{RelayMode: relayconstant.RelayModeResponses, IsStream: true, Request: &dto.OpenAIResponsesRequest{}},
 		},
 		{
 			name: "messages",
-			info: &RelayInfo{RelayMode: relayconstant.RelayModeClaudeMessages, Request: &dto.ClaudeRequest{}},
+			info: &RelayInfo{RelayMode: relayconstant.RelayModeClaudeMessages, IsStream: true, Request: &dto.ClaudeRequest{}},
 		},
 	}
 
@@ -46,6 +47,20 @@ func TestRelayInfo_ShouldUseChannelResponseTimeout_when_request_is_normal_text(t
 
 			require.True(t, test.info.ShouldUseChannelResponseTimeout())
 		})
+	}
+}
+
+func TestRelayInfo_ShouldUseChannelResponseTimeout_when_request_is_non_streaming(t *testing.T) {
+	t.Parallel()
+
+	tests := []*RelayInfo{
+		{RelayMode: relayconstant.RelayModeChatCompletions, Request: &dto.GeneralOpenAIRequest{}},
+		{RelayMode: relayconstant.RelayModeResponses, Request: &dto.OpenAIResponsesRequest{}},
+		{RelayMode: relayconstant.RelayModeClaudeMessages, Request: &dto.ClaudeRequest{}},
+	}
+
+	for _, info := range tests {
+		require.False(t, info.ShouldUseChannelResponseTimeout())
 	}
 }
 

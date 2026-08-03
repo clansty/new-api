@@ -123,7 +123,7 @@ func MarkChannelResponseStarted(ctx context.Context) {
 }
 
 func (info *RelayInfo) ShouldUseChannelResponseTimeout() bool {
-	if info == nil || info.IsChannelTest {
+	if info == nil || info.IsChannelTest || !info.IsStream {
 		return false
 	}
 	switch info.RelayMode {
