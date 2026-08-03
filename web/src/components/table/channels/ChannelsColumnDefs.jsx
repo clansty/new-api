@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Button,
   Dropdown,
@@ -44,6 +44,7 @@ import {
   MODEL_FETCHABLE_CHANNEL_TYPES,
 } from '../../../constants';
 import { parseUpstreamUpdateMeta } from '../../../hooks/channels/upstreamUpdateUtils';
+import { formatChannelAffinityForceRemaining } from '../../../hooks/channels/channelAffinityForce';
 import { isCollapsedChannelsRow } from '../../../hooks/channels/channelCollapseRows';
 import { formatSub2APIRate, resolveUpstreamRate } from './sub2apiMetadata';
 import {
@@ -167,6 +168,32 @@ const renderInflightCount = (count) => {
     <Tag color='yellow' type='light' shape='circle'>
       {value}
     </Tag>
+  );
+};
+
+const ChannelAffinityForceTag = ({ status, t }) => {
+  const [nowUnix, setNowUnix] = useState(() => Math.floor(Date.now() / 1000));
+
+  useEffect(() => {
+    const timer = setInterval(
+      () => setNowUnix(Math.floor(Date.now() / 1000)),
+      1000,
+    );
+    return () => clearInterval(timer);
+  }, []);
+
+  const remaining = formatChannelAffinityForceRemaining(status, nowUnix);
+  if (!remaining) return null;
+  return (
+    <Tooltip
+      content={t('正在接管 {{count}} 个分组模型范围', {
+        count: status.scope_count,
+      })}
+    >
+      <Tag color='blue' type='light' size='small' shape='circle'>
+        {t('吸附中')} {remaining}
+      </Tag>
+    </Tooltip>
   );
 };
 
@@ -349,6 +376,9 @@ export const getChannelsColumns = ({
   setCurrentMultiKeyChannel,
   openUpstreamUpdateModal,
   detectChannelUpstreamUpdates,
+  affinityForceByChannel,
+  activateChannelAffinityForce,
+  cancelChannelAffinityForce,
 }) => {
   return [
     {
@@ -387,6 +417,7 @@ export const getChannelsColumns = ({
           upstreamUpdateMeta.supported &&
           upstreamUpdateMeta.enabled &&
           (pendingAddCount > 0 || pendingRemoveCount > 0);
+        const affinityForce = affinityForceByChannel[record.id];
         const nameNode =
           record.remark && record.remark.trim() !== '' ? (
             <Tooltip
@@ -422,76 +453,81 @@ export const getChannelsColumns = ({
             <span>{text}</span>
           );
 
-        if (!passThroughEnabled && !showUpstreamUpdateTag) {
+        if (!passThroughEnabled && !showUpstreamUpdateTag && !affinityForce) {
           return nameNode;
         }
 
         return (
-          <Space spacing={6} align='center'>
+          <Space vertical spacing={4} align='start'>
             {nameNode}
-            {passThroughEnabled && (
-              <Tooltip
-                content={t(
-                  '该渠道已开启请求透传：参数覆写、模型重定向、渠道适配等 NewAPI 内置功能将失效，非最佳实践；如因此产生问题，请勿提交 issue 反馈。',
-                )}
-                trigger='hover'
-                position='topLeft'
-              >
-                <span className='inline-flex items-center'>
-                  <IconAlertTriangle
-                    style={{ color: 'var(--semi-color-warning)' }}
-                  />
-                </span>
-              </Tooltip>
-            )}
-            {showUpstreamUpdateTag && (
-              <Space spacing={4} align='center'>
-                {pendingAddCount > 0 ? (
-                  <Tooltip content={t('点击处理新增模型')} position='top'>
-                    <Tag
-                      color='green'
-                      type='light'
-                      size='small'
-                      shape='circle'
-                      className='cursor-pointer transition-all duration-150 hover:opacity-85 hover:-translate-y-px active:scale-95'
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        openUpstreamUpdateModal(
-                          record,
-                          upstreamUpdateMeta.pendingAddModels,
-                          upstreamUpdateMeta.pendingRemoveModels,
-                          'add',
-                        );
-                      }}
-                    >
-                      +{pendingAddCount}
-                    </Tag>
-                  </Tooltip>
-                ) : null}
-                {pendingRemoveCount > 0 ? (
-                  <Tooltip content={t('点击处理删除模型')} position='top'>
-                    <Tag
-                      color='red'
-                      type='light'
-                      size='small'
-                      shape='circle'
-                      className='cursor-pointer transition-all duration-150 hover:opacity-85 hover:-translate-y-px active:scale-95'
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        openUpstreamUpdateModal(
-                          record,
-                          upstreamUpdateMeta.pendingAddModels,
-                          upstreamUpdateMeta.pendingRemoveModels,
-                          'remove',
-                        );
-                      }}
-                    >
-                      -{pendingRemoveCount}
-                    </Tag>
-                  </Tooltip>
-                ) : null}
-              </Space>
-            )}
+            <Space spacing={6} align='center'>
+              {affinityForce && (
+                <ChannelAffinityForceTag status={affinityForce} t={t} />
+              )}
+              {passThroughEnabled && (
+                <Tooltip
+                  content={t(
+                    '该渠道已开启请求透传：参数覆写、模型重定向、渠道适配等 NewAPI 内置功能将失效，非最佳实践；如因此产生问题，请勿提交 issue 反馈。',
+                  )}
+                  trigger='hover'
+                  position='topLeft'
+                >
+                  <span className='inline-flex items-center'>
+                    <IconAlertTriangle
+                      style={{ color: 'var(--semi-color-warning)' }}
+                    />
+                  </span>
+                </Tooltip>
+              )}
+              {showUpstreamUpdateTag && (
+                <Space spacing={4} align='center'>
+                  {pendingAddCount > 0 ? (
+                    <Tooltip content={t('点击处理新增模型')} position='top'>
+                      <Tag
+                        color='green'
+                        type='light'
+                        size='small'
+                        shape='circle'
+                        className='cursor-pointer transition-all duration-150 hover:opacity-85 hover:-translate-y-px active:scale-95'
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openUpstreamUpdateModal(
+                            record,
+                            upstreamUpdateMeta.pendingAddModels,
+                            upstreamUpdateMeta.pendingRemoveModels,
+                            'add',
+                          );
+                        }}
+                      >
+                        +{pendingAddCount}
+                      </Tag>
+                    </Tooltip>
+                  ) : null}
+                  {pendingRemoveCount > 0 ? (
+                    <Tooltip content={t('点击处理删除模型')} position='top'>
+                      <Tag
+                        color='red'
+                        type='light'
+                        size='small'
+                        shape='circle'
+                        className='cursor-pointer transition-all duration-150 hover:opacity-85 hover:-translate-y-px active:scale-95'
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openUpstreamUpdateModal(
+                            record,
+                            upstreamUpdateMeta.pendingAddModels,
+                            upstreamUpdateMeta.pendingRemoveModels,
+                            'remove',
+                          );
+                        }}
+                      >
+                        -{pendingRemoveCount}
+                      </Tag>
+                    </Tooltip>
+                  ) : null}
+                </Space>
+              )}
+            </Space>
           </Space>
         );
       },
@@ -876,6 +912,34 @@ export const getChannelsColumns = ({
             },
           ];
 
+          const affinityForce = affinityForceByChannel[record.id];
+          if (affinityForce) {
+            moreMenuItems.unshift({
+              node: 'item',
+              name: t('取消强制吸附'),
+              type: 'tertiary',
+              onClick: () => cancelChannelAffinityForce(record),
+            });
+          } else if (record.status === 1) {
+            moreMenuItems.unshift({
+              node: 'item',
+              name: t('强制吸附'),
+              type: 'tertiary',
+              onClick: () => {
+                setTimeout(() => {
+                  Modal.confirm({
+                    title: t('确认强制吸附到该渠道'),
+                    content: t(
+                      '未来五分钟，该渠道会在其支持的分组和模型上优先于现有亲和渠道；失败时仍按原有策略重试。',
+                    ),
+                    onOk: () => activateChannelAffinityForce(record),
+                    centered: true,
+                  });
+                }, 0);
+              },
+            });
+          }
+
           if (upstreamUpdateMeta.supported) {
             moreMenuItems.push({
               node: 'item',
@@ -1012,6 +1076,7 @@ export const getChannelsColumns = ({
               <Dropdown
                 trigger='click'
                 position='bottomRight'
+                clickToHide
                 menu={moreMenuItems}
               >
                 <Button icon={<IconMore />} type='tertiary' size='small' />

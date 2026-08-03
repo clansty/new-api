@@ -3889,6 +3889,14 @@
     "模型成本分布": "モデル別コスト分布",
     "渠道成本分布": "チャネル別コスト分布",
     "将 Responses 转为 Chat Completions": "Responses を Chat Completions に変換",
-    "开启后 /v1/responses 会转为 Chat Completions 请求上游，并将响应还原为 Responses 协议；不支持 /v1/responses/compact": "有効にすると、/v1/responses は Chat Completions リクエストとして上流へ送信され、応答は Responses プロトコルに戻されます。/v1/responses/compact には対応していません。"
+    "开启后 /v1/responses 会转为 Chat Completions 请求上游，并将响应还原为 Responses 协议；不支持 /v1/responses/compact": "有効にすると、/v1/responses は Chat Completions リクエストとして上流へ送信され、応答は Responses プロトコルに戻されます。/v1/responses/compact には対応していません。",
+    "强制吸附": "アフィニティを強制",
+    "取消强制吸附": "強制アフィニティを解除",
+    "确认强制吸附到该渠道": "このチャネルへの強制アフィニティを確認",
+    "未来五分钟，该渠道会在其支持的分组和模型上优先于现有亲和渠道；失败时仍按原有策略重试。": "今後5分間、このチャネルは対応するグループとモデルで既存のアフィニティチャネルより優先されます。失敗時は既存の再試行ポリシーに従います。",
+    "吸附中": "アフィニティ適用中",
+    "正在接管 {{count}} 个分组模型范围": "{{count}} 件のグループ・モデル範囲を引き継ぎ中",
+    "已开始强制吸附，覆盖 {{count}} 个分组模型范围": "{{count}} 件のグループ・モデル範囲で強制アフィニティを開始しました",
+    "已取消强制吸附": "強制アフィニティを解除しました"
   }
 }

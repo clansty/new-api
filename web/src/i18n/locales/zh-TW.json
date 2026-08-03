@@ -3913,6 +3913,14 @@
     "模型成本分布": "模型成本分佈",
     "渠道成本分布": "渠道成本分佈",
     "将 Responses 转为 Chat Completions": "將 Responses 轉為 Chat Completions",
-    "开启后 /v1/responses 会转为 Chat Completions 请求上游，并将响应还原为 Responses 协议；不支持 /v1/responses/compact": "開啟後 /v1/responses 會轉為 Chat Completions 請求上游，並將回應還原為 Responses 協議；不支援 /v1/responses/compact"
+    "开启后 /v1/responses 会转为 Chat Completions 请求上游，并将响应还原为 Responses 协议；不支持 /v1/responses/compact": "開啟後 /v1/responses 會轉為 Chat Completions 請求上游，並將回應還原為 Responses 協議；不支援 /v1/responses/compact",
+    "强制吸附": "強制吸附",
+    "取消强制吸附": "取消強制吸附",
+    "确认强制吸附到该渠道": "確認強制吸附到此渠道",
+    "未来五分钟，该渠道会在其支持的分组和模型上优先于现有亲和渠道；失败时仍按原有策略重试。": "未來五分鐘，此渠道會在其支援的分組和模型上優先於現有親和渠道；失敗時仍按原有策略重試。",
+    "吸附中": "吸附中",
+    "正在接管 {{count}} 个分组模型范围": "正在接管 {{count}} 個分組模型範圍",
+    "已开始强制吸附，覆盖 {{count}} 个分组模型范围": "已開始強制吸附，覆蓋 {{count}} 個分組模型範圍",
+    "已取消强制吸附": "已取消強制吸附"
   }
 }

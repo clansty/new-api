@@ -38,6 +38,7 @@ import { useTableCompactMode } from '../common/useTableCompactMode';
 import { useChannelUpstreamUpdates } from './useChannelUpstreamUpdates';
 import { parseUpstreamUpdateMeta } from './upstreamUpdateUtils';
 import { buildChannelRows } from './channelCollapseRows';
+import { indexChannelAffinityForces } from './channelAffinityForce';
 import { Modal, Button } from '@douyinfe/semi-ui';
 import { openCodexUsageModal } from '../../components/table/channels/modals/CodexUsageModal';
 
@@ -54,6 +55,7 @@ export const useChannelsData = () => {
   const [pageSize, setPageSize] = useState(ITEMS_PER_PAGE);
   const [channelCount, setChannelCount] = useState(0);
   const [groupOptions, setGroupOptions] = useState([]);
+  const [affinityForceByChannel, setAffinityForceByChannel] = useState({});
 
   // UI states
   const [showEdit, setShowEdit] = useState(false);
@@ -172,7 +174,19 @@ export const useChannelsData = () => {
     fetchGroups().then();
     loadChannelModels().then();
     fetchGlobalPassThroughEnabled().then();
+    loadChannelAffinityForces().then();
   }, []);
+
+  useEffect(() => {
+    const forceUntilValues = Object.values(affinityForceByChannel)
+      .map((status) => Number(status?.force_until))
+      .filter((forceUntil) => Number.isFinite(forceUntil));
+    if (forceUntilValues.length === 0) return undefined;
+    const nearest = Math.min(...forceUntilValues);
+    const delay = Math.max(0, nearest * 1000 - Date.now()) + 250;
+    const timer = setTimeout(() => loadChannelAffinityForces(), delay);
+    return () => clearTimeout(timer);
+  }, [affinityForceByChannel]);
 
   // Column visibility management
   const getDefaultColumnVisibility = () => {
@@ -393,6 +407,53 @@ export const useChannelsData = () => {
   };
 
   const upstreamUpdates = useChannelUpstreamUpdates({ t, refresh });
+
+  const loadChannelAffinityForces = async () => {
+    try {
+      const res = await API.get('/api/channel/affinity_forces', {
+        disableDuplicate: true,
+      });
+      const { success, data } = res?.data || {};
+      if (success) {
+        setAffinityForceByChannel(indexChannelAffinityForces(data));
+      }
+    } catch (error) {
+      setAffinityForceByChannel({});
+    }
+  };
+
+  const activateChannelAffinityForce = async (record) => {
+    const res = await API.post(`/api/channel/${record.id}/affinity_force`);
+    const { success, message, data } = res.data;
+    if (!success) {
+      showError(t(message));
+      return;
+    }
+    setAffinityForceByChannel((current) => ({
+      ...current,
+      [record.id]: data,
+    }));
+    showSuccess(
+      t('已开始强制吸附，覆盖 {{count}} 个分组模型范围', {
+        count: data.scope_count,
+      }),
+    );
+  };
+
+  const cancelChannelAffinityForce = async (record) => {
+    const res = await API.delete(`/api/channel/${record.id}/affinity_force`);
+    const { success, message } = res.data;
+    if (!success) {
+      showError(t(message));
+      return;
+    }
+    setAffinityForceByChannel((current) => {
+      const next = { ...current };
+      delete next[record.id];
+      return next;
+    });
+    showSuccess(t('已取消强制吸附'));
+  };
 
   // Channel management
   const manageChannel = async (id, action, record, value) => {
@@ -1190,6 +1251,7 @@ export const useChannelsData = () => {
     statusFilter,
     compactMode,
     globalPassThroughEnabled,
+    affinityForceByChannel,
 
     // UI states
     showEdit,
@@ -1266,6 +1328,8 @@ export const useChannelsData = () => {
     refresh,
     manageChannel,
     manageTag,
+    activateChannelAffinityForce,
+    cancelChannelAffinityForce,
     handlePageChange,
     handlePageSizeChange,
     copySelectedChannel,

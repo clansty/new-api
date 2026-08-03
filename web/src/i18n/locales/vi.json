@@ -4448,6 +4448,14 @@
     "模型成本分布": "Phân bổ chi phí theo mô hình",
     "渠道成本分布": "Phân bổ chi phí theo kênh",
     "将 Responses 转为 Chat Completions": "Chuyển Responses sang Chat Completions",
-    "开启后 /v1/responses 会转为 Chat Completions 请求上游，并将响应还原为 Responses 协议；不支持 /v1/responses/compact": "Khi bật, /v1/responses được gửi lên upstream dưới dạng Chat Completions và phản hồi được chuyển lại giao thức Responses; /v1/responses/compact không được hỗ trợ."
+    "开启后 /v1/responses 会转为 Chat Completions 请求上游，并将响应还原为 Responses 协议；不支持 /v1/responses/compact": "Khi bật, /v1/responses được gửi lên upstream dưới dạng Chat Completions và phản hồi được chuyển lại giao thức Responses; /v1/responses/compact không được hỗ trợ.",
+    "强制吸附": "Buộc liên kết",
+    "取消强制吸附": "Hủy liên kết bắt buộc",
+    "确认强制吸附到该渠道": "Xác nhận liên kết bắt buộc với kênh này",
+    "未来五分钟，该渠道会在其支持的分组和模型上优先于现有亲和渠道；失败时仍按原有策略重试。": "Trong năm phút tới, kênh này sẽ được ưu tiên hơn các kênh liên kết hiện có cho những nhóm và mô hình được hỗ trợ. Khi thất bại, hệ thống vẫn dùng chính sách thử lại hiện tại.",
+    "吸附中": "Đang liên kết",
+    "正在接管 {{count}} 个分组模型范围": "Đang tiếp quản {{count}} phạm vi nhóm-mô hình",
+    "已开始强制吸附，覆盖 {{count}} 个分组模型范围": "Đã bắt đầu liên kết bắt buộc cho {{count}} phạm vi nhóm-mô hình",
+    "已取消强制吸附": "Đã hủy liên kết bắt buộc"
   }
 }

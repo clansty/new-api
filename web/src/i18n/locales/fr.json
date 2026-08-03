@@ -3920,6 +3920,14 @@
     "模型成本分布": "Répartition des coûts par modèle",
     "渠道成本分布": "Répartition des coûts par canal",
     "将 Responses 转为 Chat Completions": "Convertir Responses en Chat Completions",
-    "开启后 /v1/responses 会转为 Chat Completions 请求上游，并将响应还原为 Responses 协议；不支持 /v1/responses/compact": "Une fois activé, /v1/responses est envoyé en amont sous forme de requête Chat Completions et la réponse est reconvertie au protocole Responses ; /v1/responses/compact n’est pas pris en charge."
+    "开启后 /v1/responses 会转为 Chat Completions 请求上游，并将响应还原为 Responses 协议；不支持 /v1/responses/compact": "Une fois activé, /v1/responses est envoyé en amont sous forme de requête Chat Completions et la réponse est reconvertie au protocole Responses ; /v1/responses/compact n’est pas pris en charge.",
+    "强制吸附": "Forcer l’affinité",
+    "取消强制吸附": "Annuler l’affinité forcée",
+    "确认强制吸附到该渠道": "Confirmer l’affinité forcée vers ce canal",
+    "未来五分钟，该渠道会在其支持的分组和模型上优先于现有亲和渠道；失败时仍按原有策略重试。": "Pendant cinq minutes, ce canal sera prioritaire sur les affinités existantes pour les groupes et modèles pris en charge. Les échecs suivront toujours la stratégie de nouvelle tentative existante.",
+    "吸附中": "Affinité active",
+    "正在接管 {{count}} 个分组模型范围": "Prise en charge de {{count}} périmètres groupe-modèle",
+    "已开始强制吸附，覆盖 {{count}} 个分组模型范围": "Affinité forcée activée pour {{count}} périmètres groupe-modèle",
+    "已取消强制吸附": "Affinité forcée annulée"
   }
 }

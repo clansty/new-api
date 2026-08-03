@@ -730,6 +730,7 @@ func AddChannel(c *gin.Context) {
 
 func DeleteChannel(c *gin.Context) {
 	id, _ := strconv.Atoi(c.Param("id"))
+	_, _ = service.CancelChannelAffinityForce(id)
 	channel := model.Channel{Id: id}
 	err := channel.Delete()
 	if err != nil {
@@ -781,12 +782,16 @@ func DisableTagChannels(c *gin.Context) {
 		})
 		return
 	}
+	channels, _ := model.GetChannelsByTag(channelTag.Tag, false, false)
 	err = model.DisableChannelByTag(channelTag.Tag)
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
 	model.InitChannelCache()
+	for _, channel := range channels {
+		_, _ = service.CancelChannelAffinityForce(channel.Id)
+	}
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",
@@ -1123,6 +1128,9 @@ func UpdateChannel(c *gin.Context) {
 	}
 	model.InitChannelCache()
 	service.ResetProxyClientCache()
+	if _, err := service.CancelChannelAffinityForce(channel.Id); err != nil {
+		common.SysError("取消渠道强制吸附失败: " + err.Error())
+	}
 	channel.Key = ""
 	channel.Sub2APIPassword = nil
 	clearChannelInfo(&channel.Channel)

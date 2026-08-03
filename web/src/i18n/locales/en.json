@@ -4075,6 +4075,14 @@
     "模型成本分布": "Model cost distribution",
     "渠道成本分布": "Channel cost distribution",
     "将 Responses 转为 Chat Completions": "Convert Responses to Chat Completions",
-    "开启后 /v1/responses 会转为 Chat Completions 请求上游，并将响应还原为 Responses 协议；不支持 /v1/responses/compact": "When enabled, /v1/responses is sent upstream as Chat Completions and the response is converted back to the Responses protocol; /v1/responses/compact is unsupported."
+    "开启后 /v1/responses 会转为 Chat Completions 请求上游，并将响应还原为 Responses 协议；不支持 /v1/responses/compact": "When enabled, /v1/responses is sent upstream as Chat Completions and the response is converted back to the Responses protocol; /v1/responses/compact is unsupported.",
+    "强制吸附": "Force affinity",
+    "取消强制吸附": "Cancel forced affinity",
+    "确认强制吸附到该渠道": "Confirm forced affinity to this channel",
+    "未来五分钟，该渠道会在其支持的分组和模型上优先于现有亲和渠道；失败时仍按原有策略重试。": "For the next five minutes, this channel takes priority over existing affinity channels for its supported groups and models. Failures still follow the existing retry policy.",
+    "吸附中": "Affinity active",
+    "正在接管 {{count}} 个分组模型范围": "Taking over {{count}} group-model scopes",
+    "已开始强制吸附，覆盖 {{count}} 个分组模型范围": "Forced affinity started for {{count}} group-model scopes",
+    "已取消强制吸附": "Forced affinity cancelled"
   }
 }

@@ -22,6 +22,7 @@
 ## Semi Dropdown 与 Tooltip
 
 - 同一图标按钮同时需要 Dropdown 和 Tooltip 时，应让 Tooltip 包裹 Dropdown。反向嵌套会让点击只触发 Tooltip，Dropdown 菜单无法打开。
+- Dropdown 菜单项打开 `Modal.confirm` 时，移动端和平板端的菜单 portal 可能覆盖确认按钮；应为 Dropdown 启用 `clickToHide`，延迟到下一事件循环再打开 Modal，并在真实窄视口截图中确认菜单已消失。
 
 ## 本地登录限流与浏览器 QA
 

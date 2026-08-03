@@ -59,6 +59,10 @@ type channelAffinityMeta struct {
 	RequestPath          string
 	InjectAffinityUserId bool
 	AffinityUserId       string // 注入上游的亲和性 user 标识 user_{device}_account_{account}_session_{session}
+	SelectedAtUnixNs     int64
+	ForceActivatedAt     int64
+	ForceChannelID       int
+	ForceGroup           string
 }
 
 type ChannelAffinityStatsContext struct {
@@ -647,7 +651,7 @@ func GetPreferredChannelByAffinity(c *gin.Context, modelName string, usingGroup 
 			affinityUserId = buildAffinityUserId(c, cacheKeySuffix)
 		}
 
-		setChannelAffinityContext(c, channelAffinityMeta{
+		meta := channelAffinityMeta{
 			CacheKey:             cacheKeyFull,
 			TTLSeconds:           ttlSeconds,
 			RuleName:             rule.Name,
@@ -663,7 +667,16 @@ func GetPreferredChannelByAffinity(c *gin.Context, modelName string, usingGroup 
 			RequestPath:          path,
 			InjectAffinityUserId: rule.InjectAffinityUserId,
 			AffinityUserId:       affinityUserId,
-		})
+			SelectedAtUnixNs:     time.Now().UnixNano(),
+		}
+		setChannelAffinityContext(c, meta)
+		if forced, forcedGroup, found := getActiveChannelAffinityForce(c, modelName, usingGroup); found {
+			meta.ForceActivatedAt = forced.ActivatedAtUnixNs
+			meta.ForceChannelID = forced.ChannelID
+			meta.ForceGroup = forcedGroup
+			setChannelAffinityContext(c, meta)
+			return forced.ChannelID, true
+		}
 
 		cache := getChannelAffinityCache()
 		channelID, found, err := cache.Get(cacheKeySuffix)
@@ -683,6 +696,10 @@ func ShouldSkipRetryAfterChannelAffinityFailure(c *gin.Context) bool {
 	if c == nil {
 		return false
 	}
+	meta, hasMeta := getChannelAffinityMeta(c)
+	if hasMeta && meta.ForceActivatedAt > 0 {
+		return false
+	}
 	v, ok := c.Get(ginKeyChannelAffinitySkipRetry)
 	if ok {
 		b, ok := v.(bool)
@@ -690,8 +707,7 @@ func ShouldSkipRetryAfterChannelAffinityFailure(c *gin.Context) bool {
 			return b
 		}
 	}
-	meta, ok := getChannelAffinityMeta(c)
-	if !ok {
+	if !hasMeta {
 		return false
 	}
 	return meta.SkipRetry
@@ -746,6 +762,10 @@ func RecordChannelAffinity(c *gin.Context, channelID int) {
 		if successChannelID := c.GetInt("channel_id"); successChannelID > 0 {
 			channelID = successChannelID
 		}
+	}
+	meta, hasMeta := getChannelAffinityMeta(c)
+	if hasMeta && !canRecordChannelAffinity(c, meta, channelID) {
+		return
 	}
 	cacheKey, ttlSeconds, ok := getChannelAffinityContext(c)
 	if !ok {

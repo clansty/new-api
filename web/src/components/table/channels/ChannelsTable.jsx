@@ -63,6 +63,9 @@ const ChannelsTable = (channelsData) => {
     setCurrentMultiKeyChannel,
     openUpstreamUpdateModal,
     detectChannelUpstreamUpdates,
+    affinityForceByChannel,
+    activateChannelAffinityForce,
+    cancelChannelAffinityForce,
   } = channelsData;
 
   // Get all columns
@@ -90,6 +93,9 @@ const ChannelsTable = (channelsData) => {
       setCurrentMultiKeyChannel,
       openUpstreamUpdateModal,
       detectChannelUpstreamUpdates,
+      affinityForceByChannel,
+      activateChannelAffinityForce,
+      cancelChannelAffinityForce,
     });
   }, [
     t,
@@ -114,6 +120,9 @@ const ChannelsTable = (channelsData) => {
     setCurrentMultiKeyChannel,
     openUpstreamUpdateModal,
     detectChannelUpstreamUpdates,
+    affinityForceByChannel,
+    activateChannelAffinityForce,
+    cancelChannelAffinityForce,
   ]);
 
   // Filter columns based on visibility settings

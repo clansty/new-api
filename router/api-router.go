@@ -228,6 +228,7 @@ func SetApiRouter(router *gin.Engine) {
 		{
 			channelRoute.GET("/", controller.GetAllChannels)
 			channelRoute.GET("/search", controller.SearchChannels)
+			channelRoute.GET("/affinity_forces", controller.ListChannelAffinityForces)
 			channelRoute.GET("/models", controller.ChannelListModels)
 			channelRoute.GET("/models_enabled", controller.EnabledListModels)
 			channelRoute.POST("/batch/collapse", controller.BatchSetChannelCollapse)
@@ -239,6 +240,8 @@ func SetApiRouter(router *gin.Engine) {
 			channelRoute.GET("/update_balance", controller.UpdateAllChannelsBalance)
 			channelRoute.GET("/update_balance/:id", controller.UpdateChannelBalance)
 			channelRoute.POST("/", controller.AddChannel)
+			channelRoute.POST("/:id/affinity_force", controller.ActivateChannelAffinityForce)
+			channelRoute.DELETE("/:id/affinity_force", controller.CancelChannelAffinityForce)
 			channelRoute.PUT("/", controller.UpdateChannel)
 			channelRoute.DELETE("/disabled", controller.DeleteDisabledChannel)
 			channelRoute.POST("/tag/disabled", controller.DisableTagChannels)
