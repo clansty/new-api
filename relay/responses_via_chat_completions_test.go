@@ -81,6 +81,24 @@ func TestConvertResponsesRequestToChatCompletions_rejectsStateWithoutChatEquival
 	require.ErrorContains(t, err, "previous_response_id")
 }
 
+func TestConvertResponsesRequestToChatCompletions_ignoresIncludeWithoutChatEquivalent(t *testing.T) {
+	// Given: Responses 客户端请求只影响附加响应字段的 include。
+	request := &dto.OpenAIResponsesRequest{
+		Model:   "gpt-test",
+		Input:   json.RawMessage(`"hello"`),
+		Include: json.RawMessage(`["reasoning.encrypted_content"]`),
+	}
+
+	// When: 渠道将请求降级到 Chat Completions 协议。
+	chatRequest, err := convertResponsesRequestToChatCompletions(request, nil)
+
+	// Then: include 被静默丢弃，不阻断主要生成请求。
+	require.NoError(t, err)
+	encoded, err := common.Marshal(chatRequest)
+	require.NoError(t, err)
+	require.NotContains(t, string(encoded), `"include"`)
+}
+
 func TestChatCompletionsResponsesState_emitsResponsesEventsForTextAndToolCalls(t *testing.T) {
 	// Given: Chat Completions 上游先输出文本，再输出函数调用及用量。
 	state := newChatCompletionsResponsesState("gpt-test")
@@ -183,6 +201,7 @@ func TestResponsesViaChatCompletions_forwardsConvertedRequestAndReturnsResponses
 	usage, apiErr := responsesViaChatCompletions(context, info, adaptor, &dto.OpenAIResponsesRequest{
 		Model:           "gpt-test",
 		Input:           json.RawMessage(`"天气如何"`),
+		Include:         json.RawMessage(`["reasoning.encrypted_content"]`),
 		Temperature:     common.GetPointer(0.2),
 		MaxOutputTokens: common.GetPointer(uint(128)),
 	})

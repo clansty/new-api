@@ -191,7 +191,6 @@ func validateResponsesRequestForChatCompletions(request *dto.OpenAIResponsesRequ
 		name  string
 		value json.RawMessage
 	}{
-		{name: "include", value: request.Include},
 		{name: "conversation", value: request.Conversation},
 		{name: "context_management", value: request.ContextManagement},
 		{name: "truncation", value: request.Truncation},
