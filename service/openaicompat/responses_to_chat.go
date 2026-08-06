@@ -13,6 +13,7 @@ func ResponsesResponseToChatCompletionsResponse(resp *dto.OpenAIResponsesRespons
 	}
 
 	text := ExtractOutputTextFromResponses(resp)
+	reasoning := ExtractReasoningTextFromResponses(resp)
 
 	usage := &dto.Usage{}
 	if resp.Usage != nil {
@@ -75,6 +76,7 @@ func ResponsesResponseToChatCompletionsResponse(resp *dto.OpenAIResponsesRespons
 		Role:    "assistant",
 		Content: text,
 	}
+	msg.ReasoningContent = reasoning
 	if len(toolCalls) > 0 {
 		msg.SetToolCalls(toolCalls)
 		msg.Content = ""
@@ -96,6 +98,33 @@ func ResponsesResponseToChatCompletionsResponse(resp *dto.OpenAIResponsesRespons
 	}
 
 	return out, usage, nil
+}
+
+func ExtractReasoningTextFromResponses(resp *dto.OpenAIResponsesResponse) string {
+	if resp == nil || len(resp.Output) == 0 {
+		return ""
+	}
+
+	var sb strings.Builder
+	for _, out := range resp.Output {
+		if out.Type != "reasoning" {
+			continue
+		}
+		before := sb.Len()
+		for _, part := range out.Summary {
+			if part.Text != "" {
+				sb.WriteString(part.Text)
+			}
+		}
+		if sb.Len() == before {
+			for _, part := range out.Content {
+				if part.Text != "" {
+					sb.WriteString(part.Text)
+				}
+			}
+		}
+	}
+	return sb.String()
 }
 
 func ExtractOutputTextFromResponses(resp *dto.OpenAIResponsesResponse) string {

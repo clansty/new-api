@@ -138,7 +138,7 @@ func (it *responsesOutputItem) toOutput() dto.ResponsesOutput {
 			Type:             "reasoning",
 			ID:               it.itemID,
 			Status:           "completed",
-			Summary:          []dto.ResponsesReasoningSummaryPart{},
+			Summary:          []dto.ResponsesReasoningSummaryPart{{Type: "summary_text", Text: ""}},
 			EncryptedContent: EncodeThinkingSignature(it.signature.String()),
 		}
 		text := it.thinking.String()
@@ -151,7 +151,7 @@ func (it *responsesOutputItem) toOutput() dto.ResponsesOutput {
 			Type:             "reasoning",
 			ID:               it.itemID,
 			Status:           "completed",
-			Summary:          []dto.ResponsesReasoningSummaryPart{},
+			Summary:          []dto.ResponsesReasoningSummaryPart{{Type: "summary_text", Text: ""}},
 			EncryptedContent: EncodeRedactedThinking(it.redactedData),
 		}
 	case blockToolUse:
@@ -587,7 +587,11 @@ func (s *ClaudeResponsesStreamState) emitOutputItemAdded(it *responsesOutputItem
 	item := it.toOutput()
 	item.Status = "in_progress"
 	if it.kind == blockText {
-		item.Content = []dto.ResponsesOutputContent{}
+		item.Content = []dto.ResponsesOutputContent{{
+			Type:        "output_text",
+			Text:        "",
+			Annotations: []any{},
+		}}
 	}
 	if it.kind == blockToolUse {
 		item.Arguments = nil

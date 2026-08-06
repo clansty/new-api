@@ -155,6 +155,77 @@ func TestChatCompletionsResponsesState_emitsResponsesEventsForTextAndToolCalls(t
 	require.Equal(t, 15, completed.Response.Usage.TotalTokens)
 }
 
+func TestChatCompletionsResponsesStatePlacesReasoningBeforeTextInCombinedDelta(t *testing.T) {
+	state := newChatCompletionsResponsesState("deepseek-v4-flash")
+	content := "答案"
+	reasoning := "先分析问题。"
+	finishReason := "stop"
+	events := state.Handle(&dto.ChatCompletionsStreamResponse{
+		Id: "chatcmpl_1",
+		Choices: []dto.ChatCompletionsStreamResponseChoice{{
+			Delta: dto.ChatCompletionsStreamResponseChoiceDelta{
+				Role:             "assistant",
+				Content:          &content,
+				ReasoningContent: &reasoning,
+			},
+			FinishReason: &finishReason,
+		}},
+	})
+	events = append(events, state.FinalEvents()...)
+
+	completed := events[len(events)-1]
+	require.NotNil(t, completed.Response)
+	require.Len(t, completed.Response.Output, 2)
+	require.Equal(t, "reasoning", completed.Response.Output[0].Type)
+	require.Equal(t, "message", completed.Response.Output[1].Type)
+	for _, event := range events {
+		if event.Type == "response.output_item.added" && event.Item != nil && event.Item.Type == "reasoning" {
+			require.Len(t, event.Item.Summary, 1)
+			require.Equal(t, "summary_text", event.Item.Summary[0].Type)
+		}
+		if event.Type == "response.output_item.added" && event.Item != nil && event.Item.Type == "message" {
+			require.Len(t, event.Item.Content, 1)
+			require.Equal(t, "output_text", event.Item.Content[0].Type)
+		}
+	}
+	reasoningDoneIndex := -1
+	messageAddedIndex := -1
+	for index, event := range events {
+		if event.Type == "response.output_item.done" && event.Item != nil && event.Item.Type == "reasoning" {
+			reasoningDoneIndex = index
+		}
+		if event.Type == "response.output_item.added" && event.Item != nil && event.Item.Type == "message" {
+			messageAddedIndex = index
+		}
+	}
+	require.NotEqual(t, -1, reasoningDoneIndex)
+	require.NotEqual(t, -1, messageAddedIndex)
+	require.Less(t, reasoningDoneIndex, messageAddedIndex)
+}
+
+func TestChatCompletionsResponseAsResponsesPreservesReasoningContent(t *testing.T) {
+	response := &dto.OpenAITextResponse{
+		Model: "deepseek-v4-flash",
+		Choices: []dto.OpenAITextResponseChoice{{
+			Index: 0,
+			Message: dto.Message{
+				Role:             "assistant",
+				Content:          "答案",
+				ReasoningContent: "先分析问题。",
+			},
+			FinishReason: "stop",
+		}},
+	}
+
+	converted, _ := chatCompletionsResponseAsResponses(response)
+
+	require.Len(t, converted.Output, 2)
+	require.Equal(t, "reasoning", converted.Output[0].Type)
+	require.Equal(t, "先分析问题。", converted.Output[0].Summary[0].Text)
+	require.Equal(t, "message", converted.Output[1].Type)
+	require.Equal(t, "答案", converted.Output[1].Content[0].Text)
+}
+
 func TestResponsesViaChatCompletions_forwardsConvertedRequestAndReturnsResponses(t *testing.T) {
 	// Given: 只支持 Chat Completions 的 OpenAI 兼容上游。
 	service.InitHttpClient()

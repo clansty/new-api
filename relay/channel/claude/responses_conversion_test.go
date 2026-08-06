@@ -379,7 +379,7 @@ func TestNonStreamMaxTokensIncomplete(t *testing.T) {
 	}
 }
 
-func TestAssistantTextThenReasoningRejected(t *testing.T) {
+func TestAssistantTextThenReasoningReordered(t *testing.T) {
 	encryptedRaw := EncodeThinkingSignature("SIG")
 	inputJSON := `[
 		{"role":"user","content":"hi"},
@@ -387,9 +387,16 @@ func TestAssistantTextThenReasoningRejected(t *testing.T) {
 		{"type":"reasoning","id":"rs_1","encrypted_content":"` + encryptedRaw + `","summary":[{"type":"summary_text","text":"thought"}]}
 	]`
 	req := &dto.OpenAIResponsesRequest{Model: "claude-opus-4-7", Input: []byte(inputJSON)}
-	_, _, _, err := ConvertResponsesRequestToClaude(req)
-	if err == nil || !strings.Contains(err.Error(), "reasoning") {
-		t.Errorf("expected rejection for reasoning after text, got %v", err)
+	claude, _, _, err := ConvertResponsesRequestToClaude(req)
+	if err != nil {
+		t.Fatalf("reasoning after text should be reordered: %v", err)
+	}
+	if len(claude.Messages) != 2 {
+		t.Fatalf("messages=%d want 2", len(claude.Messages))
+	}
+	blocks, _ := claude.Messages[1].ParseContent()
+	if len(blocks) != 2 || blocks[0].Type != "thinking" || blocks[1].Type != "text" {
+		t.Errorf("assistant blocks=%v want thinking then text", blocks)
 	}
 }
 
@@ -1584,4 +1591,3 @@ func TestDeveloperRoleBetweenToolUseAndUserTextRejected(t *testing.T) {
 		t.Errorf("expected rejection for developer between tool_use and normal user text, got %v", err)
 	}
 }
-

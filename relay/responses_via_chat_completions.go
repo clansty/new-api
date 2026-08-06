@@ -297,6 +297,12 @@ func chatCompletionsResponseAsStream(response *dto.OpenAITextResponse) *dto.Chat
 		if content := choice.Message.StringContent(); content != "" {
 			delta.Content = common.GetPointer(content)
 		}
+		if reasoning := choice.Message.GetReasoningContent(); reasoning != "" {
+			delta.ReasoningContent = common.GetPointer(reasoning)
+		}
+		if opaque := choice.Message.GetReasoningOpaque(); opaque != "" {
+			delta.ReasoningOpaque = common.GetPointer(opaque)
+		}
 		toolCalls := choice.Message.ParseToolCalls()
 		for index, toolCall := range toolCalls {
 			delta.ToolCalls = append(delta.ToolCalls, dto.ToolCallResponse{
@@ -412,11 +418,16 @@ func (s *chatCompletionsResponsesState) start(chunk *dto.ChatCompletionsStreamRe
 
 func (s *chatCompletionsResponsesState) handleChoice(choice dto.ChatCompletionsStreamResponseChoice) []dto.ResponsesStreamResponse {
 	events := make([]dto.ResponsesStreamResponse, 0, 8)
-	if content := choice.Delta.GetContentString(); content != "" {
-		events = append(events, s.appendText(content)...)
-	}
 	if reasoning := choice.Delta.GetReasoningContent(); reasoning != "" {
 		events = append(events, s.appendThinking(reasoning, choice.Delta.GetReasoningOpaque())...)
+	}
+	if content := choice.Delta.GetContentString(); content != "" {
+		events = append(events, s.closeThinking()...)
+		events = append(events, s.appendText(content)...)
+	}
+	if len(choice.Delta.ToolCalls) > 0 {
+		events = append(events, s.closeThinking()...)
+		events = append(events, s.closeText()...)
 	}
 	for index, toolCall := range choice.Delta.ToolCalls {
 		toolIndex := index
@@ -527,14 +538,8 @@ func (s *chatCompletionsResponsesState) appendToolCall(index int, toolCall dto.T
 
 func (s *chatCompletionsResponsesState) closeOpenBlocks() []dto.ResponsesStreamResponse {
 	events := make([]dto.ResponsesStreamResponse, 0, len(s.tools)+2)
-	if s.textStarted {
-		events = append(events, s.responsesState.HandleClaudeChunk(&dto.ClaudeResponse{Type: "content_block_stop", Index: common.GetPointer(s.textBlockIndex)})...)
-		s.textStarted = false
-	}
-	if s.thinkingStarted {
-		events = append(events, s.responsesState.HandleClaudeChunk(&dto.ClaudeResponse{Type: "content_block_stop", Index: common.GetPointer(s.thinkingIndex)})...)
-		s.thinkingStarted = false
-	}
+	events = append(events, s.closeThinking()...)
+	events = append(events, s.closeText()...)
 	for _, toolIndex := range s.toolOrder {
 		tool := s.tools[toolIndex]
 		if tool.closed {
@@ -559,6 +564,22 @@ func (s *chatCompletionsResponsesState) closeOpenBlocks() []dto.ResponsesStreamR
 		tool.closed = true
 	}
 	return events
+}
+
+func (s *chatCompletionsResponsesState) closeText() []dto.ResponsesStreamResponse {
+	if s.textStarted {
+		s.textStarted = false
+		return s.responsesState.HandleClaudeChunk(&dto.ClaudeResponse{Type: "content_block_stop", Index: common.GetPointer(s.textBlockIndex)})
+	}
+	return nil
+}
+
+func (s *chatCompletionsResponsesState) closeThinking() []dto.ResponsesStreamResponse {
+	if s.thinkingStarted {
+		s.thinkingStarted = false
+		return s.responsesState.HandleClaudeChunk(&dto.ClaudeResponse{Type: "content_block_stop", Index: common.GetPointer(s.thinkingIndex)})
+	}
+	return nil
 }
 
 func chatUsageToClaudeUsage(usage *dto.Usage) *dto.ClaudeUsage {

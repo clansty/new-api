@@ -318,10 +318,7 @@ func convertResponsesInputToClaudeMessages(rawInput []byte, namespaceMap map[str
 	emit := func(role string, blocks []dto.ClaudeMediaMessage) error {
 		if n := len(messages); n > 0 && messages[n-1].Role == role {
 			if existing, ok := messages[n-1].Content.([]dto.ClaudeMediaMessage); ok {
-				if err := assertReasoningOrder(existing, blocks); err != nil {
-					return err
-				}
-				messages[n-1].Content = append(existing, blocks...)
+				messages[n-1].Content = mergeAssistantBlocks(existing, blocks)
 				return nil
 			}
 		}
@@ -502,26 +499,32 @@ func wrapSystemBlocksAsUserText(blocks []dto.ClaudeMediaMessage) []dto.ClaudeMed
 	return out
 }
 
-// Anthropic 协议要求 thinking/redacted_thinking 必须排在同一 assistant message 的非-thinking 块之前。
-// 客户端按 OpenAI Responses 顺序拼回 reasoning item 时，若上一个 assistant message 已经有 text/tool_use，
-// 再把 reasoning 追加进去就会违反此约束并被 Claude 拒绝；直接 400 避免静默拼成非法请求。
-func assertReasoningOrder(existing, incoming []dto.ClaudeMediaMessage) error {
-	hasIncomingReasoning := false
-	for _, b := range incoming {
-		if b.Type == "thinking" || b.Type == "redacted_thinking" {
-			hasIncomingReasoning = true
+func mergeAssistantBlocks(existing, incoming []dto.ClaudeMediaMessage) []dto.ClaudeMediaMessage {
+	reasoning := make([]dto.ClaudeMediaMessage, 0, len(incoming))
+	nonReasoning := make([]dto.ClaudeMediaMessage, 0, len(incoming))
+	for _, block := range incoming {
+		if block.Type == "thinking" || block.Type == "redacted_thinking" {
+			reasoning = append(reasoning, block)
+		} else {
+			nonReasoning = append(nonReasoning, block)
+		}
+	}
+	if len(reasoning) == 0 {
+		return append(append([]dto.ClaudeMediaMessage{}, existing...), incoming...)
+	}
+	firstNonReasoning := len(existing)
+	for index, block := range existing {
+		if block.Type != "thinking" && block.Type != "redacted_thinking" {
+			firstNonReasoning = index
 			break
 		}
 	}
-	if !hasIncomingReasoning {
-		return nil
-	}
-	for _, b := range existing {
-		if b.Type != "thinking" && b.Type != "redacted_thinking" {
-			return errors.New("reasoning item must precede non-reasoning content within the same assistant turn; reorder your input so reasoning comes before message/function_call items")
-		}
-	}
-	return nil
+	merged := make([]dto.ClaudeMediaMessage, 0, len(existing)+len(incoming))
+	merged = append(merged, existing[:firstNonReasoning]...)
+	merged = append(merged, reasoning...)
+	merged = append(merged, existing[firstNonReasoning:]...)
+	merged = append(merged, nonReasoning...)
+	return merged
 }
 
 func convertResponsesInputItem(item map[string]any, namespaceMap map[string]NamespaceMapping) (role string, blocks []dto.ClaudeMediaMessage, err error) {
