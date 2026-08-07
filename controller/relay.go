@@ -266,7 +266,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 			processChannelError(c, channelErrorForTarget(channel, c), newAPIError)
 		}
 
-		if !shouldRetryAndRecord(c, newAPIError, modelRetryTimes-retryParam.GetRetry(), retryParam, channel.Id) {
+		if !shouldRetryAndRecord(c, newAPIError, modelRetryTimes-retryParam.GetRetry(), retryParam, channel) {
 			break
 		}
 	}
@@ -321,7 +321,7 @@ func fastTokenCountMetaForPricing(request dto.Request) *types.TokenCountMeta {
 }
 
 func getChannel(c *gin.Context, info *relaycommon.RelayInfo, retryParam *service.RetryParam) (*model.Channel, *types.NewAPIError) {
-	if info.ChannelMeta == nil {
+	if info.ChannelMeta == nil && retryParam.GetRetry() == 0 && len(retryParam.FailedChannelIDs) == 0 {
 		channelId := c.GetInt("channel_id")
 		if common.GetContextKeyBool(c, constant.ContextKeyChannelIsGroup) {
 			channel, err := model.CacheGetChannel(channelId)
@@ -472,6 +472,7 @@ func processChannelError(c *gin.Context, channelError types.ChannelError, err *t
 			adminInfo["multi_key_index"] = common.GetContextKeyInt(c, constant.ContextKeyChannelMultiKeyIndex)
 		}
 		service.AppendChannelAffinityAdminInfo(c, adminInfo)
+		service.AppendChannelRaceAdminInfo(c, adminInfo)
 		other["admin_info"] = adminInfo
 		startTime := common.GetContextKeyTime(c, constant.ContextKeyRequestStartTime)
 		if startTime.IsZero() {

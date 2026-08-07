@@ -13,6 +13,7 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
@@ -87,6 +88,18 @@ func TestRelayChannelGroup_returnsFastestMemberAndCancelsLoser(t *testing.T) {
 		t.Fatal("慢节点没有收到取消信号")
 	}
 	require.Equal(t, members[1].Id, common.GetContextKeyInt(ctx, constant.ContextKeyChannelMemberId))
+	adminInfo := make(map[string]interface{})
+	service.AppendChannelRaceAdminInfo(ctx, adminInfo)
+	traces, ok := adminInfo["channel_group_races"].([]service.ChannelGroupRaceLog)
+	require.True(t, ok)
+	require.Len(t, traces, 1)
+	require.Equal(t, channel.Id, traces[0].ChannelId)
+	require.Equal(t, channel.Name, traces[0].ChannelName)
+	require.ElementsMatch(t, []service.ChannelRaceMemberLog{
+		{MemberId: members[0].Id, MemberName: members[0].Name},
+		{MemberId: members[1].Id, MemberName: members[1].Name},
+	}, traces[0].Members)
+	require.Equal(t, &service.ChannelRaceMemberLog{MemberId: members[1].Id, MemberName: members[1].Name}, traces[0].Winner)
 }
 
 func TestRelayChannelGroup_twoFailuresOnlyWaitsGraceForPendingMember(t *testing.T) {
@@ -152,4 +165,154 @@ func TestRelayChannelGroup_twoFailuresOnlyWaitsGraceForPendingMember(t *testing.
 	default:
 		t.Fatal("代理超时候选没有在失败仲裁窗口后被取消")
 	}
+}
+
+func TestNewChannelRaceAttempt_usesResponseTimeoutOnlyForStreamingRequests(t *testing.T) {
+	channel := model.Channel{
+		Id:              1,
+		Name:            "非流式竞速组",
+		Type:            constant.ChannelTypeOpenAI,
+		Status:          common.ChannelStatusEnabled,
+		IsGroup:         true,
+		ResponseTimeout: common.GetPointer(1),
+	}
+	member := model.ChannelMember{
+		Id:        1,
+		ChannelId: channel.Id,
+		Name:      "成员一",
+		Key:       "sk-member",
+		Status:    common.ChannelStatusEnabled,
+	}
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest("POST", "/v1/chat/completions", nil)
+	info := &relaycommon.RelayInfo{
+		OriginModelName: "gpt-test",
+		Request:         &dto.GeneralOpenAIRequest{Model: "gpt-test"},
+		RelayMode:       relayconstant.RelayModeChatCompletions,
+		IsStream:        false,
+	}
+	events := make(chan channelRaceEvent, 2)
+
+	attempt, apiErr := newChannelRaceAttempt(channelGroupRaceRequest{
+		ctx:     ctx,
+		info:    info,
+		channel: &channel,
+	}, 0, member, events)
+	require.Nil(t, apiErr)
+	t.Cleanup(func() {
+		if attempt.timer != nil {
+			attempt.timer.Stop()
+		}
+		attempt.cancel(nil)
+	})
+
+	require.Nil(t, attempt.timer)
+
+	info.IsStream = true
+	streamAttempt, apiErr := newChannelRaceAttempt(channelGroupRaceRequest{
+		ctx:     ctx,
+		info:    info,
+		channel: &channel,
+	}, 1, member, events)
+	require.Nil(t, apiErr)
+	t.Cleanup(func() {
+		if streamAttempt.timer != nil {
+			streamAttempt.timer.Stop()
+		}
+		streamAttempt.cancel(nil)
+	})
+
+	require.NotNil(t, streamAttempt.timer)
+}
+
+func TestGetChannel_retryAfterGroupFailureSelectsDifferentChannel(t *testing.T) {
+	originalDB := model.DB
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	model.DB = db
+	t.Cleanup(func() { model.DB = originalDB })
+	require.NoError(t, db.AutoMigrate(&model.Channel{}, &model.Ability{}))
+
+	originalMemoryCacheEnabled := common.MemoryCacheEnabled
+	common.MemoryCacheEnabled = false
+	t.Cleanup(func() { common.MemoryCacheEnabled = originalMemoryCacheEnabled })
+
+	highPriority := int64(10)
+	lowPriority := int64(0)
+	group := model.Channel{
+		Name:     "失败渠道组",
+		Type:     constant.ChannelTypeOpenAI,
+		Status:   common.ChannelStatusEnabled,
+		Models:   "qa-race-model",
+		Group:    "default",
+		Priority: &highPriority,
+		IsGroup:  true,
+	}
+	fallback := model.Channel{
+		Name:     "备用渠道",
+		Type:     constant.ChannelTypeOpenAI,
+		Key:      "sk-fallback",
+		Status:   common.ChannelStatusEnabled,
+		Models:   "qa-race-model",
+		Group:    "default",
+		Priority: &lowPriority,
+	}
+	require.NoError(t, db.Create(&group).Error)
+	require.NoError(t, db.Create(&fallback).Error)
+	require.NoError(t, db.Create([]model.Ability{
+		{Group: "default", Model: "qa-race-model", ChannelId: group.Id, Enabled: true, Priority: &highPriority},
+		{Group: "default", Model: "qa-race-model", ChannelId: fallback.Id, Enabled: true, Priority: &lowPriority},
+	}).Error)
+
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest("POST", "/v1/chat/completions", nil)
+	common.SetContextKey(ctx, constant.ContextKeyChannelId, group.Id)
+	common.SetContextKey(ctx, constant.ContextKeyChannelIsGroup, true)
+
+	retry := 1
+	retryParam := &service.RetryParam{
+		Ctx:                     ctx,
+		TokenGroup:              "default",
+		ModelName:               "qa-race-model",
+		Retry:                   &retry,
+		FailedChannelIDs:        map[int]struct{}{group.Id: {}},
+		RequireDifferentChannel: true,
+	}
+	info := &relaycommon.RelayInfo{
+		OriginModelName: "qa-race-model",
+		TokenGroup:      "default",
+		UsingGroup:      "default",
+	}
+
+	channel, apiErr := getChannel(ctx, info, retryParam)
+
+	require.Nil(t, apiErr)
+	require.Equal(t, fallback.Id, channel.Id)
+
+	resetRecorder := httptest.NewRecorder()
+	resetCtx, _ := gin.CreateTestContext(resetRecorder)
+	resetCtx.Request = httptest.NewRequest("POST", "/v1/chat/completions", nil)
+	common.SetContextKey(resetCtx, constant.ContextKeyChannelId, group.Id)
+	common.SetContextKey(resetCtx, constant.ContextKeyChannelIsGroup, true)
+	resetRetry := 0
+	resetRetryParam := &service.RetryParam{
+		Ctx:                     resetCtx,
+		TokenGroup:              "default",
+		ModelName:               "qa-race-model",
+		Retry:                   &resetRetry,
+		FailedChannelIDs:        map[int]struct{}{group.Id: {}},
+		RequireDifferentChannel: true,
+	}
+	resetInfo := &relaycommon.RelayInfo{
+		OriginModelName: "qa-race-model",
+		TokenGroup:      "default",
+		UsingGroup:      "default",
+	}
+
+	channel, apiErr = getChannel(resetCtx, resetInfo, resetRetryParam)
+
+	require.Nil(t, apiErr)
+	require.Equal(t, fallback.Id, channel.Id)
 }

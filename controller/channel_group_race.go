@@ -52,6 +52,18 @@ func relayChannelGroup(request channelGroupRaceRequest) *types.NewAPIError {
 	if len(members) == 0 {
 		return types.NewError(errors.New("渠道组没有可用成员"), types.ErrorCodeGetChannelFailed)
 	}
+	raceMembers := make([]service.ChannelRaceMemberLog, 0, len(members))
+	for _, member := range members {
+		raceMembers = append(raceMembers, service.ChannelRaceMemberLog{
+			MemberId:   member.Id,
+			MemberName: member.Name,
+		})
+	}
+	service.BeginChannelRaceTrace(request.ctx, service.ChannelGroupRaceLog{
+		ChannelId:   request.channel.Id,
+		ChannelName: request.channel.Name,
+		Members:     raceMembers,
+	})
 
 	events := make(chan channelRaceEvent, len(members)*2)
 	attempts := make([]*channelRaceAttempt, 0, len(members))

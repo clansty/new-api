@@ -70,15 +70,17 @@ func newChannelRaceAttempt(request channelGroupRaceRequest, index int, member mo
 		events <- channelRaceEvent{attempt: attempt, ready: true}
 	})
 	attemptCtx.Writer = attempt.writer
-	timeout := time.Duration(request.channel.GetResponseTimeout()) * time.Second
-	if timeout <= 0 {
-		timeout = channelRaceDefaultTimeout
-	}
-	attempt.timer = time.AfterFunc(timeout, func() {
-		if attempt.state.CompareAndSwap(channelRacePending, channelRaceTimedOut) {
-			cancel(errChannelRaceTimedOut)
+	if attemptInfo.ShouldUseChannelResponseTimeout() {
+		timeout := time.Duration(request.channel.GetResponseTimeout()) * time.Second
+		if timeout <= 0 {
+			timeout = channelRaceDefaultTimeout
 		}
-	})
+		attempt.timer = time.AfterFunc(timeout, func() {
+			if attempt.state.CompareAndSwap(channelRacePending, channelRaceTimedOut) {
+				cancel(errChannelRaceTimedOut)
+			}
+		})
+	}
 	return attempt, nil
 }
 

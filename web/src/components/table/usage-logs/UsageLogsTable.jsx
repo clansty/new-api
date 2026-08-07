@@ -25,6 +25,11 @@ import {
   IllustrationNoResultDark,
 } from '@douyinfe/semi-illustrations';
 import { getLogsColumns } from './UsageLogsColumnDefs';
+import { getLogOther } from '../../../helpers';
+import ChannelGroupRaceDetails from './components/ChannelGroupRaceDetails';
+
+const getChannelGroupRaces = (record) =>
+  getLogOther(record.other)?.admin_info?.channel_group_races;
 
 const LogsTable = (logsData) => {
   const {
@@ -90,25 +95,35 @@ const LogsTable = (logsData) => {
 
   const getExpandData = (record) => {
     const rowExpandData = expandData[record.key] || [];
-    if (!record.user_agent) {
-      return rowExpandData;
+    const raceDetails = getChannelGroupRaces(record);
+    const details = [...rowExpandData];
+    if (isAdminUser && Array.isArray(raceDetails) && raceDetails.length > 0) {
+      details.unshift({
+        key: t('渠道组竞速'),
+        value: <ChannelGroupRaceDetails races={raceDetails} t={t} />,
+      });
     }
-    return [
-      ...rowExpandData,
-      {
+    if (record.user_agent) {
+      details.push({
         key: t('User-Agent'),
         value: (
           <span style={{ maxWidth: 600, wordBreak: 'break-all' }}>
             {record.user_agent}
           </span>
         ),
-      },
-    ];
+      });
+    }
+    return details;
   };
 
   const hasRowsWithDetails = () => {
     return (
-      hasExpandableRows() || logs.some((record) => Boolean(record.user_agent))
+      hasExpandableRows() ||
+      logs.some(
+        (record) =>
+          Boolean(record.user_agent) ||
+          (isAdminUser && getChannelGroupRaces(record)?.length > 0),
+      )
     );
   };
 

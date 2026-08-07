@@ -36,6 +36,22 @@ func TestFormatUserLogs_HidesCost(t *testing.T) {
 	require.Nil(t, logs[0].Cost)
 }
 
+func TestFormatUserLogs_HidesChannelGroupRaceDetails(t *testing.T) {
+	// Given: 竞速轨迹包含管理员诊断所需的成员与胜者信息。
+	logs := []*Log{{
+		Other: `{"model_ratio":2,"admin_info":{"channel_group_races":[{"channel_id":102,"members":[{"member_id":7}],"winner":{"member_id":7}}]}}`,
+	}}
+
+	// When: 日志经过普通用户响应格式化。
+	formatUserLogs(logs, 0)
+
+	// Then: 普通用户看不到任何管理员竞速信息，普通计费字段仍保留。
+	other, err := common.StrToMap(logs[0].Other)
+	require.NoError(t, err)
+	require.NotContains(t, other, "admin_info")
+	require.Equal(t, float64(2), other["model_ratio"])
+}
+
 func TestGetAllLogs_PreservesModelMappingDetails_forAdminQuery(t *testing.T) {
 	// Given: 管理员需要映射详情诊断实际转发模型。
 	truncateTables(t)

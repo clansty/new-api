@@ -54,3 +54,9 @@
 - Codex 内置浏览器不可用时，可按 browser skill 的降级路径使用独立 Playwright 脚本；Semi 弹窗动画结束前定位 footer 按钮容易命中旧 DOM，应等待过渡稳定并限定到当前可见弹窗。
 - 成员表仅依赖横向滚动会让平板和手机端的右侧操作不可发现；窄屏应保留固定操作列，将完整命令收进菜单，并截图验证菜单和删除确认均可触达。
 - 使用 `useIsMobile` 的组件需要在目标宽度重新加载页面，避免响应式状态尚未更新时截到桌面列配置。
+
+## 响应式日志展开行 QA
+
+- Semi Table 的单元格 class 包含 `semi-table-row-cell`，用 `contains(@class, "semi-table-row")` 会误定位到 `<td>`；Playwright 应精确匹配 class token 或直接定位 `<tr>`，再点击首列展开控件。
+- 移动端 `CardTable` 的展开内容位于页面内部滚动容器，`document.body.scrollHeight` 不会随详情增长；截图前应对目标详情调用 `scrollIntoViewIfNeeded()`，再检查目标矩形和横向 scroll width。
+- `Descriptions` 的移动端值列较窄，嵌套详情应使用纵向布局和 `overflowWrap: anywhere`，避免横排标签截断渠道名、成员名等诊断信息。
