@@ -19,6 +19,10 @@ func formatNotifyType(channelId int, status int) string {
 
 // disable & notify
 func DisableChannel(channelError types.ChannelError, reason string) {
+	if channelError.MemberId > 0 {
+		disableChannelMember(channelError, reason)
+		return
+	}
 	common.SysLog(fmt.Sprintf("通道「%s」（#%d）发生错误，准备禁用，原因：%s", channelError.ChannelName, channelError.ChannelId, reason))
 
 	// 检查是否启用自动禁用功能
@@ -36,6 +40,27 @@ func DisableChannel(channelError types.ChannelError, reason string) {
 		content := fmt.Sprintf("通道「%s」（#%d）已被禁用，原因：%s", channelError.ChannelName, channelError.ChannelId, reason)
 		NotifyRootUser(formatNotifyType(channelError.ChannelId, common.ChannelStatusAutoDisabled), subject, content)
 	}
+}
+
+func disableChannelMember(channelError types.ChannelError, reason string) {
+	common.SysLog(fmt.Sprintf("渠道组「%s」（#%d）成员「%s」（#%d）发生错误，准备禁用，原因：%s", channelError.ChannelName, channelError.ChannelId, channelError.MemberName, channelError.MemberId, reason))
+	if !channelError.AutoBan {
+		return
+	}
+	success, err := model.UpdateChannelMemberStatus(channelError.ChannelId, channelError.MemberId, common.ChannelStatusAutoDisabled, reason)
+	if err != nil {
+		common.SysError("自动禁用渠道组成员失败: " + err.Error())
+		return
+	}
+	if !success {
+		return
+	}
+	if channel, err := model.CacheGetChannel(channelError.ChannelId); err == nil && channel.Status != common.ChannelStatusEnabled {
+		_, _ = CancelChannelAffinityForce(channelError.ChannelId)
+	}
+	subject := fmt.Sprintf("渠道组「%s」成员「%s」已被禁用", channelError.ChannelName, channelError.MemberName)
+	content := fmt.Sprintf("渠道组「%s」（#%d）成员「%s」（#%d）已被禁用，原因：%s", channelError.ChannelName, channelError.ChannelId, channelError.MemberName, channelError.MemberId, reason)
+	NotifyRootUser(formatNotifyType(channelError.MemberId, common.ChannelStatusAutoDisabled), subject, content)
 }
 
 func EnableChannel(channelId int, usingKey string, channelName string) {

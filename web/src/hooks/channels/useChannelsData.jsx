@@ -124,6 +124,8 @@ export const useChannelsData = () => {
   // Multi-key management states
   const [showMultiKeyManageModal, setShowMultiKeyManageModal] = useState(false);
   const [currentMultiKeyChannel, setCurrentMultiKeyChannel] = useState(null);
+  const [showChannelGroupModal, setShowChannelGroupModal] = useState(false);
+  const [currentChannelGroup, setCurrentChannelGroup] = useState(null);
 
   // Refs
   const requestCounter = useRef(0);
@@ -134,6 +136,37 @@ export const useChannelsData = () => {
     searchKeyword: '',
     searchGroup: '',
     searchModel: '',
+  };
+
+  const openChannelGroup = (channel) => {
+    setCurrentChannelGroup(channel);
+    setShowChannelGroupModal(true);
+  };
+
+  const convertChannelToGroup = (channel) => {
+    Modal.confirm({
+      title: t('转为渠道组'),
+      content: t('原有密钥将转为独立成员，渠道共享配置和 ID 保持不变。'),
+      centered: true,
+      onOk: async () => {
+        try {
+          const res = await API.post(
+            `/api/channel/${channel.id}/convert_group`,
+            {
+              parallel_requests: 2,
+            },
+          );
+          if (!res?.data?.success) {
+            throw new Error(res?.data?.message || t('转换失败'));
+          }
+          showSuccess(t('已转换为渠道组'));
+          await refresh();
+        } catch (error) {
+          showError(error.message);
+          throw error;
+        }
+      },
+    });
   };
 
   // Column keys
@@ -1311,6 +1344,10 @@ export const useChannelsData = () => {
     setShowMultiKeyManageModal,
     currentMultiKeyChannel,
     setCurrentMultiKeyChannel,
+    showChannelGroupModal,
+    setShowChannelGroupModal,
+    currentChannelGroup,
+    setCurrentChannelGroup,
     ...upstreamUpdates,
 
     // Form
@@ -1347,6 +1384,8 @@ export const useChannelsData = () => {
     fixChannelsAbilities,
     checkOllamaVersion,
     testChannel,
+    openChannelGroup,
+    convertChannelToGroup,
     batchTestModels,
     handleCloseModal,
     getFormValues,

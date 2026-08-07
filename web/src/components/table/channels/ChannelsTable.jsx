@@ -66,6 +66,8 @@ const ChannelsTable = (channelsData) => {
     affinityForceByChannel,
     activateChannelAffinityForce,
     cancelChannelAffinityForce,
+    openChannelGroup,
+    convertChannelToGroup,
   } = channelsData;
 
   // Get all columns
@@ -96,6 +98,8 @@ const ChannelsTable = (channelsData) => {
       affinityForceByChannel,
       activateChannelAffinityForce,
       cancelChannelAffinityForce,
+      openChannelGroup,
+      convertChannelToGroup,
     });
   }, [
     t,
@@ -123,6 +127,8 @@ const ChannelsTable = (channelsData) => {
     affinityForceByChannel,
     activateChannelAffinityForce,
     cancelChannelAffinityForce,
+    openChannelGroup,
+    convertChannelToGroup,
   ]);
 
   // Filter columns based on visibility settings

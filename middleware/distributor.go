@@ -384,8 +384,17 @@ func SetupContextForSelectedChannel(c *gin.Context, channel *model.Channel, mode
 	common.SetContextKey(c, constant.ContextKeyChannelResponseTimeout, channel.GetResponseTimeout())
 	common.SetContextKey(c, constant.ContextKeyChannelModelMapping, channel.GetModelMapping())
 	common.SetContextKey(c, constant.ContextKeyChannelStatusCodeMapping, channel.GetStatusCodeMapping())
+	common.SetContextKey(c, constant.ContextKeyChannelMemberId, channel.SelectedMemberId)
+	common.SetContextKey(c, constant.ContextKeyChannelMemberName, channel.SelectedMemberName)
+	common.SetContextKey(c, constant.ContextKeyChannelIsGroup, channel.IsGroup)
+	common.SetContextKey(c, constant.ContextKeyChannelParallelRequests, channel.ParallelRequests)
 
-	key, index, newAPIError := channel.GetNextEnabledKey()
+	key := channel.Key
+	index := 0
+	var newAPIError *types.NewAPIError
+	if !channel.IsGroup || channel.SelectedMemberId > 0 {
+		key, index, newAPIError = channel.GetNextEnabledKey()
+	}
 	if newAPIError != nil && common.GetContextKeyBool(c, constant.ContextKeyChannelTest) {
 		key, index, newAPIError = channel.GetNextTestKey()
 	}

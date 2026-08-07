@@ -39,6 +39,12 @@ const (
 	ContextKeyChannelMultiKeyIndex     ContextKey = "channel_multi_key_index"
 	ContextKeyChannelKey               ContextKey = "channel_key"
 	ContextKeyChannelTest              ContextKey = "channel_test"
+	ContextKeyChannelMemberId          ContextKey = "channel_member_id"
+	ContextKeyChannelMemberName        ContextKey = "channel_member_name"
+	ContextKeyChannelRaceAttempt       ContextKey = "channel_race_attempt"
+	ContextKeyChannelRaceWinner        ContextKey = "channel_race_winner"
+	ContextKeyChannelIsGroup           ContextKey = "channel_is_group"
+	ContextKeyChannelParallelRequests  ContextKey = "channel_parallel_requests"
 
 	ContextKeyAutoGroup           ContextKey = "auto_group"
 	ContextKeyAutoGroupIndex      ContextKey = "auto_group_index"

@@ -91,6 +91,9 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		if newAPIError != nil {
 			logger.LogError(c, fmt.Sprintf("relay error: %s", newAPIError.Error()))
 			newAPIError.SetMessage(common.MessageWithRequestId(newAPIError.Error(), requestId))
+			if c.Writer.Written() {
+				return
+			}
 			switch relayFormat {
 			case types.RelayFormatOpenAIRealtime:
 				helper.WssError(c, ws, newAPIError.ToOpenAIError())
@@ -227,21 +230,29 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		}
 		c.Request.Body = io.NopCloser(bodyStorage)
 
-		newAPIError = relayWithChannelResponseTimeout(c, relayInfo, channel, func() *types.NewAPIError {
-			finishChannelInflight := service.BeginChannelInflight(channel.Id)
-			defer finishChannelInflight()
-
-			switch relayFormat {
-			case types.RelayFormatOpenAIRealtime:
-				return relay.WssHelper(c, relayInfo)
-			case types.RelayFormatClaude:
-				return relay.ClaudeHelper(c, relayInfo)
-			case types.RelayFormatGemini:
-				return geminiRelayHandler(c, relayInfo)
-			default:
-				return relayHandler(c, relayInfo)
+		groupRace := channel.IsGroup && supportsChannelGroupRace(relayInfo)
+		if groupRace {
+			newAPIError = relayChannelGroup(channelGroupRaceRequest{
+				ctx:     c,
+				info:    relayInfo,
+				channel: channel,
+				handler: func(attemptCtx *gin.Context, attemptInfo *relaycommon.RelayInfo) *types.NewAPIError {
+					return relayWithFormat(attemptCtx, attemptInfo, relayFormat)
+				},
+			})
+		} else {
+			target, setupErr := setupChannelTarget(c, relayInfo, channel)
+			if setupErr != nil {
+				newAPIError = setupErr
+			} else {
+				channel = target
+				newAPIError = relayWithChannelResponseTimeout(c, relayInfo, channel, func() *types.NewAPIError {
+					finishChannelInflight := service.BeginChannelInflight(channel.Id)
+					defer finishChannelInflight()
+					return relayWithFormat(c, relayInfo, relayFormat)
+				})
 			}
-		})
+		}
 
 		if newAPIError == nil {
 			relayInfo.LastError = nil
@@ -251,7 +262,9 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		newAPIError = service.NormalizeViolationFeeError(newAPIError)
 		relayInfo.LastError = newAPIError
 
-		processChannelError(c, *types.NewChannelError(channel.Id, channel.Type, channel.Name, channel.ChannelInfo.IsMultiKey, common.GetContextKeyString(c, constant.ContextKeyChannelKey), channel.GetAutoBan()), newAPIError)
+		if !groupRace {
+			processChannelError(c, channelErrorForTarget(channel, c), newAPIError)
+		}
 
 		if !shouldRetryAndRecord(c, newAPIError, modelRetryTimes-retryParam.GetRetry(), retryParam, channel.Id) {
 			break
@@ -309,13 +322,21 @@ func fastTokenCountMetaForPricing(request dto.Request) *types.TokenCountMeta {
 
 func getChannel(c *gin.Context, info *relaycommon.RelayInfo, retryParam *service.RetryParam) (*model.Channel, *types.NewAPIError) {
 	if info.ChannelMeta == nil {
+		channelId := c.GetInt("channel_id")
+		if common.GetContextKeyBool(c, constant.ContextKeyChannelIsGroup) {
+			channel, err := model.CacheGetChannel(channelId)
+			if err != nil {
+				return nil, types.NewError(err, types.ErrorCodeGetChannelFailed, types.ErrOptionWithSkipRetry())
+			}
+			return channel, nil
+		}
 		autoBan := c.GetBool("auto_ban")
 		autoBanInt := 1
 		if !autoBan {
 			autoBanInt = 0
 		}
 		return &model.Channel{
-			Id:              c.GetInt("channel_id"),
+			Id:              channelId,
 			Type:            c.GetInt("channel_type"),
 			Name:            c.GetString("channel_name"),
 			AutoBan:         &autoBanInt,
@@ -336,11 +357,51 @@ func getChannel(c *gin.Context, info *relaycommon.RelayInfo, retryParam *service
 		return nil, types.NewError(fmt.Errorf("分组 %s 下模型 %s 的可用渠道不存在（retry）", selectGroup, info.OriginModelName), types.ErrorCodeGetChannelFailed, types.ErrOptionWithSkipRetry())
 	}
 
-	newAPIError := middleware.SetupContextForSelectedChannel(c, channel, info.OriginModelName)
-	if newAPIError != nil {
-		return nil, newAPIError
+	if !channel.IsGroup {
+		newAPIError := middleware.SetupContextForSelectedChannel(c, channel, info.OriginModelName)
+		if newAPIError != nil {
+			return nil, newAPIError
+		}
 	}
 	return channel, nil
+}
+
+func relayWithFormat(c *gin.Context, info *relaycommon.RelayInfo, relayFormat types.RelayFormat) *types.NewAPIError {
+	switch relayFormat {
+	case types.RelayFormatOpenAIRealtime:
+		return relay.WssHelper(c, info)
+	case types.RelayFormatClaude:
+		return relay.ClaudeHelper(c, info)
+	case types.RelayFormatGemini:
+		return geminiRelayHandler(c, info)
+	default:
+		return relayHandler(c, info)
+	}
+}
+
+func setupChannelTarget(c *gin.Context, info *relaycommon.RelayInfo, channel *model.Channel) (*model.Channel, *types.NewAPIError) {
+	if !channel.IsGroup {
+		return channel, nil
+	}
+	members, err := model.SelectEnabledChannelMembers(channel.Id, 1)
+	if err != nil {
+		return nil, types.NewError(fmt.Errorf("选择渠道组成员: %w", err), types.ErrorCodeGetChannelFailed)
+	}
+	if len(members) == 0 {
+		return nil, types.NewError(errors.New("渠道组没有可用成员"), types.ErrorCodeGetChannelFailed)
+	}
+	target := model.ResolveChannelMember(channel, &members[0])
+	if apiErr := middleware.SetupContextForSelectedChannel(c, target, info.OriginModelName); apiErr != nil {
+		return nil, apiErr
+	}
+	return target, nil
+}
+
+func channelErrorForTarget(channel *model.Channel, c *gin.Context) types.ChannelError {
+	if channel.SelectedMemberId > 0 {
+		return *types.NewChannelMemberError(channel.Id, channel.Type, channel.Name, channel.SelectedMemberId, channel.SelectedMemberName, channel.GetAutoBan())
+	}
+	return *types.NewChannelError(channel.Id, channel.Type, channel.Name, channel.ChannelInfo.IsMultiKey, common.GetContextKeyString(c, constant.ContextKeyChannelKey), channel.GetAutoBan())
 }
 
 func shouldRetry(c *gin.Context, openaiErr *types.NewAPIError, retryTimes int) bool {
@@ -568,6 +629,14 @@ func RelayTask(c *gin.Context) {
 				break
 			}
 		}
+		if channel.IsGroup {
+			var setupErr *types.NewAPIError
+			channel, setupErr = setupChannelTarget(c, relayInfo, channel)
+			if setupErr != nil {
+				taskErr = service.TaskErrorWrapperLocal(setupErr.Err, "setup_channel_group_member_failed", http.StatusInternalServerError)
+				break
+			}
+		}
 
 		addUsedChannel(c, channel.Id)
 		bodyStorage, bodyErr := common.GetBodyStorage(c)
@@ -592,8 +661,7 @@ func RelayTask(c *gin.Context) {
 
 		if !taskErr.LocalError {
 			processChannelError(c,
-				*types.NewChannelError(channel.Id, channel.Type, channel.Name, channel.ChannelInfo.IsMultiKey,
-					common.GetContextKeyString(c, constant.ContextKeyChannelKey), channel.GetAutoBan()),
+				channelErrorForTarget(channel, c),
 				types.NewOpenAIError(taskErr.Error, types.ErrorCodeBadResponseStatusCode, taskErr.StatusCode))
 		}
 

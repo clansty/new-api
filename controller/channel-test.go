@@ -828,6 +828,14 @@ func TestChannel(c *gin.Context) {
 			return
 		}
 	}
+	if channel.IsGroup {
+		members, selectErr := model.SelectEnabledChannelMembers(channel.Id, 1)
+		if selectErr != nil || len(members) == 0 {
+			c.JSON(http.StatusOK, gin.H{"success": false, "message": "渠道组没有可用成员", "time": 0.0})
+			return
+		}
+		channel = model.ResolveChannelMember(channel, &members[0])
+	}
 	//defer func() {
 	//	if channel.ChannelInfo.IsMultiKey {
 	//		go func() { _ = channel.SaveChannelInfo() }()
@@ -852,7 +860,11 @@ func TestChannel(c *gin.Context) {
 	}
 	tok := time.Now()
 	milliseconds := tok.Sub(tik).Milliseconds()
-	go channel.UpdateResponseTime(milliseconds)
+	if channel.SelectedMemberId > 0 {
+		go model.UpdateChannelMemberResponseTime(channel.Id, channel.SelectedMemberId, milliseconds)
+	} else {
+		go channel.UpdateResponseTime(milliseconds)
+	}
 	consumedTime := float64(milliseconds) / 1000.0
 	if result.newAPIError != nil {
 		c.JSON(http.StatusOK, gin.H{
@@ -932,6 +944,10 @@ func testChannels(notify bool, scope channelTestScope) error {
 				return
 			}
 			if !shouldTestChannelAutomatically(channel, scope) {
+				continue
+			}
+			if channel.IsGroup {
+				testChannelGroupMembersAutomatically(channel, scope, disableThreshold)
 				continue
 			}
 			isChannelEnabled := channel.Status == common.ChannelStatusEnabled

@@ -40,6 +40,7 @@ func TestMain(m *testing.M) {
 		&Token{},
 		&Log{},
 		&Channel{},
+		&ChannelMember{},
 		&Sub2APIAuthCredential{},
 		&Ability{},
 		&TopUp{},
@@ -61,6 +62,7 @@ func truncateTables(t *testing.T) {
 		DB.Exec("DELETE FROM tokens")
 		DB.Exec("DELETE FROM logs")
 		DB.Exec("DELETE FROM channels")
+		DB.Exec("DELETE FROM channel_members")
 		DB.Exec("DELETE FROM sub2_api_auth_credentials")
 		DB.Exec("DELETE FROM abilities")
 		DB.Exec("DELETE FROM top_ups")

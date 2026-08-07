@@ -308,6 +308,7 @@ func migrateDB() error {
 
 	err := DB.AutoMigrate(
 		&Channel{},
+		&ChannelMember{},
 		&Sub2APIAuthCredential{},
 		&Token{},
 		&User{},
@@ -360,6 +361,7 @@ func migrateDBFast() error {
 		name  string
 	}{
 		{&Channel{}, "Channel"},
+		{&ChannelMember{}, "ChannelMember"},
 		{&Sub2APIAuthCredential{}, "Sub2APIAuthCredential"},
 		{&Token{}, "Token"},
 		{&User{}, "User"},

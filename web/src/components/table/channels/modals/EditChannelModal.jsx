@@ -188,6 +188,8 @@ const EditChannelModal = (props) => {
     auto_ban: 1,
     auto_recover: true,
     response_timeout: 0,
+    is_group: false,
+    parallel_requests: 2,
     test_model: '',
     groups: ['default'],
     priority: 0,
@@ -233,6 +235,7 @@ const EditChannelModal = (props) => {
   };
   const [batch, setBatch] = useState(false);
   const [multiToSingle, setMultiToSingle] = useState(false);
+  const [groupMode, setGroupMode] = useState(false);
   const [multiKeyMode, setMultiKeyMode] = useState('random');
   const [autoBan, setAutoBan] = useState(true);
   const [autoRecover, setAutoRecover] = useState(true);
@@ -848,6 +851,7 @@ const EditChannelModal = (props) => {
       }
       const chInfo = data.channel_info || {};
       const isMulti = chInfo.is_multi_key === true;
+      setGroupMode(data.is_group === true);
       setIsMultiKeyChannel(isMulti);
       if (isMulti) {
         setBatch(true);
@@ -1429,6 +1433,9 @@ const EditChannelModal = (props) => {
     });
     // 重置密钥模式状态
     setKeyMode('append');
+    setGroupMode(false);
+    setBatch(false);
+    setMultiToSingle(false);
     // 重置豆包隐藏入口状态
     setDoubaoApiEditUnlocked(false);
     doubaoApiClickCountRef.current = 0;
@@ -1953,7 +1960,10 @@ const EditChannelModal = (props) => {
     localInputs.group = (localInputs.groups || []).join(',');
 
     let mode = 'single';
-    if (batch) {
+    if (groupMode) {
+      mode = 'group';
+      localInputs.is_group = true;
+    } else if (batch) {
       mode = multiToSingle ? 'multi_to_single' : 'batch';
     }
 
@@ -2078,7 +2088,23 @@ const EditChannelModal = (props) => {
     <Space>
       {!isEdit && (
         <Checkbox
-          disabled={isEdit}
+          checked={groupMode}
+          onChange={(event) => {
+            const checked = event.target.checked;
+            setGroupMode(checked);
+            if (checked) {
+              setBatch(true);
+              setMultiToSingle(false);
+              formApiRef.current?.setValue('parallel_requests', 2);
+            }
+          }}
+        >
+          {t('创建渠道组')}
+        </Checkbox>
+      )}
+      {!isEdit && (
+        <Checkbox
+          disabled={groupMode}
           checked={batch}
           onChange={(e) => {
             const checked = e.target.checked;
@@ -2113,6 +2139,7 @@ const EditChannelModal = (props) => {
 
             setBatch(checked);
             if (!checked) {
+              setGroupMode(false);
               setMultiToSingle(false);
               setMultiKeyMode('random');
             } else {
@@ -3881,6 +3908,26 @@ const EditChannelModal = (props) => {
                       '仅普通 chat、responses、messages 请求生效；0 表示不限制。超时后会记录错误并按重试配置更换渠道。',
                     )}
                   />
+
+                  {(groupMode || inputs.is_group === true) && (
+                    <Form.InputNumber
+                      field='parallel_requests'
+                      label={t('并行请求数')}
+                      min={1}
+                      max={4}
+                      precision={0}
+                      style={{ width: '100%' }}
+                      onChange={(value) =>
+                        handleInputChange(
+                          'parallel_requests',
+                          Number(value || 1),
+                        )
+                      }
+                      extraText={t(
+                        '同一请求最多并行发送到 4 个成员，首个有效响应胜出；不支持竞速的端点固定使用单成员。',
+                      )}
+                    />
+                  )}
 
                   {/* Test Model - Core Config */}
                   <Form.Input

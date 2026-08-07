@@ -80,10 +80,20 @@ const renderType = (type, record = {}, t) => {
       );
   }
 
-  const typeTag = (
+  const providerTag = (
     <Tag color={type2label[type]?.color} shape='circle' prefixIcon={icon}>
       {t(type2label[type]?.label)}
     </Tag>
+  );
+  const typeTag = record?.is_group ? (
+    <Space spacing={4}>
+      <Tag color='cyan' shape='circle'>
+        {t('渠道组')}
+      </Tag>
+      {providerTag}
+    </Space>
+  ) : (
+    providerTag
   );
 
   let ionetMeta = null;
@@ -379,6 +389,8 @@ export const getChannelsColumns = ({
   affinityForceByChannel,
   activateChannelAffinityForce,
   cancelChannelAffinityForce,
+  openChannelGroup,
+  convertChannelToGroup,
 }) => {
   return [
     {
@@ -913,6 +925,14 @@ export const getChannelsColumns = ({
           ];
 
           const affinityForce = affinityForceByChannel[record.id];
+          if (!record.is_group) {
+            moreMenuItems.unshift({
+              node: 'item',
+              name: t('转为渠道组'),
+              type: 'tertiary',
+              onClick: () => convertChannelToGroup(record),
+            });
+          }
           if (affinityForce) {
             moreMenuItems.unshift({
               node: 'item',
@@ -1027,7 +1047,27 @@ export const getChannelsColumns = ({
                 </Button>
               )}
 
-              {record.channel_info?.is_multi_key ? (
+              {record.is_group ? (
+                <SplitButtonGroup aria-label={t('渠道组操作项目组')}>
+                  <Button
+                    type='primary'
+                    size='small'
+                    onClick={() => openChannelGroup(record)}
+                  >
+                    {t('成员管理')}
+                  </Button>
+                  <Button
+                    type='tertiary'
+                    size='small'
+                    onClick={() => {
+                      setEditingChannel(record);
+                      setShowEdit(true);
+                    }}
+                  >
+                    {t('编辑')}
+                  </Button>
+                </SplitButtonGroup>
+              ) : record.channel_info?.is_multi_key ? (
                 <SplitButtonGroup aria-label={t('多密钥渠道操作项目组')}>
                   <Button
                     type='tertiary'
@@ -1057,6 +1097,7 @@ export const getChannelsColumns = ({
                       type='tertiary'
                       size='small'
                       icon={<IconTreeTriangleDown />}
+                      aria-label={t('更多操作')}
                     />
                   </Dropdown>
                 </SplitButtonGroup>
@@ -1079,7 +1120,12 @@ export const getChannelsColumns = ({
                 clickToHide
                 menu={moreMenuItems}
               >
-                <Button icon={<IconMore />} type='tertiary' size='small' />
+                <Button
+                  icon={<IconMore />}
+                  type='tertiary'
+                  size='small'
+                  aria-label={t('更多操作')}
+                />
               </Dropdown>
             </Space>
           );

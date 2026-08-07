@@ -474,6 +474,9 @@ func validateTwoFactorAuth(twoFA *model.TwoFA, code string) bool {
 
 // validateChannel 通用的渠道校验函数
 func validateChannel(channel *model.Channel, isAdd bool) error {
+	if channel == nil {
+		return fmt.Errorf("channel cannot be empty")
+	}
 	// 校验 channel settings
 	if err := channel.ValidateSettings(); err != nil {
 		return fmt.Errorf("渠道额外设置[channel setting] 格式错误：%s", err.Error())
@@ -487,6 +490,9 @@ func validateChannel(channel *model.Channel, isAdd bool) error {
 	if channel.GetResponseTimeout() < 0 {
 		return fmt.Errorf("渠道超时时间不能小于 0")
 	}
+	if channel.ParallelRequests != 0 && (channel.ParallelRequests < 1 || channel.ParallelRequests > 4) {
+		return fmt.Errorf("渠道组并行请求数必须在 1 到 4 之间")
+	}
 	if channel.Type == constant.ChannelTypeAdvancedPassThrough {
 		settings := channel.GetOtherSettings()
 		if strings.TrimSpace(settings.AdvancedOpenAIBaseURL) == "" {
@@ -499,7 +505,7 @@ func validateChannel(channel *model.Channel, isAdd bool) error {
 
 	// 如果是添加操作，检查 channel 和 key 是否为空
 	if isAdd {
-		if channel == nil || channel.Key == "" {
+		if channel.Key == "" {
 			return fmt.Errorf("channel cannot be empty")
 		}
 
@@ -630,6 +636,16 @@ func AddChannel(c *gin.Context) {
 		return
 	}
 
+	if addChannelRequest.Channel == nil {
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": "channel cannot be empty"})
+		return
+	}
+	if addChannelRequest.Mode == "group" {
+		addChannelRequest.Channel.IsGroup = true
+		if addChannelRequest.Channel.ParallelRequests == 0 {
+			addChannelRequest.Channel.ParallelRequests = 2
+		}
+	}
 	// 使用统一的校验函数
 	if err := validateChannel(addChannelRequest.Channel, true); err != nil {
 		c.JSON(http.StatusOK, gin.H{
@@ -689,6 +705,16 @@ func AddChannel(c *gin.Context) {
 		} else {
 			keys = strings.Split(addChannelRequest.Channel.Key, "\n")
 		}
+	case "group":
+		if addChannelRequest.Channel.Type == constant.ChannelTypeVertexAi && addChannelRequest.Channel.GetOtherSettings().VertexKeyType != dto.VertexKeyTypeAPIKey {
+			keys, err = getVertexArrayKeys(addChannelRequest.Channel.Key)
+			if err != nil {
+				c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
+				return
+			}
+		} else {
+			keys = strings.Split(addChannelRequest.Channel.Key, "\n")
+		}
 	case "single":
 		keys = []string{addChannelRequest.Channel.Key}
 	default:
@@ -696,6 +722,21 @@ func AddChannel(c *gin.Context) {
 			"success": false,
 			"message": "不支持的添加模式",
 		})
+		return
+	}
+	if addChannelRequest.Mode == "group" {
+		members, err := validateChannelGroupMembers(keys)
+		if err != nil {
+			c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
+			return
+		}
+		if err := model.InsertChannelGroup(addChannelRequest.Channel, members); err != nil {
+			common.ApiError(c, err)
+			return
+		}
+		model.InitChannelCache()
+		service.ResetProxyClientCache()
+		common.ApiSuccess(c, gin.H{"id": addChannelRequest.Channel.Id})
 		return
 	}
 
@@ -1011,6 +1052,14 @@ func UpdateChannel(c *gin.Context) {
 			"message": err.Error(),
 		})
 		return
+	}
+	channel.IsGroup = originChannel.IsGroup
+	if originChannel.IsGroup {
+		channel.Key = ""
+		channel.ChannelInfo.IsMultiKey = false
+		if channel.ParallelRequests == 0 {
+			channel.ParallelRequests = originChannel.ParallelRequests
+		}
 	}
 	var sub2APIState model.ChannelSub2APIState
 	sub2APIState, err = resolvePatchSub2APIState(&channel, originChannel)
@@ -1368,9 +1417,24 @@ func CopyChannel(c *gin.Context) {
 		clone.UsedQuota = 0
 	}
 
+	var insertErr error
+	if origin.IsGroup {
+		members, membersErr := model.GetChannelMembers(origin.Id, true)
+		if membersErr != nil {
+			insertErr = membersErr
+		} else {
+			for i := range members {
+				members[i].Id = 0
+				members[i].ChannelId = 0
+			}
+			insertErr = model.InsertChannelGroup(&clone, members)
+		}
+	} else {
+		insertErr = model.BatchInsertChannels([]model.Channel{clone})
+	}
 	// insert
-	if err := model.BatchInsertChannels([]model.Channel{clone}); err != nil {
-		common.SysError("failed to clone channel: " + err.Error())
+	if insertErr != nil {
+		common.SysError("failed to clone channel: " + insertErr.Error())
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": "复制渠道失败，请稍后重试"})
 		return
 	}

@@ -34,6 +34,7 @@ import EditChannelModal from './modals/EditChannelModal';
 import EditTagModal from './modals/EditTagModal';
 import MultiKeyManageModal from './modals/MultiKeyManageModal';
 import ChannelUpstreamUpdateModal from './modals/ChannelUpstreamUpdateModal';
+import ChannelGroupManageModal from './modals/ChannelGroupManageModal';
 import { createCardProPagination } from '../../../helpers/utils';
 
 const ChannelsPage = () => {
@@ -62,6 +63,12 @@ const ChannelsPage = () => {
         visible={channelsData.showMultiKeyManageModal}
         onCancel={() => channelsData.setShowMultiKeyManageModal(false)}
         channel={channelsData.currentMultiKeyChannel}
+        onRefresh={channelsData.refresh}
+      />
+      <ChannelGroupManageModal
+        visible={channelsData.showChannelGroupModal}
+        onCancel={() => channelsData.setShowChannelGroupModal(false)}
+        channel={channelsData.currentChannelGroup}
         onRefresh={channelsData.refresh}
       />
       <ChannelUpstreamUpdateModal

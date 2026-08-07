@@ -16,6 +16,7 @@ import (
 
 var group2model2channels map[string]map[string][]int // enabled channel
 var channelsIDM map[int]*Channel                     // all channels include disabled
+var channelMembersByChannelID map[int][]ChannelMember
 var channelSyncLock sync.RWMutex
 
 func InitChannelCache() {
@@ -30,6 +31,12 @@ func InitChannelCache() {
 	}
 	var abilities []*Ability
 	DB.Find(&abilities)
+	var members []ChannelMember
+	DB.Order("id asc").Find(&members)
+	newChannelMembers := make(map[int][]ChannelMember)
+	for _, member := range members {
+		newChannelMembers[member.ChannelId] = append(newChannelMembers[member.ChannelId], member)
+	}
 	groups := make(map[string]bool)
 	for _, ability := range abilities {
 		groups[ability.Group] = true
@@ -81,6 +88,7 @@ func InitChannelCache() {
 		}
 	}
 	channelsIDM = newChannelId2channel
+	channelMembersByChannelID = newChannelMembers
 	channelSyncLock.Unlock()
 	common.SysLog("channels synced from database")
 }

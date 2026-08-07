@@ -62,14 +62,18 @@ type Channel struct {
 	ParamOverride     *string `json:"param_override" gorm:"type:text"`
 	HeaderOverride    *string `json:"header_override" gorm:"type:text"`
 	Remark            *string `json:"remark" gorm:"type:varchar(255)" validate:"max=255"`
+	IsGroup           bool    `json:"is_group" gorm:"default:false;index"`
+	ParallelRequests  int     `json:"parallel_requests" gorm:"default:1"`
 	// add after v0.8.5
 	ChannelInfo ChannelInfo `json:"channel_info" gorm:"type:json"`
 
 	OtherSettings string `json:"settings" gorm:"column:settings"` // 其他设置，存储azure版本等不需要检索的信息，详见dto.ChannelOtherSettings
 
 	// cache info
-	Keys          []string `json:"-" gorm:"-"`
-	InflightCount int      `json:"inflight_count" gorm:"-"`
+	Keys               []string `json:"-" gorm:"-"`
+	InflightCount      int      `json:"inflight_count" gorm:"-"`
+	SelectedMemberId   int      `json:"-" gorm:"-"`
+	SelectedMemberName string   `json:"-" gorm:"-"`
 }
 
 type ChannelInfo struct {
@@ -443,6 +447,10 @@ func BatchDeleteChannels(ids []int) error {
 		return tx.Error
 	}
 	for _, chunk := range lo.Chunk(ids, 200) {
+		if err := tx.Where("channel_id in (?)", chunk).Delete(&ChannelMember{}).Error; err != nil {
+			tx.Rollback()
+			return err
+		}
 		if err := tx.Where("id in (?)", chunk).Delete(&Channel{}).Error; err != nil {
 			tx.Rollback()
 			return err
@@ -603,13 +611,15 @@ func (channel *Channel) UpdateManualUpstreamRateMultiplier(rate *float64) error 
 }
 
 func (channel *Channel) Delete() error {
-	var err error
-	err = DB.Delete(channel).Error
-	if err != nil {
-		return err
-	}
-	err = channel.DeleteAbilities()
-	return err
+	return DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("channel_id = ?", channel.Id).Delete(&ChannelMember{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("channel_id = ?", channel.Id).Delete(&Ability{}).Error; err != nil {
+			return err
+		}
+		return tx.Delete(channel).Error
+	})
 }
 
 var channelStatusLock sync.Mutex
