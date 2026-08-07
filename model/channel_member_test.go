@@ -88,7 +88,23 @@ func TestUpdateChannelMemberStatus_enablesGroupWhenMemberRecovers(t *testing.T) 
 	require.Equal(t, common.ChannelStatusEnabled, updated.Status)
 }
 
-func TestSelectEnabledChannelMembers_rotatesAndSkipsDisabledMembers(t *testing.T) {
+func TestSelectRandomChannelMembers_usesRandomIndexesWithoutReplacement(t *testing.T) {
+	members := []ChannelMember{{Id: 1}, {Id: 2}, {Id: 3}, {Id: 4}}
+	randomIndexes := []int{3, 1}
+	call := 0
+
+	selected := selectRandomChannelMembers(members, 2, func(limit int) int {
+		require.Less(t, randomIndexes[call], limit)
+		index := randomIndexes[call]
+		call++
+		return index
+	})
+
+	require.Equal(t, []int{4, 3}, []int{selected[0].Id, selected[1].Id})
+	require.Equal(t, 2, call)
+}
+
+func TestSelectEnabledChannelMembers_selectsUniqueEnabledMembers(t *testing.T) {
 	truncateTables(t)
 	originalMemoryCacheEnabled := common.MemoryCacheEnabled
 	common.MemoryCacheEnabled = false
@@ -103,13 +119,12 @@ func TestSelectEnabledChannelMembers_rotatesAndSkipsDisabledMembers(t *testing.T
 	}
 	require.NoError(t, DB.Create(&members).Error)
 
-	first, err := SelectEnabledChannelMembers(channel.Id, 2)
+	selected, err := SelectEnabledChannelMembers(channel.Id, 2)
 	require.NoError(t, err)
-	second, err := SelectEnabledChannelMembers(channel.Id, 2)
-
-	require.NoError(t, err)
-	require.Equal(t, []int{members[0].Id, members[2].Id}, []int{first[0].Id, first[1].Id})
-	require.Equal(t, []int{members[3].Id, members[0].Id}, []int{second[0].Id, second[1].Id})
+	require.Len(t, selected, 2)
+	require.NotEqual(t, selected[0].Id, selected[1].Id)
+	require.NotEqual(t, members[1].Id, selected[0].Id)
+	require.NotEqual(t, members[1].Id, selected[1].Id)
 }
 
 func TestConvertChannelToGroup_preservesChannelAndSplitsKeys(t *testing.T) {

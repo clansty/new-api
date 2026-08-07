@@ -1,13 +1,10 @@
 package model
 
 import (
-	"sync"
-	"sync/atomic"
+	"math/rand"
 
 	"github.com/QuantumNous/new-api/common"
 )
-
-var channelMemberPollingIndexes sync.Map
 
 func SelectEnabledChannelMembers(channelId int, limit int) ([]ChannelMember, error) {
 	if limit <= 0 {
@@ -20,13 +17,15 @@ func SelectEnabledChannelMembers(channelId int, limit int) ([]ChannelMember, err
 	if limit > len(members) {
 		limit = len(members)
 	}
-	counter := channelMemberPollingIndex(channelId)
-	start := int(counter.Add(uint64(limit))-uint64(limit)) % len(members)
-	selected := make([]ChannelMember, 0, limit)
-	for offset := range limit {
-		selected = append(selected, members[(start+offset)%len(members)])
+	return selectRandomChannelMembers(members, limit, rand.Intn), nil
+}
+
+func selectRandomChannelMembers(members []ChannelMember, limit int, randomIndex func(int) int) []ChannelMember {
+	for index := range limit {
+		swapIndex := index + randomIndex(len(members)-index)
+		members[index], members[swapIndex] = members[swapIndex], members[index]
 	}
-	return selected, nil
+	return members[:limit]
 }
 
 func enabledChannelMembers(channelId int) ([]ChannelMember, error) {
@@ -46,13 +45,4 @@ func enabledChannelMembers(channelId int) ([]ChannelMember, error) {
 		}
 	}
 	return enabled, nil
-}
-
-func channelMemberPollingIndex(channelId int) *atomic.Uint64 {
-	if value, ok := channelMemberPollingIndexes.Load(channelId); ok {
-		return value.(*atomic.Uint64)
-	}
-	counter := &atomic.Uint64{}
-	actual, _ := channelMemberPollingIndexes.LoadOrStore(channelId, counter)
-	return actual.(*atomic.Uint64)
 }

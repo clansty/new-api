@@ -55,6 +55,10 @@
 - 成员表仅依赖横向滚动会让平板和手机端的右侧操作不可发现；窄屏应保留固定操作列，将完整命令收进菜单，并截图验证菜单和删除确认均可触达。
 - 使用 `useIsMobile` 的组件需要在目标宽度重新加载页面，避免响应式状态尚未更新时截到桌面列配置。
 
+## 渠道内存缓存 QA
+
+- 调用 `InitChannelCache()` 的测试夹具必须为启用渠道同时创建匹配 `Group`、`Models` 的 `Ability`；只有渠道而没有能力记录会让分组模型映射缺失，导致缓存初始化 panic。
+
 ## 响应式日志展开行 QA
 
 - Semi Table 的单元格 class 包含 `semi-table-row-cell`，用 `contains(@class, "semi-table-row")` 会误定位到 `<td>`；Playwright 应精确匹配 class token 或直接定位 `<tr>`，再点击首列展开控件。
