@@ -98,6 +98,39 @@ func TestStreamResponseOpenAI2ClaudeEmitsSignatureBeforeToolUse(t *testing.T) {
 	require.Equal(t, "tool_use", responses[2].ContentBlock.Type)
 }
 
+func TestStreamResponseOpenAI2Claude_keepsAttemptStateAfterAnotherAttemptFinishes(t *testing.T) {
+	base := testRelayInfo()
+	base.RelayFormat = types.RelayFormatClaude
+	base.SendResponseCount = 1
+
+	finishedAttempt, err := base.CloneForAttempt()
+	require.NoError(t, err)
+	activeAttempt, err := base.CloneForAttempt()
+	require.NoError(t, err)
+	finishedAttempt.SendResponseCount = 1
+	activeAttempt.SendResponseCount = 1
+
+	reasoning := "first thinking delta"
+	firstDelta := &dto.ChatCompletionsStreamResponse{
+		Id:    "chatcmpl-123",
+		Model: "mimo-v2.5-free",
+		Choices: []dto.ChatCompletionsStreamResponseChoice{{
+			Index: 0,
+			Delta: dto.ChatCompletionsStreamResponseChoiceDelta{ReasoningContent: &reasoning},
+		}},
+	}
+	require.NotEmpty(t, StreamResponseOpenAI2Claude(firstDelta, finishedAttempt))
+
+	finishedAttempt.SendResponseCount++
+	finish := &dto.ChatCompletionsStreamResponse{
+		Usage: &dto.Usage{PromptTokens: 1, CompletionTokens: 1, TotalTokens: 2},
+	}
+	require.NotEmpty(t, StreamResponseOpenAI2Claude(finish, finishedAttempt))
+	require.True(t, finishedAttempt.ClaudeConvertInfo.Done)
+
+	require.NotEmpty(t, StreamResponseOpenAI2Claude(firstDelta, activeAttempt))
+}
+
 func TestStreamResponseOpenAI2ClaudeEmitsBlankSignatureBeforeToolUse(t *testing.T) {
 	info := testRelayInfo()
 	info.RelayFormat = types.RelayFormatClaude

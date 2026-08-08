@@ -29,6 +29,14 @@ func (info *RelayInfo) CloneForAttempt() (*RelayInfo, error) {
 	clone.ParamOverrideAudit = nil
 	clone.RequestConversionChain = append([]types.RelayFormat(nil), info.RequestConversionChain...)
 	clone.ThinkingContentInfo = ThinkingContentInfo{IsFirstThinkingContent: true}
+	if info.ClaudeConvertInfo != nil {
+		claudeConvertInfo := *info.ClaudeConvertInfo
+		if info.ClaudeConvertInfo.Usage != nil {
+			usage := *info.ClaudeConvertInfo.Usage
+			claudeConvertInfo.Usage = &usage
+		}
+		clone.ClaudeConvertInfo = &claudeConvertInfo
+	}
 	if info.RuntimeHeadersOverride != nil {
 		clone.RuntimeHeadersOverride = make(map[string]interface{}, len(info.RuntimeHeadersOverride))
 		for key, value := range info.RuntimeHeadersOverride {

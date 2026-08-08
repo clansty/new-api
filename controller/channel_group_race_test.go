@@ -102,6 +102,72 @@ func TestRelayChannelGroup_returnsFastestMemberAndCancelsLoser(t *testing.T) {
 	require.Equal(t, &service.ChannelRaceMemberLog{MemberId: members[1].Id, MemberName: members[1].Name}, traces[0].Winner)
 }
 
+func TestRelayChannelGroup_isolatesClaudeConversionStatePerAttempt(t *testing.T) {
+	originalDB := model.DB
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	model.DB = db
+	t.Cleanup(func() { model.DB = originalDB })
+	require.NoError(t, db.AutoMigrate(&model.Channel{}, &model.ChannelMember{}, &model.Ability{}))
+	originalMemoryCacheEnabled := common.MemoryCacheEnabled
+	common.MemoryCacheEnabled = false
+	t.Cleanup(func() { common.MemoryCacheEnabled = originalMemoryCacheEnabled })
+
+	channel := model.Channel{
+		Name:             "Claude 状态隔离组",
+		Type:             constant.ChannelTypeOpenAI,
+		Status:           common.ChannelStatusEnabled,
+		IsGroup:          true,
+		ParallelRequests: 2,
+	}
+	require.NoError(t, db.Create(&channel).Error)
+	members := []model.ChannelMember{
+		{ChannelId: channel.Id, Name: "状态成员 A", Key: "sk-a", Status: common.ChannelStatusEnabled},
+		{ChannelId: channel.Id, Name: "状态成员 B", Key: "sk-b", Status: common.ChannelStatusEnabled},
+	}
+	require.NoError(t, db.Create(&members).Error)
+
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest("POST", "/v1/messages", nil)
+	info := &relaycommon.RelayInfo{
+		OriginModelName:   "claude-test",
+		Request:           &dto.ClaudeRequest{},
+		RelayMode:         relayconstant.RelayModeClaudeMessages,
+		RelayFormat:       types.RelayFormatClaude,
+		StartTime:         time.Now(),
+		ClaudeConvertInfo: &relaycommon.ClaudeConvertInfo{},
+	}
+	memberASet := make(chan struct{})
+	releaseMemberA := make(chan struct{})
+	memberBObservedDone := make(chan bool, 1)
+
+	apiErr := relayChannelGroup(channelGroupRaceRequest{
+		ctx:     ctx,
+		info:    info,
+		channel: &channel,
+		handler: func(attemptCtx *gin.Context, attemptInfo *relaycommon.RelayInfo) *types.NewAPIError {
+			memberName := common.GetContextKeyString(attemptCtx, constant.ContextKeyChannelMemberName)
+			if memberName == members[0].Name {
+				attemptInfo.ClaudeConvertInfo.Done = true
+				close(memberASet)
+				<-releaseMemberA
+			} else {
+				<-memberASet
+				memberBObservedDone <- attemptInfo.ClaudeConvertInfo.Done
+				close(releaseMemberA)
+			}
+			if _, writeErr := attemptCtx.Writer.Write([]byte("data: member\n\n")); writeErr != nil {
+				return types.NewError(writeErr, types.ErrorCodeBadResponse)
+			}
+			return nil
+		},
+	})
+
+	require.Nil(t, apiErr)
+	require.False(t, <-memberBObservedDone)
+}
+
 func TestRelayChannelGroup_twoFailuresOnlyWaitsGraceForPendingMember(t *testing.T) {
 	originalDB := model.DB
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
