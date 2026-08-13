@@ -33,6 +33,7 @@ import { initVChartSemiTheme } from '@visactor/vchart-semi-theme';
 import { Activity, RefreshCw } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { API, showError } from '../../helpers';
+import { buildPerformanceChartValues } from './chartData';
 
 const RANGE_SECONDS = { day: 86400, week: 604800, month: 2592000 };
 const SMALL_SIZE = 'small';
@@ -103,21 +104,7 @@ const Performance = () => {
   }, [range, modelName, channel, groupBy, revision]);
 
   const chartValues = useMemo(
-    () =>
-      data.series.flatMap((series) =>
-        series.points
-          .filter((point) => point[metric]?.samples > 0)
-          .map((point) => ({
-            time: new Date(point.timestamp * 1000).toLocaleString([], {
-              month: '2-digit',
-              day: '2-digit',
-              hour: '2-digit',
-              minute: '2-digit',
-            }),
-            value: point[metric][percentile],
-            series: series.name,
-          })),
-      ),
+    () => buildPerformanceChartValues(data.series, metric, percentile),
     [data.series, metric, percentile],
   );
 
