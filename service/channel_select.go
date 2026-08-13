@@ -19,6 +19,7 @@ type RetryParam struct {
 	Retry                   *int
 	FailedChannelIDs        map[int]struct{}
 	RequireDifferentChannel bool
+	AlphaSearch             bool
 	resetNextTry            bool
 }
 
@@ -102,9 +103,17 @@ func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, 
 			logger.LogDebug(param.Ctx, "Auto selecting group: %s, groupRetry: %d", autoGroup, groupRetry)
 
 			if param.RequireDifferentChannel {
-				channel, _ = model.GetRandomSatisfiedChannelExcludingFailedStrict(autoGroup, param.ModelName, param.FailedChannelIDs, nextPriorityOnFailure)
+				if param.AlphaSearch {
+					channel, _ = model.GetRandomSatisfiedChannelForAlphaSearchExcludingFailedStrict(autoGroup, param.ModelName, param.FailedChannelIDs, nextPriorityOnFailure)
+				} else {
+					channel, _ = model.GetRandomSatisfiedChannelExcludingFailedStrict(autoGroup, param.ModelName, param.FailedChannelIDs, nextPriorityOnFailure)
+				}
 			} else {
-				channel, _ = model.GetRandomSatisfiedChannelExcludingFailed(autoGroup, param.ModelName, param.FailedChannelIDs, nextPriorityOnFailure)
+				if param.AlphaSearch {
+					channel, _ = model.GetRandomSatisfiedChannelForAlphaSearchExcludingFailed(autoGroup, param.ModelName, param.FailedChannelIDs, nextPriorityOnFailure)
+				} else {
+					channel, _ = model.GetRandomSatisfiedChannelExcludingFailed(autoGroup, param.ModelName, param.FailedChannelIDs, nextPriorityOnFailure)
+				}
 			}
 			if channel == nil {
 				logger.LogDebug(param.Ctx, "No available channel in group %s for model %s at groupRetry %d, trying next group", autoGroup, param.ModelName, groupRetry)
@@ -129,9 +138,17 @@ func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, 
 		}
 	} else {
 		if param.RequireDifferentChannel {
-			channel, err = model.GetRandomSatisfiedChannelExcludingFailedStrict(param.TokenGroup, param.ModelName, param.FailedChannelIDs, nextPriorityOnFailure)
+			if param.AlphaSearch {
+				channel, err = model.GetRandomSatisfiedChannelForAlphaSearchExcludingFailedStrict(param.TokenGroup, param.ModelName, param.FailedChannelIDs, nextPriorityOnFailure)
+			} else {
+				channel, err = model.GetRandomSatisfiedChannelExcludingFailedStrict(param.TokenGroup, param.ModelName, param.FailedChannelIDs, nextPriorityOnFailure)
+			}
 		} else {
-			channel, err = model.GetRandomSatisfiedChannelExcludingFailed(param.TokenGroup, param.ModelName, param.FailedChannelIDs, nextPriorityOnFailure)
+			if param.AlphaSearch {
+				channel, err = model.GetRandomSatisfiedChannelForAlphaSearchExcludingFailed(param.TokenGroup, param.ModelName, param.FailedChannelIDs, nextPriorityOnFailure)
+			} else {
+				channel, err = model.GetRandomSatisfiedChannelExcludingFailed(param.TokenGroup, param.ModelName, param.FailedChannelIDs, nextPriorityOnFailure)
+			}
 		}
 		if err != nil {
 			return nil, param.TokenGroup, err

@@ -9,8 +9,10 @@ import (
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/types"
+	"github.com/gin-gonic/gin"
 )
 
 func formatNotifyType(channelId int, status int) string {
@@ -96,6 +98,13 @@ func ShouldDisableChannel(err *types.NewAPIError) bool {
 	lowerMessage := strings.ToLower(err.Error())
 	search, _ := AcSearch(lowerMessage, operation_setting.AutomaticDisableKeywords, true)
 	return search
+}
+
+func ShouldDisableChannelForRequest(c *gin.Context, err *types.NewAPIError) bool {
+	if c != nil && c.Request != nil && relayconstant.Path2RelayMode(c.Request.URL.Path) == relayconstant.RelayModeAlphaSearch {
+		return false
+	}
+	return ShouldDisableChannel(err)
 }
 
 func ShouldEnableChannel(newAPIError *types.NewAPIError, status int) bool {

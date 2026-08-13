@@ -174,6 +174,8 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 	if endpointType != "" {
 		// 根据指定的端点类型设置 relayFormat
 		switch constant.EndpointType(endpointType) {
+		case constant.EndpointTypeOpenAIAlphaSearch:
+			relayFormat = types.RelayFormatOpenAIAlphaSearch
 		case constant.EndpointTypeOpenAI:
 			relayFormat = types.RelayFormatOpenAI
 		case constant.EndpointTypeOpenAIResponse:
@@ -220,6 +222,12 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 	}
 
 	request := buildTestRequest(testModel, endpointType, channel, isStream)
+	if alphaRequest, ok := request.(*dto.AlphaSearchRequest); ok {
+		if query := c.GetString("alpha_search_test_query"); query != "" {
+			alphaRequest.Input = query
+			alphaRequest.Commands = json.RawMessage(fmt.Sprintf(`{"search_query":[{"q":%q}],"response_length":"short"}`, query))
+		}
+	}
 
 	info, err := relaycommon.GenRelayInfo(c, relayFormat, request, nil)
 
@@ -281,12 +289,15 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 	//logInfo.ApiKey = ""
 	common.SysLog(fmt.Sprintf("testing channel %d with model %s , info %+v ", channel.Id, testModel, info.ToString()))
 
-	priceData, err := helper.ModelPriceHelper(c, info, 0, request.GetTokenCountMeta())
-	if err != nil {
-		return testResult{
-			context:     c,
-			localErr:    err,
-			newAPIError: types.NewError(err, types.ErrorCodeModelPriceError, types.ErrOptionWithStatusCode(http.StatusBadRequest)),
+	var priceData types.PriceData
+	if info.RelayMode != relayconstant.RelayModeAlphaSearch {
+		priceData, err = helper.ModelPriceHelper(c, info, 0, request.GetTokenCountMeta())
+		if err != nil {
+			return testResult{
+				context:     c,
+				localErr:    err,
+				newAPIError: types.NewError(err, types.ErrorCodeModelPriceError, types.ErrOptionWithStatusCode(http.StatusBadRequest)),
+			}
 		}
 	}
 
@@ -358,6 +369,8 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 				newAPIError: types.NewError(errors.New("invalid response compaction request type"), types.ErrorCodeConvertRequestFailed),
 			}
 		}
+	case relayconstant.RelayModeAlphaSearch:
+		convertedRequest = request
 	default:
 		// Chat/Completion 等其他请求类型
 		if generalReq, ok := request.(*dto.GeneralOpenAIRequest); ok {
@@ -427,7 +440,7 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 	var httpResp *http.Response
 	if resp != nil {
 		httpResp = resp.(*http.Response)
-		if httpResp.StatusCode != http.StatusOK {
+		if httpResp.StatusCode < http.StatusOK || httpResp.StatusCode >= http.StatusMultipleChoices {
 			err := service.RelayErrorHandler(c.Request.Context(), httpResp, true)
 			common.SysError(fmt.Sprintf(
 				"channel test bad response: channel_id=%d name=%s type=%d model=%s endpoint_type=%s status=%d err=%v",
@@ -445,6 +458,22 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 				newAPIError: types.NewOpenAIError(err, types.ErrorCodeBadResponse, http.StatusInternalServerError),
 			}
 		}
+	}
+	if info.RelayMode == relayconstant.RelayModeAlphaSearch {
+		body, readErr := io.ReadAll(httpResp.Body)
+		service.CloseResponseBodyGracefully(httpResp)
+		if readErr != nil {
+			return testResult{context: c, localErr: readErr, newAPIError: types.NewError(readErr, types.ErrorCodeReadResponseBodyFailed)}
+		}
+		var response map[string]any
+		if decodeErr := common.Unmarshal(body, &response); decodeErr != nil {
+			return testResult{context: c, localErr: decodeErr, newAPIError: types.NewError(decodeErr, types.ErrorCodeBadResponseBody)}
+		}
+		if response["error"] != nil {
+			responseErr := fmt.Errorf("alpha search response contains error: %v", response["error"])
+			return testResult{context: c, localErr: responseErr, newAPIError: types.NewError(responseErr, types.ErrorCodeBadResponseBody)}
+		}
+		return testResult{context: c}
 	}
 	usageA, respErr := adaptor.DoResponse(c, httpResp, info)
 	if respErr != nil {
@@ -687,6 +716,15 @@ func buildTestRequest(model string, endpointType string, channel *model.Channel,
 	// 根据端点类型构建不同的测试请求
 	if endpointType != "" {
 		switch constant.EndpointType(endpointType) {
+		case constant.EndpointTypeOpenAIAlphaSearch:
+			return &dto.AlphaSearchRequest{
+				ID:              fmt.Sprintf("search-%d", time.Now().Unix()),
+				Model:           model,
+				Input:           "OpenAI latest news",
+				Commands:        json.RawMessage(`{"search_query":[{"q":"OpenAI latest news"}],"response_length":"short"}`),
+				Settings:        json.RawMessage(`{"search_context_size":"medium","allowed_callers":["direct"],"external_web_access":true}`),
+				MaxOutputTokens: lo.ToPtr(uint(2500)),
+			}
 		case constant.EndpointTypeEmbeddings:
 			// 返回 EmbeddingRequest
 			return &dto.EmbeddingRequest{
@@ -880,6 +918,62 @@ func TestChannel(c *gin.Context) {
 		"message": "",
 		"time":    consumedTime,
 	})
+}
+
+func TestChannelAlphaSearch(c *gin.Context) {
+	channelId, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	channel, err := model.CacheGetChannel(channelId)
+	if err != nil {
+		channel, err = model.GetChannelById(channelId, true)
+	}
+	if err != nil || channel == nil {
+		common.ApiError(c, err)
+		return
+	}
+	if channel.IsGroup {
+		members, selectErr := model.SelectEnabledChannelMembers(channel.Id, 1)
+		if selectErr != nil || len(members) == 0 {
+			c.JSON(http.StatusOK, gin.H{"success": false, "message": "渠道组没有可用成员"})
+			return
+		}
+		channel = model.ResolveChannelMember(channel, &members[0])
+	}
+	query := strings.TrimSpace(c.Query("query"))
+	if query == "" {
+		query = "OpenAI latest news"
+	}
+	c.Set("alpha_search_test_query", query)
+	result := testChannel(channel, "gpt-5.6-luna", "openai-alpha-search", false)
+	if result.localErr != nil || result.newAPIError != nil {
+		message := "alpha search 探测失败"
+		if result.localErr != nil {
+			message = result.localErr.Error()
+		} else {
+			message = result.newAPIError.Error()
+		}
+		setting := channel.GetOtherSettings()
+		supported := false
+		setting.AlphaSearchSupported = &supported
+		channel.SetOtherSettings(setting)
+		_ = channel.Update()
+		model.InitChannelCache()
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": message, "time": 0.0})
+		return
+	}
+	supported := true
+	setting := channel.GetOtherSettings()
+	setting.AlphaSearchSupported = &supported
+	channel.SetOtherSettings(setting)
+	if err = channel.Update(); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	model.InitChannelCache()
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "", "query": query})
 }
 
 var testAllChannelsLock sync.Mutex

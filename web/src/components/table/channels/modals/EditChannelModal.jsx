@@ -227,6 +227,7 @@ const EditChannelModal = (props) => {
     advanced_anthropic_base_url: '',
     advanced_responses_supported: false,
     responses_via_chat_completions: false,
+    alpha_search_supported: true,
     upstream_model_update_check_enabled: false,
     upstream_model_update_auto_sync_enabled: false,
     upstream_model_update_last_check_time: 0,
@@ -930,6 +931,7 @@ const EditChannelModal = (props) => {
             parsedSettings.advanced_responses_supported === true;
           data.responses_via_chat_completions =
             parsedSettings.responses_via_chat_completions === true;
+          data.alpha_search_supported = parsedSettings.alpha_search_supported !== false;
           data.upstream_model_update_check_enabled =
             parsedSettings.upstream_model_update_check_enabled === true;
           data.upstream_model_update_auto_sync_enabled =
@@ -964,6 +966,7 @@ const EditChannelModal = (props) => {
           data.advanced_anthropic_base_url = '';
           data.advanced_responses_supported = false;
           data.responses_via_chat_completions = false;
+          data.alpha_search_supported = true;
           data.upstream_model_update_check_enabled = false;
           data.upstream_model_update_auto_sync_enabled = false;
           data.upstream_model_update_last_check_time = 0;
@@ -986,6 +989,7 @@ const EditChannelModal = (props) => {
         data.advanced_anthropic_base_url = '';
         data.advanced_responses_supported = false;
         data.responses_via_chat_completions = false;
+        data.alpha_search_supported = true;
         data.upstream_model_update_check_enabled = false;
         data.upstream_model_update_auto_sync_enabled = false;
         data.upstream_model_update_last_check_time = 0;
@@ -1861,6 +1865,7 @@ const EditChannelModal = (props) => {
           localInputs.allow_include_obfuscation === true;
         settings.responses_via_chat_completions =
           localInputs.responses_via_chat_completions === true;
+        settings.alpha_search_supported = localInputs.alpha_search_supported !== false;
       }
       if (localInputs.type === 14) {
         settings.allow_inference_geo = localInputs.allow_inference_geo === true;
@@ -1870,6 +1875,9 @@ const EditChannelModal = (props) => {
         settings.claude_beta_query = localInputs.claude_beta_query === true;
       }
     }
+	if ([1, 57, 58, 60].includes(localInputs.type)) {
+	  settings.alpha_search_supported = localInputs.alpha_search_supported !== false;
+	}
     if (localInputs.type !== 1) {
       delete settings.responses_via_chat_completions;
     }
@@ -2649,6 +2657,31 @@ const EditChannelModal = (props) => {
 
                   {inputs.type === 1 && (
                     <Form.Switch field='responses_via_chat_completions' label={t('将 Responses 转为 Chat Completions')} checkedText={t('开')} uncheckedText={t('关')} onChange={(value) => handleChannelOtherSettingsChange('responses_via_chat_completions', value)} extraText={t('开启后 /v1/responses 会转为 Chat Completions 请求上游，并将响应还原为 Responses 协议；不支持 /v1/responses/compact')} />
+                  )}
+
+                  {(inputs.type === 1 || inputs.type === 57 || inputs.type === 58 || inputs.type === 60) && (
+                    <Space align='center' spacing={8} style={{ width: '100%' }}>
+                      <Form.Switch field='alpha_search_supported' label={t('参与 Alpha Search 调度')} checkedText={t('开')} uncheckedText={t('关')} onChange={(value) => handleChannelOtherSettingsChange('alpha_search_supported', value)} extraText={t('关闭后该渠道不会参与 /v1/alpha/search 的渠道选择')} />
+                      {isEdit && (
+                        <Button
+                          type='tertiary'
+                          theme='borderless'
+                          icon={<IconSearch size={14} />}
+                          onClick={async () => {
+                            const res = await API.get(`/api/channel/${channelId}/test_alpha_search`);
+                            if (res.data?.success) {
+                              showSuccess(t('Alpha Search 探测成功'));
+                              handleChannelOtherSettingsChange('alpha_search_supported', true);
+                            } else {
+                              showError(res.data?.message || t('Alpha Search 探测失败'));
+                              handleChannelOtherSettingsChange('alpha_search_supported', false);
+                            }
+                          }}
+                        >
+                          {t('探测')}
+                        </Button>
+                      )}
+                    </Space>
                   )}
 
                   {inputs.type === 60 && (

@@ -19,19 +19,30 @@ type retrySelectionCandidate struct {
 // nextPriorityOnFailure 为 true 时，本优先级只要有渠道已失败，就整层跳过、直接尝试下一优先级；
 // 为 false（默认）时，在同优先级内继续选择未失败的渠道，本层全部失败后才降级。
 func GetRandomSatisfiedChannelExcludingFailed(group string, modelName string, failedChannelIDs map[int]struct{}, nextPriorityOnFailure bool) (*Channel, error) {
-	return getRandomSatisfiedChannelExcludingFailed(group, modelName, failedChannelIDs, nextPriorityOnFailure, true)
+	return getRandomSatisfiedChannelExcludingFailed(group, modelName, failedChannelIDs, nextPriorityOnFailure, true, false)
+}
+
+func GetRandomSatisfiedChannelForAlphaSearchExcludingFailed(group string, modelName string, failedChannelIDs map[int]struct{}, nextPriorityOnFailure bool) (*Channel, error) {
+	return getRandomSatisfiedChannelExcludingFailed(group, modelName, failedChannelIDs, nextPriorityOnFailure, true, true)
 }
 
 func GetRandomSatisfiedChannelExcludingFailedStrict(group string, modelName string, failedChannelIDs map[int]struct{}, nextPriorityOnFailure bool) (*Channel, error) {
-	return getRandomSatisfiedChannelExcludingFailed(group, modelName, failedChannelIDs, nextPriorityOnFailure, false)
+	return getRandomSatisfiedChannelExcludingFailed(group, modelName, failedChannelIDs, nextPriorityOnFailure, false, false)
 }
 
-func getRandomSatisfiedChannelExcludingFailed(group string, modelName string, failedChannelIDs map[int]struct{}, nextPriorityOnFailure bool, allowFailedFallback bool) (*Channel, error) {
+func GetRandomSatisfiedChannelForAlphaSearchExcludingFailedStrict(group string, modelName string, failedChannelIDs map[int]struct{}, nextPriorityOnFailure bool) (*Channel, error) {
+	return getRandomSatisfiedChannelExcludingFailed(group, modelName, failedChannelIDs, nextPriorityOnFailure, false, true)
+}
+
+func getRandomSatisfiedChannelExcludingFailed(group string, modelName string, failedChannelIDs map[int]struct{}, nextPriorityOnFailure bool, allowFailedFallback bool, alphaSearch bool) (*Channel, error) {
 	if len(failedChannelIDs) == 0 {
+		if alphaSearch {
+			return GetRandomSatisfiedChannelForAlphaSearch(group, modelName, 0)
+		}
 		return GetRandomSatisfiedChannel(group, modelName, 0)
 	}
 	if !common.MemoryCacheEnabled {
-		return getChannelExcludingFailedDB(group, modelName, failedChannelIDs, nextPriorityOnFailure, allowFailedFallback)
+		return getChannelExcludingFailedDB(group, modelName, failedChannelIDs, nextPriorityOnFailure, allowFailedFallback, alphaSearch)
 	}
 
 	channelSyncLock.RLock()
@@ -47,6 +58,9 @@ func getRandomSatisfiedChannelExcludingFailed(group string, modelName string, fa
 		channel, ok := channelsIDM[channelID]
 		if !ok {
 			return nil, fmt.Errorf("数据库一致性错误，渠道# %d 不存在，请联系管理员修复", channelID)
+		}
+		if alphaSearch && !channel.SupportsAlphaSearch() {
+			continue
 		}
 		candidates = append(candidates, retrySelectionCandidate{
 			channelID: channel.Id,
@@ -78,8 +92,8 @@ func channelIDsForGroupModel(group string, modelName string) []int {
 	return group2model2channels[group][normalizedModel]
 }
 
-func getChannelExcludingFailedDB(group string, modelName string, failedChannelIDs map[int]struct{}, nextPriorityOnFailure bool, allowFailedFallback bool) (*Channel, error) {
-	abilities, err := retryAbilitiesForGroupModel(group, modelName)
+func getChannelExcludingFailedDB(group string, modelName string, failedChannelIDs map[int]struct{}, nextPriorityOnFailure bool, allowFailedFallback bool, alphaSearch bool) (*Channel, error) {
+	abilities, err := retryAbilitiesForGroupModel(group, modelName, alphaSearch)
 	if err != nil || len(abilities) == 0 {
 		return nil, err
 	}
@@ -102,8 +116,8 @@ func getChannelExcludingFailedDB(group string, modelName string, failedChannelID
 	return &channel, err
 }
 
-func retryAbilitiesForGroupModel(group string, modelName string) ([]Ability, error) {
-	abilities, err := findRetryAbilities(group, modelName)
+func retryAbilitiesForGroupModel(group string, modelName string, alphaSearch bool) ([]Ability, error) {
+	abilities, err := findRetryAbilities(group, modelName, alphaSearch)
 	if err != nil || len(abilities) > 0 {
 		return abilities, err
 	}
@@ -111,15 +125,25 @@ func retryAbilitiesForGroupModel(group string, modelName string) ([]Ability, err
 	if normalizedModel == "" || normalizedModel == modelName {
 		return nil, nil
 	}
-	return findRetryAbilities(group, normalizedModel)
+	return findRetryAbilities(group, normalizedModel, alphaSearch)
 }
 
-func findRetryAbilities(group string, modelName string) ([]Ability, error) {
+func findRetryAbilities(group string, modelName string, alphaSearch bool) ([]Ability, error) {
 	var abilities []Ability
-	err := DB.Model(&Ability{}).
+	query := DB.Model(&Ability{}).
 		Where(commonGroupCol+" = ? and model = ? and enabled = ?", group, modelName, true).
-		Order("priority DESC").
-		Find(&abilities).Error
+		Order("priority DESC")
+	err := query.Find(&abilities).Error
+	if alphaSearch {
+		filtered := abilities[:0]
+		for _, ability := range abilities {
+			channel, loadErr := GetChannelById(ability.ChannelId, true)
+			if loadErr == nil && channel.SupportsAlphaSearch() {
+				filtered = append(filtered, ability)
+			}
+		}
+		abilities = filtered
+	}
 	return abilities, err
 }
 

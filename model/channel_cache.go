@@ -109,8 +109,19 @@ func SyncChannelCache(frequency int) {
 }
 
 func GetRandomSatisfiedChannel(group string, model string, retry int) (*Channel, error) {
+	return getRandomSatisfiedChannel(group, model, retry, false)
+}
+
+func GetRandomSatisfiedChannelForAlphaSearch(group string, model string, retry int) (*Channel, error) {
+	return getRandomSatisfiedChannel(group, model, retry, true)
+}
+
+func getRandomSatisfiedChannel(group string, model string, retry int, alphaSearch bool) (*Channel, error) {
 	// if memory cache is disabled, get channel directly from database
 	if !common.MemoryCacheEnabled {
+		if alphaSearch {
+			return getChannelForAlphaSearch(group, model, retry)
+		}
 		return GetChannel(group, model, retry)
 	}
 
@@ -128,6 +139,19 @@ func GetRandomSatisfiedChannel(group string, model string, retry int) (*Channel,
 
 	if len(channels) == 0 {
 		return nil, nil
+	}
+	if alphaSearch {
+		eligibleChannels := channels[:0]
+		for _, channelID := range channels {
+			channel, ok := channelsIDM[channelID]
+			if ok && channel.SupportsAlphaSearch() {
+				eligibleChannels = append(eligibleChannels, channelID)
+			}
+		}
+		channels = eligibleChannels
+		if len(channels) == 0 {
+			return nil, nil
+		}
 	}
 
 	if len(channels) == 1 {
@@ -203,6 +227,63 @@ func GetRandomSatisfiedChannel(group string, model string, retry int) (*Channel,
 	}
 	// return null if no channel is not found
 	return nil, errors.New("channel not found")
+}
+
+func getChannelForAlphaSearch(group string, modelName string, retry int) (*Channel, error) {
+	var abilities []Ability
+	if err := DB.Where(commonGroupCol+" = ? and model = ? and enabled = ?", group, modelName, true).Find(&abilities).Error; err != nil {
+		return nil, err
+	}
+	if len(abilities) == 0 {
+		normalizedModel := ratio_setting.FormatMatchingModelName(modelName)
+		if normalizedModel != "" && normalizedModel != modelName {
+			if err := DB.Where(commonGroupCol+" = ? and model = ? and enabled = ?", group, normalizedModel, true).Find(&abilities).Error; err != nil {
+				return nil, err
+			}
+		}
+	}
+	filtered := make([]Ability, 0, len(abilities))
+	for _, ability := range abilities {
+		channel, loadErr := GetChannelById(ability.ChannelId, true)
+		if loadErr == nil && channel.SupportsAlphaSearch() {
+			filtered = append(filtered, ability)
+		}
+	}
+	if len(filtered) == 0 {
+		return nil, nil
+	}
+	sort.SliceStable(filtered, func(i, j int) bool {
+		return abilityPriority(filtered[i]) > abilityPriority(filtered[j])
+	})
+	priorities := make([]int64, 0)
+	for _, ability := range filtered {
+		priority := abilityPriority(ability)
+		if len(priorities) == 0 || priorities[len(priorities)-1] != priority {
+			priorities = append(priorities, priority)
+		}
+	}
+	if retry >= len(priorities) {
+		retry = len(priorities) - 1
+	}
+	targetPriority := priorities[retry]
+	eligible := filtered[:0]
+	for _, ability := range filtered {
+		if abilityPriority(ability) == targetPriority {
+			eligible = append(eligible, ability)
+		}
+	}
+	weightSum := uint(0)
+	for _, ability := range eligible {
+		weightSum += ability.Weight + 10
+	}
+	weight := common.GetRandomInt(int(weightSum))
+	for _, ability := range eligible {
+		weight -= int(ability.Weight) + 10
+		if weight <= 0 {
+			return GetChannelById(ability.ChannelId, true)
+		}
+	}
+	return nil, nil
 }
 
 func CacheGetChannel(id int) (*Channel, error) {

@@ -146,10 +146,11 @@ func Distribute() func(c *gin.Context) {
 
 				if channel == nil {
 					channel, selectGroup, err = service.CacheGetRandomSatisfiedChannel(&service.RetryParam{
-						Ctx:        c,
-						ModelName:  modelRequest.Model,
-						TokenGroup: usingGroup,
-						Retry:      common.GetPointer(0),
+						Ctx:         c,
+						ModelName:   modelRequest.Model,
+						TokenGroup:  usingGroup,
+						Retry:       common.GetPointer(0),
+						AlphaSearch: relayMode == relayconstant.RelayModeAlphaSearch,
 					})
 					if err != nil {
 						showGroup := usingGroup
@@ -287,6 +288,14 @@ func getModelRequest(c *gin.Context) (*ModelRequest, bool, error) {
 			modelRequest.Model = modelName
 		}
 		c.Set("relay_mode", relayMode)
+	} else if relayconstant.Path2RelayMode(c.Request.URL.Path) == relayconstant.RelayModeAlphaSearch {
+		relayMode := relayconstant.RelayModeAlphaSearch
+		c.Set("relay_mode", relayMode)
+		req, reqErr := getModelFromRequest(c)
+		if reqErr != nil {
+			return nil, false, reqErr
+		}
+		modelRequest.Model = req.Model
 	} else if !strings.HasPrefix(c.Request.URL.Path, "/v1/audio/transcriptions") && !strings.Contains(c.Request.Header.Get("Content-Type"), "multipart/form-data") {
 		req, err := getModelFromRequest(c)
 		if err != nil {

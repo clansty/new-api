@@ -988,6 +988,15 @@ func (channel *Channel) SetOtherSettings(setting dto.ChannelOtherSettings) {
 	channel.OtherSettings = string(settingBytes)
 }
 
+func (channel *Channel) SupportsAlphaSearch() bool {
+	apiType, ok := common.ChannelType2APIType(channel.Type)
+	if !ok || (apiType != constant.APITypeOpenAI && apiType != constant.APITypeCodex && apiType != constant.APITypePassThrough) {
+		return false
+	}
+	setting := channel.GetOtherSettings()
+	return setting.AlphaSearchSupported == nil || *setting.AlphaSearchSupported
+}
+
 func (channel *Channel) GetParamOverride() map[string]interface{} {
 	paramOverride := make(map[string]interface{})
 	if channel.ParamOverride != nil && *channel.ParamOverride != "" {

@@ -35,6 +35,7 @@ const (
 )
 
 type ChannelOtherSettings struct {
+	AlphaSearchSupported                  *bool         `json:"alpha_search_supported,omitempty"`
 	AzureResponsesVersion                 string        `json:"azure_responses_version,omitempty"`
 	VertexKeyType                         VertexKeyType `json:"vertex_key_type,omitempty"` // "json" or "api_key"
 	AdvancedOpenAIBaseURL                 string        `json:"advanced_openai_base_url,omitempty"`
