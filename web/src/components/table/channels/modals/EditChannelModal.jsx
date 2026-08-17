@@ -208,6 +208,7 @@ const EditChannelModal = (props) => {
     sub2api_password: '',
     manual_upstream_rate_multiplier: null,
     settings: '',
+    in_place_retry_times: 0,
     // 仅 Vertex: 密钥格式（存入 settings.vertex_key_type）
     vertex_key_type: 'json',
     // 仅 AWS: 密钥格式和区域（存入 settings.aws_key_type 和 settings.aws_region）
@@ -903,6 +904,7 @@ const EditChannelModal = (props) => {
           const parsedSettings = JSON.parse(data.settings);
           data.azure_responses_version =
             parsedSettings.azure_responses_version || '';
+          data.in_place_retry_times = Math.max(0, Number(parsedSettings.in_place_retry_times) || 0);
           // 读取 Vertex 密钥格式
           data.vertex_key_type = parsedSettings.vertex_key_type || 'json';
           // 读取 AWS 密钥格式和区域
@@ -951,6 +953,7 @@ const EditChannelModal = (props) => {
         } catch (error) {
           console.error('解析其他设置失败:', error);
           data.azure_responses_version = '';
+          data.in_place_retry_times = 0;
           data.region = '';
           data.vertex_key_type = 'json';
           data.aws_key_type = 'ak_sk';
@@ -976,6 +979,7 @@ const EditChannelModal = (props) => {
       } else {
         // 兼容历史数据：老渠道没有 settings 时，默认按 json 展示
         data.vertex_key_type = 'json';
+        data.in_place_retry_times = 0;
         data.aws_key_type = 'ak_sk';
         data.is_enterprise_account = false;
         data.allow_service_tier = false;
@@ -2642,6 +2646,15 @@ const EditChannelModal = (props) => {
                   <Text className='text-sm font-medium text-gray-500 mb-3 block'>
                     {t('额外设置')}
                   </Text>
+
+                  <Form.InputNumber
+                    field='in_place_retry_times'
+                    label={t('原地重试次数')}
+                    min={0}
+                    step={1}
+                    onChange={(value) => handleChannelOtherSettingsChange('in_place_retry_times', value || 0)}
+                    extraText={t('仅当请求通过渠道亲和性命中该渠道时生效，默认为 0')}
+                  />
 
                   {inputs.type === 14 && (
                     <Form.Switch field='claude_beta_query' label={t('Claude 强制 beta=true')} checkedText={t('开')} uncheckedText={t('关')} onChange={(value) => handleChannelOtherSettingsChange('claude_beta_query', value)} extraText={t('开启后，该渠道请求 Claude 时将强制追加 ?beta=true（无需客户端手动传参）')} />

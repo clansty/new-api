@@ -197,11 +197,12 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 	}()
 
 	retryParam := &service.RetryParam{
-		Ctx:         c,
-		TokenGroup:  relayInfo.TokenGroup,
-		ModelName:   relayInfo.OriginModelName,
-		Retry:       common.GetPointer(0),
-		AlphaSearch: relayInfo.RelayMode == relayconstant.RelayModeAlphaSearch,
+		Ctx:               c,
+		TokenGroup:        relayInfo.TokenGroup,
+		ModelName:         relayInfo.OriginModelName,
+		Retry:             common.GetPointer(0),
+		AlphaSearch:       relayInfo.RelayMode == relayconstant.RelayModeAlphaSearch,
+		AffinityChannelID: common.GetContextKeyInt(c, constant.ContextKeyChannelAffinityId),
 	}
 	relayInfo.RetryIndex = 0
 	relayInfo.LastError = nil
@@ -322,6 +323,9 @@ func fastTokenCountMetaForPricing(request dto.Request) *types.TokenCountMeta {
 }
 
 func getChannel(c *gin.Context, info *relaycommon.RelayInfo, retryParam *service.RetryParam) (*model.Channel, *types.NewAPIError) {
+	if retryParam.RetryChannel != nil {
+		return retryParam.RetryChannel, nil
+	}
 	if info.ChannelMeta == nil && retryParam.GetRetry() == 0 && len(retryParam.FailedChannelIDs) == 0 {
 		channelId := c.GetInt("channel_id")
 		if common.GetContextKeyBool(c, constant.ContextKeyChannelIsGroup) {
@@ -602,10 +606,11 @@ func RelayTask(c *gin.Context) {
 	}()
 
 	retryParam := &service.RetryParam{
-		Ctx:        c,
-		TokenGroup: relayInfo.TokenGroup,
-		ModelName:  relayInfo.OriginModelName,
-		Retry:      common.GetPointer(0),
+		Ctx:               c,
+		TokenGroup:        relayInfo.TokenGroup,
+		ModelName:         relayInfo.OriginModelName,
+		Retry:             common.GetPointer(0),
+		AffinityChannelID: common.GetContextKeyInt(c, constant.ContextKeyChannelAffinityId),
 	}
 
 	// 该模型的有效重试次数（未单独配置则回退到全局 RetryTimes）

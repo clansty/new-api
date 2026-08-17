@@ -15,6 +15,12 @@ func shouldRetryAndRecord(c *gin.Context, openaiErr *types.NewAPIError, retryTim
 	if !shouldRetry(c, openaiErr, retryTimes) {
 		return false
 	}
+	if retryParam.AffinityChannelID == channel.Id && retryParam.InPlaceRetryCount < channel.GetOtherSettings().InPlaceRetryTimes && (!service.ShouldDisableChannelForRequest(c, openaiErr) || !channel.GetAutoBan()) {
+		retryParam.InPlaceRetryCount++
+		retryParam.SetRetryChannel(channel)
+		return true
+	}
+	retryParam.ClearRetryChannel()
 	if openaiErr.GetErrorCode() == types.ErrorCodeChannelResponseTimeExceeded || channel.IsGroup {
 		retryParam.RequireDifferentChannel = true
 	}
@@ -26,6 +32,14 @@ func shouldRetryTaskRelayAndRecord(c *gin.Context, channelID int, taskErr *dto.T
 	if !shouldRetryTaskRelay(c, channelID, taskErr, retryTimes) {
 		return false
 	}
+	if retryParam.AffinityChannelID == channelID {
+		if channel, err := model.CacheGetChannel(channelID); err == nil && retryParam.InPlaceRetryCount < channel.GetOtherSettings().InPlaceRetryTimes && (!service.ShouldDisableChannelForRequest(c, types.NewOpenAIError(taskErr.Error, types.ErrorCodeBadResponseStatusCode, taskErr.StatusCode)) || !channel.GetAutoBan()) {
+			retryParam.InPlaceRetryCount++
+			retryParam.SetRetryChannel(channel)
+			return true
+		}
+	}
+	retryParam.ClearRetryChannel()
 	retryParam.AddFailedChannel(channelID)
 	return true
 }

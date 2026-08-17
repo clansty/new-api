@@ -45,6 +45,7 @@ const (
 	ContextKeyChannelRaceWinner        ContextKey = "channel_race_winner"
 	ContextKeyChannelIsGroup           ContextKey = "channel_is_group"
 	ContextKeyChannelParallelRequests  ContextKey = "channel_parallel_requests"
+	ContextKeyChannelAffinityId        ContextKey = "channel_affinity_id"
 
 	ContextKeyAutoGroup           ContextKey = "auto_group"
 	ContextKeyAutoGroupIndex      ContextKey = "auto_group_index"

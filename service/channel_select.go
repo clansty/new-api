@@ -20,6 +20,9 @@ type RetryParam struct {
 	FailedChannelIDs        map[int]struct{}
 	RequireDifferentChannel bool
 	AlphaSearch             bool
+	RetryChannel            *model.Channel
+	AffinityChannelID       int
+	InPlaceRetryCount       int
 	resetNextTry            bool
 }
 
@@ -57,6 +60,14 @@ func (p *RetryParam) AddFailedChannel(channelID int) {
 		p.FailedChannelIDs = make(map[int]struct{})
 	}
 	p.FailedChannelIDs[channelID] = struct{}{}
+}
+
+func (p *RetryParam) SetRetryChannel(channel *model.Channel) {
+	p.RetryChannel = channel
+}
+
+func (p *RetryParam) ClearRetryChannel() {
+	p.RetryChannel = nil
 }
 
 // CacheGetRandomSatisfiedChannel selects a channel for the current retry.

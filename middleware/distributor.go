@@ -132,12 +132,14 @@ func Distribute() func(c *gin.Context) {
 									selectGroup = g
 									common.SetContextKey(c, constant.ContextKeyAutoGroup, g)
 									channel = preferred
+									common.SetContextKey(c, constant.ContextKeyChannelAffinityId, preferred.Id)
 									service.MarkChannelAffinityUsed(c, g, preferred.Id)
 									break
 								}
 							}
 						} else if model.IsChannelEnabledForGroupModel(usingGroup, modelRequest.Model, preferred.Id) {
 							channel = preferred
+							common.SetContextKey(c, constant.ContextKeyChannelAffinityId, preferred.Id)
 							selectGroup = usingGroup
 							service.MarkChannelAffinityUsed(c, usingGroup, preferred.Id)
 						}
