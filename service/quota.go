@@ -137,6 +137,10 @@ func PreWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usag
 	if ok {
 		actualGroupRatio = userGroupRatio
 	}
+	relayInfo.TokenQuotaRatio = 1
+	if relayInfo.TokenCustomRatio > 0 && actualGroupRatio > 0 {
+		relayInfo.TokenQuotaRatio = relayInfo.TokenCustomRatio / actualGroupRatio
+	}
 
 	quotaInfo := QuotaInfo{
 		InputDetails: TokenDetails{
@@ -159,8 +163,9 @@ func PreWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usag
 		return fmt.Errorf("user quota is not enough, user quota: %s, need quota: %s", logger.FormatQuota(userQuota), logger.FormatQuota(quota))
 	}
 
-	if !token.UnlimitedQuota && token.RemainQuota < quota {
-		return fmt.Errorf("token quota is not enough, token remain quota: %s, need quota: %s", logger.FormatQuota(token.RemainQuota), logger.FormatQuota(quota))
+	tokenQuota := TokenQuotaFor(relayInfo, quota)
+	if !token.UnlimitedQuota && token.RemainQuota < tokenQuota {
+		return fmt.Errorf("token quota is not enough, token remain quota: %s, need quota: %s", logger.FormatQuota(token.RemainQuota), logger.FormatQuota(tokenQuota))
 	}
 
 	err = PostConsumeQuota(relayInfo, quota, 0, false)
@@ -382,6 +387,8 @@ func PostAudioConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, u
 	}
 	other := GenerateAudioOtherInfo(ctx, relayInfo, usage, modelRatio, groupRatio,
 		completionRatio.InexactFloat64(), audioRatio.InexactFloat64(), audioCompletionRatio.InexactFloat64(), modelPrice, relayInfo.PriceData.GroupRatioInfo.GroupSpecialRatio)
+	other["account_quota"] = quota
+	other["token_quota"] = TokenQuotaFor(relayInfo, quota)
 	if tieredResult != nil {
 		InjectTieredBillingInfo(other, relayInfo, tieredResult)
 	}
@@ -453,10 +460,11 @@ func PostConsumeQuota(relayInfo *relaycommon.RelayInfo, quota int, preConsumedQu
 	}
 
 	if !relayInfo.IsPlayground {
-		if quota > 0 {
-			err = model.DecreaseTokenQuota(relayInfo.TokenId, relayInfo.TokenKey, quota)
-		} else {
-			err = model.IncreaseTokenQuota(relayInfo.TokenId, relayInfo.TokenKey, -quota)
+		tokenQuota := TokenQuotaFor(relayInfo, quota)
+		if tokenQuota > 0 {
+			err = model.DecreaseTokenQuota(relayInfo.TokenId, relayInfo.TokenKey, tokenQuota)
+		} else if tokenQuota < 0 {
+			err = model.IncreaseTokenQuota(relayInfo.TokenId, relayInfo.TokenKey, -tokenQuota)
 		}
 		if err != nil {
 			return err

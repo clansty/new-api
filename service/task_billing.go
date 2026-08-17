@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"math"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
@@ -43,6 +44,8 @@ func LogTaskConsumption(c *gin.Context, info *relaycommon.RelayInfo) {
 		other["model_ratio"] = info.PriceData.ModelRatio
 	}
 	other["group_ratio"] = info.PriceData.GroupRatioInfo.GroupRatio
+	other["account_quota"] = info.PriceData.Quota
+	other["token_quota"] = TokenQuotaFor(info, info.PriceData.Quota)
 	if info.PriceData.GroupRatioInfo.HasSpecialRatio {
 		other["user_group_ratio"] = info.PriceData.GroupRatioInfo.GroupSpecialRatio
 	}
@@ -106,11 +109,18 @@ func taskAdjustTokenQuota(ctx context.Context, task *model.Task, delta int) {
 	if tokenKey == "" {
 		return
 	}
+	tokenDelta := delta
+	if task.PrivateData.BillingContext != nil && task.PrivateData.BillingContext.TokenQuotaRatio > 0 {
+		tokenDelta = int(math.Round(float64(delta) * task.PrivateData.BillingContext.TokenQuotaRatio))
+	}
+	if tokenDelta == 0 {
+		return
+	}
 	var err error
-	if delta > 0 {
-		err = model.DecreaseTokenQuota(task.PrivateData.TokenId, tokenKey, delta)
+	if tokenDelta > 0 {
+		err = model.DecreaseTokenQuota(task.PrivateData.TokenId, tokenKey, tokenDelta)
 	} else {
-		err = model.IncreaseTokenQuota(task.PrivateData.TokenId, tokenKey, -delta)
+		err = model.IncreaseTokenQuota(task.PrivateData.TokenId, tokenKey, -tokenDelta)
 	}
 	if err != nil {
 		logger.LogWarn(ctx, fmt.Sprintf("调整令牌额度失败 (delta=%d, task=%s): %s", delta, task.TaskID, err.Error()))
@@ -126,6 +136,7 @@ func taskBillingOther(task *model.Task) map[string]interface{} {
 			other["model_ratio"] = bc.ModelRatio
 		}
 		other["group_ratio"] = bc.GroupRatio
+		other["token_quota_ratio"] = bc.TokenQuotaRatio
 		if len(bc.OtherRatios) > 0 {
 			for k, v := range bc.OtherRatios {
 				other[k] = v
@@ -247,6 +258,12 @@ func RecalculateTaskQuota(ctx context.Context, task *model.Task, actualQuota int
 	other["task_id"] = task.TaskID
 	other["pre_consumed_quota"] = preConsumedQuota
 	other["actual_quota"] = actualQuota
+	other["account_quota"] = logQuota
+	if bc := task.PrivateData.BillingContext; bc != nil && bc.TokenQuotaRatio > 0 {
+		other["token_quota"] = int(math.Round(float64(logQuota) * bc.TokenQuotaRatio))
+	} else {
+		other["token_quota"] = logQuota
+	}
 	model.RecordTaskBillingLog(model.RecordTaskBillingLogParams{
 		UserId:        task.UserId,
 		LogType:       logType,

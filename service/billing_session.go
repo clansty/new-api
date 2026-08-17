@@ -45,7 +45,8 @@ func (s *BillingSession) Settle(actualQuota int) error {
 		return nil
 	}
 	delta := actualQuota - s.preConsumedQuota
-	if delta == 0 {
+	tokenDelta := TokenQuotaFor(s.relayInfo, actualQuota) - TokenQuotaFor(s.relayInfo, s.preConsumedQuota)
+	if delta == 0 && tokenDelta == 0 {
 		s.settled = true
 		return nil
 	}
@@ -58,11 +59,11 @@ func (s *BillingSession) Settle(actualQuota int) error {
 	}
 	// 2) 调整令牌额度
 	var tokenErr error
-	if !s.relayInfo.IsPlayground {
-		if delta > 0 {
-			tokenErr = model.DecreaseTokenQuota(s.relayInfo.TokenId, s.relayInfo.TokenKey, delta)
+	if !s.relayInfo.IsPlayground && tokenDelta != 0 {
+		if tokenDelta > 0 {
+			tokenErr = model.DecreaseTokenQuota(s.relayInfo.TokenId, s.relayInfo.TokenKey, tokenDelta)
 		} else {
-			tokenErr = model.IncreaseTokenQuota(s.relayInfo.TokenId, s.relayInfo.TokenKey, -delta)
+			tokenErr = model.IncreaseTokenQuota(s.relayInfo.TokenId, s.relayInfo.TokenKey, -tokenDelta)
 		}
 		if tokenErr != nil {
 			// 资金来源已提交，令牌调整失败只能记录日志；标记 settled 防止 Refund 误退资金
@@ -158,13 +159,14 @@ func (s *BillingSession) Reserve(targetQuota int) error {
 	if err := s.reserveFunding(delta); err != nil {
 		return err
 	}
-	if err := s.reserveToken(delta); err != nil {
+	tokenDelta := TokenQuotaFor(s.relayInfo, delta)
+	if err := s.reserveToken(tokenDelta); err != nil {
 		s.rollbackFundingReserve(delta)
 		return err
 	}
 
 	s.preConsumedQuota += delta
-	s.tokenConsumed += delta
+	s.tokenConsumed += tokenDelta
 	s.extraReserved += delta
 	s.syncRelayInfo()
 	return nil
@@ -189,11 +191,12 @@ func (s *BillingSession) preConsume(c *gin.Context, quota int) *types.NewAPIErro
 	}
 
 	// ---- 1) 预扣令牌额度 ----
+	tokenQuota := TokenQuotaFor(s.relayInfo, effectiveQuota)
 	if effectiveQuota > 0 {
-		if err := PreConsumeTokenQuota(s.relayInfo, effectiveQuota); err != nil {
+		if err := PreConsumeTokenQuota(s.relayInfo, tokenQuota); err != nil {
 			return types.NewErrorWithStatusCode(err, types.ErrorCodePreConsumeTokenQuotaFailed, http.StatusForbidden, types.ErrOptionWithSkipRetry(), types.ErrOptionWithNoRecordErrorLog())
 		}
-		s.tokenConsumed = effectiveQuota
+		s.tokenConsumed = tokenQuota
 	}
 
 	// ---- 2) 预扣资金来源 ----

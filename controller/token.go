@@ -46,6 +46,13 @@ func validateTokenSelfGroup(tokenGroup string, userId int) error {
 	return nil
 }
 
+func validateTokenCustomRatio(customRatio float64) error {
+	if customRatio < 0 {
+		return errors.New("自定义倍率不能为负数")
+	}
+	return nil
+}
+
 func GetAllTokens(c *gin.Context) {
 	userId := c.GetInt("id")
 	pageInfo := common.GetPageQuery(c)
@@ -206,6 +213,10 @@ func addTokenForUser(c *gin.Context, userId int) {
 			return
 		}
 	}
+	if err := validateTokenCustomRatio(token.CustomRatio); err != nil {
+		common.ApiError(c, err)
+		return
+	}
 	// 检查用户令牌数量是否已达上限
 	maxTokens := operation_setting.GetMaxUserTokens()
 	count, err := model.CountUserTokens(userId)
@@ -244,6 +255,7 @@ func addTokenForUser(c *gin.Context, userId int) {
 		AllowIps:           token.AllowIps,
 		Group:              token.Group,
 		CrossGroupRetry:    token.CrossGroupRetry,
+		CustomRatio:        token.CustomRatio,
 	}
 	err = cleanToken.Insert()
 	if err != nil {
@@ -297,6 +309,10 @@ func updateTokenForUser(c *gin.Context, userId int) {
 			return
 		}
 	}
+	if err := validateTokenCustomRatio(token.CustomRatio); err != nil {
+		common.ApiError(c, err)
+		return
+	}
 	cleanToken, err := model.GetTokenByIds(token.Id, userId)
 	if err != nil {
 		common.ApiError(c, err)
@@ -329,6 +345,7 @@ func updateTokenForUser(c *gin.Context, userId int) {
 		cleanToken.AllowIps = token.AllowIps
 		cleanToken.Group = token.Group
 		cleanToken.CrossGroupRetry = token.CrossGroupRetry
+		cleanToken.CustomRatio = token.CustomRatio
 	}
 	err = cleanToken.Update()
 	if err != nil {

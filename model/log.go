@@ -87,6 +87,12 @@ func formatUserLogs(logs []*Log, startIdx int) {
 func GetLogByTokenId(tokenId int) (logs []*Log, err error) {
 	err = LOG_DB.Model(&Log{}).Where("token_id = ?", tokenId).Order("id desc").Limit(common.MaxRecentItems).Find(&logs).Error
 	formatUserLogs(logs, 0)
+	for _, log := range logs {
+		other, _ := common.StrToMap(log.Other)
+		if tokenQuota, ok := other["token_quota"].(float64); ok {
+			log.Quota = int(tokenQuota)
+		}
+	}
 	return logs, err
 }
 

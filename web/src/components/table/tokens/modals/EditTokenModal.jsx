@@ -92,6 +92,7 @@ const EditTokenModal = (props) => {
     allow_ips: '',
     group: '',
     cross_group_retry: false,
+    custom_ratio: 0,
     tokenCount: 1,
   });
 
@@ -608,6 +609,21 @@ const EditTokenModal = (props) => {
                       extraText={t(
                         '令牌的额度仅用于限制令牌本身的最大额度使用量，实际的使用受到账户的剩余额度限制',
                       )}
+                    />
+                  </Col>
+                  <Col
+                    span={24}
+                    style={{ display: values.unlimited_quota ? 'none' : 'block' }}
+                  >
+                    <Form.InputNumber
+                      field='custom_ratio'
+                      label={t('自定义倍率')}
+                      min={0}
+                      step={0.01}
+                      precision={4}
+                      extraText={t('仅用于令牌额度限制，不能低于令牌分组倍率；账户实际扣费仍按分组倍率计算')}
+                      style={{ width: '100%' }}
+                      showClear
                     />
                   </Col>
                 </Row>

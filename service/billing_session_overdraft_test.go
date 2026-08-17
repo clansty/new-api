@@ -12,6 +12,35 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestTokenQuotaForUsesCustomRatioForPositiveAndRefundAmounts(t *testing.T) {
+	relayInfo := &relaycommon.RelayInfo{TokenQuotaRatio: 1.6}
+	assert.Equal(t, 160, TokenQuotaFor(relayInfo, 100))
+	assert.Equal(t, -160, TokenQuotaFor(relayInfo, -100))
+}
+
+func TestNewBillingSessionUsesCustomRatioOnlyForTokenQuota(t *testing.T) {
+	truncate(t)
+	const userID = 104
+	const tokenID = 104
+	seedUser(t, userID, 10000)
+	seedToken(t, tokenID, userID, "custom-ratio-token", 10000)
+
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	ctx.Set("token_quota", 10000)
+	relayInfo := &relaycommon.RelayInfo{
+		UserId:          userID,
+		TokenId:         tokenID,
+		TokenKey:        "custom-ratio-token",
+		TokenQuotaRatio: 1.6,
+	}
+
+	_, apiErr := NewBillingSession(ctx, relayInfo, 1000)
+	require.Nil(t, apiErr)
+	assert.Equal(t, 9000, getUserQuota(t, userID))
+	assert.Equal(t, 8400, getTokenRemainQuota(t, tokenID))
+}
+
 func TestNewBillingSession_AllowsWalletOverdraftWhenUserAllowsOverdraft(t *testing.T) {
 	truncate(t)
 

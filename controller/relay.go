@@ -694,6 +694,7 @@ func RelayTask(c *gin.Context) {
 			ModelPrice:      relayInfo.PriceData.ModelPrice,
 			OriginalQuota:   relayInfo.PriceData.OriginalQuota,
 			GroupRatio:      relayInfo.PriceData.GroupRatioInfo.GroupRatio,
+			TokenQuotaRatio: relayInfo.TokenQuotaRatio,
 			ModelRatio:      relayInfo.PriceData.ModelRatio,
 			OtherRatios:     relayInfo.PriceData.OtherRatios,
 			OriginModelName: relayInfo.OriginModelName,

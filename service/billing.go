@@ -2,6 +2,7 @@ package service
 
 import (
 	"fmt"
+	"math"
 
 	"github.com/QuantumNous/new-api/logger"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
@@ -13,6 +14,13 @@ const (
 	BillingSourceWallet       = "wallet"
 	BillingSourceSubscription = "subscription"
 )
+
+func TokenQuotaFor(relayInfo *relaycommon.RelayInfo, quota int) int {
+	if quota == 0 || relayInfo == nil || relayInfo.TokenQuotaRatio <= 0 {
+		return quota
+	}
+	return int(math.Round(float64(quota) * relayInfo.TokenQuotaRatio))
+}
 
 // PreConsumeBilling 根据用户计费偏好创建 BillingSession 并执行预扣费。
 // 会话存储在 relayInfo.Billing 上，供后续 Settle / Refund 使用。

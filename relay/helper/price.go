@@ -59,6 +59,10 @@ func HandleGroupRatio(ctx *gin.Context, relayInfo *relaycommon.RelayInfo) types.
 		// normal group ratio
 		groupRatioInfo.GroupRatio = ratio_setting.GetGroupRatio(relayInfo.UsingGroup)
 	}
+	relayInfo.TokenQuotaRatio = 1
+	if relayInfo.TokenCustomRatio > 0 && groupRatioInfo.GroupRatio > 0 {
+		relayInfo.TokenQuotaRatio = relayInfo.TokenCustomRatio / groupRatioInfo.GroupRatio
+	}
 
 	return groupRatioInfo
 }

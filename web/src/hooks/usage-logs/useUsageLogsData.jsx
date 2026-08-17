@@ -35,6 +35,7 @@ import {
   renderModelPrice,
   renderTieredModelPrice,
   renderTaskBillingProcess,
+  renderQuota,
 } from '../../helpers';
 import { ITEMS_PER_PAGE } from '../../constants';
 import { AUTO_REFRESH_INTERVAL_OPTIONS } from '../../constants/console.constants';
@@ -559,6 +560,16 @@ export const useLogsData = () => {
         });
       }
       if (logs[i].type === 2) {
+        if (other?.account_quota !== undefined || other?.token_quota !== undefined) {
+          expandDataLocal.push({
+            key: t('额度扣费详情'),
+            value: (
+              <div style={{ maxWidth: 600, overflowWrap: 'anywhere' }}>
+                {`${t('账户扣费')}：${renderQuota(other?.account_quota ?? logs[i].quota, 6)}；${t('Key额度扣费')}：${renderQuota(other?.token_quota ?? logs[i].quota, 6)}`}
+              </div>
+            ),
+          });
+        }
         if (other?.billing_mode !== 'tiered_expr') {
           expandDataLocal.push({
             key: t('日志详情'),
