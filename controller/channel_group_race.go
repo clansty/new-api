@@ -71,6 +71,8 @@ func relayChannelGroup(request channelGroupRaceRequest) *types.NewAPIError {
 	for index := range members {
 		attempt, apiErr := newChannelRaceAttempt(request, index, members[index], events)
 		if apiErr != nil {
+			cleanupChannelRaceAttempts(attempts, errChannelRaceAborted)
+			_ = group.Wait()
 			return apiErr
 		}
 		attempts = append(attempts, attempt)
@@ -167,6 +169,13 @@ func cancelLosingChannelRaceAttempts(attempts []*channelRaceAttempt, winnerIndex
 		if attempt.index == winnerIndex {
 			continue
 		}
+		attempt.writer.Decide(false)
+		attempt.cancel(cause)
+	}
+}
+
+func cleanupChannelRaceAttempts(attempts []*channelRaceAttempt, cause error) {
+	for _, attempt := range attempts {
 		attempt.writer.Decide(false)
 		attempt.cancel(cause)
 	}

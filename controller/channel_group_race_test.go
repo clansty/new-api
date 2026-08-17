@@ -102,6 +102,31 @@ func TestRelayChannelGroup_returnsFastestMemberAndCancelsLoser(t *testing.T) {
 	require.Equal(t, &service.ChannelRaceMemberLog{MemberId: members[1].Id, MemberName: members[1].Name}, traces[0].Winner)
 }
 
+func TestCleanupChannelRaceAttempts_cancelsCreatedAttempts(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	recorder := httptest.NewRecorder()
+	ginCtx, _ := gin.CreateTestContext(recorder)
+	ginCtx.Request = httptest.NewRequest("POST", "/", nil)
+	writer := newChannelRaceResponseWriter(ctx, ginCtx.Writer, func() {})
+	attemptCtx, attemptCancel := context.WithCancelCause(ctx)
+	attempt := &channelRaceAttempt{
+		ctx:    ginCtx,
+		writer: writer,
+		cancel: attemptCancel,
+	}
+
+	cleanupChannelRaceAttempts([]*channelRaceAttempt{attempt}, errChannelRaceAborted)
+
+	select {
+	case <-attemptCtx.Done():
+	default:
+		t.Fatal("已创建的竞速 attempt 未收到取消信号")
+	}
+	_, err := writer.Write([]byte("data"))
+	require.ErrorIs(t, err, errChannelRaceLost)
+}
+
 func TestRelayChannelGroup_isolatesClaudeConversionStatePerAttempt(t *testing.T) {
 	originalDB := model.DB
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
