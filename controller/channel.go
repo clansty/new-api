@@ -493,6 +493,9 @@ func validateChannel(channel *model.Channel, isAdd bool) error {
 	if channel.ParallelRequests != 0 && (channel.ParallelRequests < 1 || channel.ParallelRequests > 4) {
 		return fmt.Errorf("渠道组并行请求数必须在 1 到 4 之间")
 	}
+	if channel.AffinityParallelDelay != 0 && (channel.AffinityParallelDelay < 100 || channel.AffinityParallelDelay > 60_000) {
+		return fmt.Errorf("渠道组亲和等待时间必须在 100 到 60000 毫秒之间")
+	}
 	if channel.Type == constant.ChannelTypeAdvancedPassThrough {
 		settings := channel.GetOtherSettings()
 		if strings.TrimSpace(settings.AdvancedOpenAIBaseURL) == "" {
@@ -644,6 +647,9 @@ func AddChannel(c *gin.Context) {
 		addChannelRequest.Channel.IsGroup = true
 		if addChannelRequest.Channel.ParallelRequests == 0 {
 			addChannelRequest.Channel.ParallelRequests = 2
+		}
+		if addChannelRequest.Channel.AffinityParallelDelay == 0 {
+			addChannelRequest.Channel.AffinityParallelDelay = 3000
 		}
 	}
 	// 使用统一的校验函数
@@ -1059,6 +1065,9 @@ func UpdateChannel(c *gin.Context) {
 		channel.ChannelInfo.IsMultiKey = false
 		if channel.ParallelRequests == 0 {
 			channel.ParallelRequests = originChannel.ParallelRequests
+		}
+		if channel.AffinityParallelDelay == 0 {
+			channel.AffinityParallelDelay = originChannel.AffinityParallelDelay
 		}
 	}
 	var sub2APIState model.ChannelSub2APIState

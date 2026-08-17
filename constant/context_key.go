@@ -46,6 +46,7 @@ const (
 	ContextKeyChannelIsGroup           ContextKey = "channel_is_group"
 	ContextKeyChannelParallelRequests  ContextKey = "channel_parallel_requests"
 	ContextKeyChannelAffinityId        ContextKey = "channel_affinity_id"
+	ContextKeyChannelAffinityMemberId  ContextKey = "channel_affinity_member_id"
 
 	ContextKeyAutoGroup           ContextKey = "auto_group"
 	ContextKeyAutoGroupIndex      ContextKey = "auto_group_index"

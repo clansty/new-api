@@ -127,6 +127,48 @@ func TestSelectEnabledChannelMembers_selectsUniqueEnabledMembers(t *testing.T) {
 	require.NotEqual(t, members[1].Id, selected[1].Id)
 }
 
+func TestSelectEnabledChannelMembersPreferring_placesEnabledPreferredMemberFirst(t *testing.T) {
+	truncateTables(t)
+	originalMemoryCacheEnabled := common.MemoryCacheEnabled
+	common.MemoryCacheEnabled = false
+	t.Cleanup(func() { common.MemoryCacheEnabled = originalMemoryCacheEnabled })
+	channel := Channel{Name: "亲和组", Status: common.ChannelStatusEnabled, IsGroup: true, ParallelRequests: 2}
+	require.NoError(t, DB.Create(&channel).Error)
+	members := []ChannelMember{
+		{ChannelId: channel.Id, Name: "A", Key: "sk-a", Status: common.ChannelStatusEnabled},
+		{ChannelId: channel.Id, Name: "B", Key: "sk-b", Status: common.ChannelStatusEnabled},
+		{ChannelId: channel.Id, Name: "C", Key: "sk-c", Status: common.ChannelStatusEnabled},
+	}
+	require.NoError(t, DB.Create(&members).Error)
+
+	selected, err := SelectEnabledChannelMembersPreferring(channel.Id, 2, members[1].Id)
+
+	require.NoError(t, err)
+	require.Len(t, selected, 2)
+	require.Equal(t, members[1].Id, selected[0].Id)
+	require.NotEqual(t, selected[0].Id, selected[1].Id)
+}
+
+func TestSelectEnabledChannelMembersPreferring_ignoresDisabledPreferredMember(t *testing.T) {
+	truncateTables(t)
+	originalMemoryCacheEnabled := common.MemoryCacheEnabled
+	common.MemoryCacheEnabled = false
+	t.Cleanup(func() { common.MemoryCacheEnabled = originalMemoryCacheEnabled })
+	channel := Channel{Name: "失效亲和组", Status: common.ChannelStatusEnabled, IsGroup: true, ParallelRequests: 1}
+	require.NoError(t, DB.Create(&channel).Error)
+	members := []ChannelMember{
+		{ChannelId: channel.Id, Name: "A", Key: "sk-a", Status: common.ChannelStatusAutoDisabled},
+		{ChannelId: channel.Id, Name: "B", Key: "sk-b", Status: common.ChannelStatusEnabled},
+	}
+	require.NoError(t, DB.Create(&members).Error)
+
+	selected, err := SelectEnabledChannelMembersPreferring(channel.Id, 1, members[0].Id)
+
+	require.NoError(t, err)
+	require.Len(t, selected, 1)
+	require.Equal(t, members[1].Id, selected[0].Id)
+}
+
 func TestConvertChannelToGroup_preservesChannelAndSplitsKeys(t *testing.T) {
 	truncateTables(t)
 	channel := Channel{

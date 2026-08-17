@@ -113,6 +113,9 @@ func InsertChannelGroup(channel *Channel, members []ChannelMember) error {
 		if channel.ParallelRequests < 1 {
 			channel.ParallelRequests = 1
 		}
+		if channel.AffinityParallelDelay == 0 {
+			channel.AffinityParallelDelay = 3000
+		}
 		if err := tx.Create(channel).Error; err != nil {
 			return err
 		}
@@ -174,10 +177,11 @@ func ConvertChannelToGroup(channelId int, parallelRequests int) error {
 			return err
 		}
 		return tx.Model(&channel).Updates(map[string]any{
-			"is_group":          true,
-			"parallel_requests": parallelRequests,
-			"key":               "",
-			"channel_info":      ChannelInfo{},
+			"is_group":                true,
+			"parallel_requests":       parallelRequests,
+			"affinity_parallel_delay": 3000,
+			"key":                     "",
+			"channel_info":            ChannelInfo{},
 		}).Error
 	})
 }

@@ -45,7 +45,8 @@ func relayChannelGroup(request channelGroupRaceRequest) *types.NewAPIError {
 	if parallel > 4 {
 		parallel = 4
 	}
-	members, err := model.SelectEnabledChannelMembers(request.channel.Id, parallel)
+	preferredMemberID := common.GetContextKeyInt(request.ctx, constant.ContextKeyChannelAffinityMemberId)
+	members, err := model.SelectEnabledChannelMembersPreferring(request.channel.Id, parallel, preferredMemberID)
 	if err != nil {
 		return types.NewError(fmt.Errorf("选择渠道组成员: %w", err), types.ErrorCodeGetChannelFailed)
 	}
@@ -76,25 +77,56 @@ func relayChannelGroup(request channelGroupRaceRequest) *types.NewAPIError {
 			return apiErr
 		}
 		attempts = append(attempts, attempt)
+	}
+
+	started := make([]bool, len(attempts))
+	startAttempt := func(index int) {
+		if started[index] {
+			return
+		}
+		started[index] = true
+		attempt := attempts[index]
 		group.Go(func() error {
 			runChannelRaceAttempt(request, attempt, events)
 			return nil
 		})
 	}
+	preferredFirst := preferredMemberID > 0 && members[0].Id == preferredMemberID
+	initialStarted := len(attempts)
+	var startRemaining func() int
+	var parallelDelay time.Duration
+	if preferredFirst && len(attempts) > 1 && request.channel.AffinityParallelDelay > 0 {
+		initialStarted = 1
+		parallelDelay = time.Duration(request.channel.AffinityParallelDelay) * time.Millisecond
+		startRemaining = func() int {
+			for index := 1; index < len(attempts); index++ {
+				startAttempt(index)
+			}
+			return len(attempts) - 1
+		}
+	}
+	for index := 0; index < initialStarted; index++ {
+		startAttempt(index)
+	}
 
-	result := coordinateChannelRace(request, attempts, events)
+	result := coordinateChannelRace(request, attempts, events, initialStarted, parallelDelay, startRemaining)
 	_ = group.Wait()
 	return result
 }
 
-func coordinateChannelRace(request channelGroupRaceRequest, attempts []*channelRaceAttempt, events <-chan channelRaceEvent) *types.NewAPIError {
-	remaining := len(attempts)
+func coordinateChannelRace(request channelGroupRaceRequest, attempts []*channelRaceAttempt, events <-chan channelRaceEvent, remaining int, parallelDelay time.Duration, startRemaining func() int) *types.NewAPIError {
 	winnerIndex := -1
 	failureCount := 0
 	var lastFailure *types.NewAPIError
 	var winnerResult *types.NewAPIError
 	var graceTimer *time.Timer
 	var grace <-chan time.Time
+	var parallelTimer *time.Timer
+	var parallel <-chan time.Time
+	if startRemaining != nil {
+		parallelTimer = time.NewTimer(parallelDelay)
+		parallel = parallelTimer.C
+	}
 
 	for remaining > 0 {
 		select {
@@ -109,12 +141,25 @@ func coordinateChannelRace(request channelGroupRaceRequest, attempts []*channelR
 						graceTimer.Stop()
 						grace = nil
 					}
+					if parallelTimer != nil {
+						parallelTimer.Stop()
+						parallel = nil
+						startRemaining = nil
+					}
 				} else if event.attempt.index != winnerIndex {
 					event.attempt.writer.Decide(false)
 				}
 				continue
 			}
 
+			if startRemaining != nil && event.attempt.index == 0 && winnerIndex < 0 {
+				if parallelTimer != nil {
+					parallelTimer.Stop()
+				}
+				parallel = nil
+				remaining += startRemaining()
+				startRemaining = nil
+			}
 			remaining--
 			if event.attempt.index == winnerIndex {
 				winnerResult = event.err
@@ -144,10 +189,17 @@ func coordinateChannelRace(request channelGroupRaceRequest, attempts []*channelR
 		case <-grace:
 			grace = nil
 			cancelLosingChannelRaceAttempts(attempts, -1, errChannelRaceGraceExpired)
+		case <-parallel:
+			parallel = nil
+			remaining += startRemaining()
+			startRemaining = nil
 		}
 	}
 	if graceTimer != nil {
 		graceTimer.Stop()
+	}
+	if parallelTimer != nil {
+		parallelTimer.Stop()
 	}
 	if winnerIndex >= 0 {
 		winner := attempts[winnerIndex]

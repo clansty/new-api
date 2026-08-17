@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/gin-gonic/gin"
@@ -244,4 +246,31 @@ func TestChannelAffinityHitCodexTemplatePassHeadersEffective(t *testing.T) {
 	require.False(t, exists)
 	_, exists = info.RuntimeHeadersOverride["x-codex-turn-metadata"]
 	require.False(t, exists)
+}
+
+func TestRecordChannelAffinity_preservesWinningGroupMember(t *testing.T) {
+	affinityValue := fmt.Sprintf("member-hit-%d", time.Now().UnixNano())
+	cacheKeySuffix := "codex cli trace:default:" + affinityValue
+	ctx := buildChannelAffinityTemplateContextForTest(channelAffinityMeta{
+		CacheKey:   channelAffinityCacheNamespace + ":" + cacheKeySuffix,
+		TTLSeconds: 60,
+		UsingGroup: "default",
+		ModelName:  "gpt-5",
+	})
+	common.SetContextKey(ctx, constant.ContextKeyChannelMemberId, 77)
+	t.Cleanup(func() {
+		_, _ = getChannelAffinityCache().DeleteMany([]string{cacheKeySuffix})
+		_, _ = getChannelAffinityMemberCache().DeleteMany([]string{cacheKeySuffix})
+	})
+
+	RecordChannelAffinity(ctx, 9)
+
+	recorder := httptest.NewRecorder()
+	next, _ := gin.CreateTestContext(recorder)
+	next.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(fmt.Sprintf(`{"prompt_cache_key":%q}`, affinityValue)))
+	next.Request.Header.Set("Content-Type", "application/json")
+	channelID, found := GetPreferredChannelByAffinity(next, "gpt-5", "default")
+	require.True(t, found)
+	require.Equal(t, 9, channelID)
+	require.Equal(t, 77, common.GetContextKeyInt(next, constant.ContextKeyChannelAffinityMemberId))
 }

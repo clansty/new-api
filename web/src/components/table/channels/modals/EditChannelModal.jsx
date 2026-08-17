@@ -190,6 +190,7 @@ const EditChannelModal = (props) => {
     response_timeout: 0,
     is_group: false,
     parallel_requests: 2,
+    affinity_parallel_delay: 3000,
     test_model: '',
     groups: ['default'],
     priority: 0,
@@ -3956,23 +3957,42 @@ const EditChannelModal = (props) => {
                   />
 
                   {(groupMode || inputs.is_group === true) && (
-                    <Form.InputNumber
-                      field='parallel_requests'
-                      label={t('并行请求数')}
-                      min={1}
-                      max={4}
-                      precision={0}
-                      style={{ width: '100%' }}
-                      onChange={(value) =>
-                        handleInputChange(
-                          'parallel_requests',
-                          Number(value || 1),
-                        )
-                      }
-                      extraText={t(
-                        '同一请求最多并行发送到 4 个成员，首个有效响应胜出；不支持竞速的端点固定使用单成员。',
-                      )}
-                    />
+                    <>
+                      <Form.InputNumber
+                        field='parallel_requests'
+                        label={t('并行请求数')}
+                        min={1}
+                        max={4}
+                        precision={0}
+                        style={{ width: '100%' }}
+                        onChange={(value) =>
+                          handleInputChange(
+                            'parallel_requests',
+                            Number(value || 1),
+                          )
+                        }
+                        extraText={t(
+                          '同一请求最多并行发送到 4 个成员，首个有效响应胜出；不支持竞速的端点固定使用单成员。',
+                        )}
+                      />
+                      <Form.InputNumber
+                        field='affinity_parallel_delay'
+                        label={t('亲和等待时间（毫秒）')}
+                        min={100}
+                        max={60000}
+                        precision={0}
+                        style={{ width: '100%' }}
+                        onChange={(value) =>
+                          handleInputChange(
+                            'affinity_parallel_delay',
+                            Number(value || 3000),
+                          )
+                        }
+                        extraText={t(
+                          '命中成员亲和时先请求该成员，等待时间内未产生有效响应才并行请求其他成员。',
+                        )}
+                      />
+                    </>
                   )}
 
                   {/* Test Model - Core Config */}

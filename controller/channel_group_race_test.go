@@ -102,6 +102,153 @@ func TestRelayChannelGroup_returnsFastestMemberAndCancelsLoser(t *testing.T) {
 	require.Equal(t, &service.ChannelRaceMemberLog{MemberId: members[1].Id, MemberName: members[1].Name}, traces[0].Winner)
 }
 
+func TestRelayChannelGroup_affinitySuccessDoesNotStartOtherMembers(t *testing.T) {
+	channel, members := setupChannelGroupRaceTest(t, 2, time.Second)
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest("POST", "/v1/chat/completions", nil)
+	common.SetContextKey(ctx, constant.ContextKeyChannelAffinityMemberId, members[0].Id)
+	info := channelGroupRaceInfo()
+	otherStarted := make(chan struct{}, 1)
+
+	apiErr := relayChannelGroup(channelGroupRaceRequest{
+		ctx:     ctx,
+		info:    info,
+		channel: channel,
+		handler: func(attemptCtx *gin.Context, _ *relaycommon.RelayInfo) *types.NewAPIError {
+			if common.GetContextKeyInt(attemptCtx, constant.ContextKeyChannelMemberId) != members[0].Id {
+				otherStarted <- struct{}{}
+				return nil
+			}
+			_, err := attemptCtx.Writer.Write([]byte("data: affinity\n\n"))
+			if err != nil {
+				return types.NewError(err, types.ErrorCodeBadResponse)
+			}
+			return nil
+		},
+	})
+
+	require.Nil(t, apiErr)
+	require.Equal(t, "data: affinity\n\n", recorder.Body.String())
+	select {
+	case <-otherStarted:
+		t.Fatal("亲和成员成功前不应启动其他成员")
+	default:
+	}
+}
+
+func TestRelayChannelGroup_affinityDelayStartsOtherMembers(t *testing.T) {
+	channel, members := setupChannelGroupRaceTest(t, 2, 10*time.Millisecond)
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest("POST", "/v1/chat/completions", nil)
+	common.SetContextKey(ctx, constant.ContextKeyChannelAffinityMemberId, members[0].Id)
+	info := channelGroupRaceInfo()
+	otherStarted := make(chan struct{}, 1)
+
+	apiErr := relayChannelGroup(channelGroupRaceRequest{
+		ctx:     ctx,
+		info:    info,
+		channel: channel,
+		handler: func(attemptCtx *gin.Context, _ *relaycommon.RelayInfo) *types.NewAPIError {
+			if common.GetContextKeyInt(attemptCtx, constant.ContextKeyChannelMemberId) == members[0].Id {
+				<-attemptCtx.Request.Context().Done()
+				return types.NewError(context.Cause(attemptCtx.Request.Context()), types.ErrorCodeDoRequestFailed)
+			}
+			otherStarted <- struct{}{}
+			_, err := attemptCtx.Writer.Write([]byte("data: fallback\n\n"))
+			if err != nil {
+				return types.NewError(err, types.ErrorCodeBadResponse)
+			}
+			return nil
+		},
+	})
+
+	require.Nil(t, apiErr)
+	require.Equal(t, "data: fallback\n\n", recorder.Body.String())
+	select {
+	case <-otherStarted:
+	default:
+		t.Fatal("等待窗口到期后未启动其他成员")
+	}
+}
+
+func TestRelayChannelGroup_affinityFailureStartsOtherMembersImmediately(t *testing.T) {
+	channel, members := setupChannelGroupRaceTest(t, 2, 10*time.Second)
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest("POST", "/v1/chat/completions", nil)
+	common.SetContextKey(ctx, constant.ContextKeyChannelAffinityMemberId, members[0].Id)
+	info := channelGroupRaceInfo()
+	otherStarted := make(chan struct{}, 1)
+
+	done := make(chan *types.NewAPIError, 1)
+	go func() {
+		done <- relayChannelGroup(channelGroupRaceRequest{
+			ctx:     ctx,
+			info:    info,
+			channel: channel,
+			handler: func(attemptCtx *gin.Context, _ *relaycommon.RelayInfo) *types.NewAPIError {
+				if common.GetContextKeyInt(attemptCtx, constant.ContextKeyChannelMemberId) == members[0].Id {
+					return types.NewError(errors.New("亲和成员失败"), types.ErrorCodeBadResponse)
+				}
+				otherStarted <- struct{}{}
+				_, err := attemptCtx.Writer.Write([]byte("data: immediate fallback\n\n"))
+				if err != nil {
+					return types.NewError(err, types.ErrorCodeBadResponse)
+				}
+				return nil
+			},
+		})
+	}()
+
+	select {
+	case <-otherStarted:
+	case <-time.After(time.Second):
+		t.Fatal("亲和成员失败后未立即启动其他成员")
+	}
+	require.Nil(t, <-done)
+	require.Equal(t, "data: immediate fallback\n\n", recorder.Body.String())
+}
+
+func setupChannelGroupRaceTest(t *testing.T, parallel int, affinityDelay time.Duration) (*model.Channel, []model.ChannelMember) {
+	t.Helper()
+	originalDB := model.DB
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	model.DB = db
+	t.Cleanup(func() { model.DB = originalDB })
+	require.NoError(t, db.AutoMigrate(&model.Channel{}, &model.ChannelMember{}, &model.Ability{}))
+	originalMemoryCacheEnabled := common.MemoryCacheEnabled
+	common.MemoryCacheEnabled = false
+	t.Cleanup(func() { common.MemoryCacheEnabled = originalMemoryCacheEnabled })
+	channel := &model.Channel{
+		Name:                  "亲和竞速组",
+		Type:                  constant.ChannelTypeOpenAI,
+		Status:                common.ChannelStatusEnabled,
+		IsGroup:               true,
+		ParallelRequests:      parallel,
+		AffinityParallelDelay: int(affinityDelay / time.Millisecond),
+		ResponseTimeout:       common.GetPointer(3),
+	}
+	require.NoError(t, db.Create(channel).Error)
+	members := []model.ChannelMember{
+		{ChannelId: channel.Id, Name: "亲和成员", Key: "sk-affinity", Status: common.ChannelStatusEnabled},
+		{ChannelId: channel.Id, Name: "补充成员", Key: "sk-fallback", Status: common.ChannelStatusEnabled},
+	}
+	require.NoError(t, db.Create(&members).Error)
+	return channel, members
+}
+
+func channelGroupRaceInfo() *relaycommon.RelayInfo {
+	return &relaycommon.RelayInfo{
+		OriginModelName: "gpt-test",
+		Request:         &dto.GeneralOpenAIRequest{Model: "gpt-test"},
+		RelayMode:       relayconstant.RelayModeChatCompletions,
+		StartTime:       time.Now(),
+	}
+}
+
 func TestCleanupChannelRaceAttempts_cancelsCreatedAttempts(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()

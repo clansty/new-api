@@ -55,6 +55,7 @@ const ChannelGroupManageModal = ({ visible, channel, onCancel, onRefresh }) => {
   const [members, setMembers] = useState([]);
   const [loading, setLoading] = useState(false);
   const [parallelRequests, setParallelRequests] = useState(1);
+  const [affinityParallelDelay, setAffinityParallelDelay] = useState(3000);
   const [savingParallel, setSavingParallel] = useState(false);
   const [editingMember, setEditingMember] = useState(null);
   const [memberModalVisible, setMemberModalVisible] = useState(false);
@@ -80,6 +81,9 @@ const ChannelGroupManageModal = ({ visible, channel, onCancel, onRefresh }) => {
   useEffect(() => {
     if (!visible || !channel?.id) return;
     setParallelRequests(Math.max(1, Number(channel.parallel_requests) || 1));
+    setAffinityParallelDelay(
+      Math.max(100, Number(channel.affinity_parallel_delay) || 3000),
+    );
     loadMembers();
   }, [visible, channel?.id]);
 
@@ -175,10 +179,11 @@ const ChannelGroupManageModal = ({ visible, channel, onCancel, onRefresh }) => {
       const res = await API.put('/api/channel/', {
         id: channel.id,
         parallel_requests: parallelRequests,
+        affinity_parallel_delay: affinityParallelDelay,
       });
       if (!res?.data?.success)
         throw new Error(res?.data?.message || t('保存失败'));
-      showSuccess(t('并行请求数已更新'));
+      showSuccess(t('渠道组请求策略已更新'));
       onRefresh?.();
     } catch (error) {
       showError(error.message);
@@ -352,7 +357,7 @@ const ChannelGroupManageModal = ({ visible, channel, onCancel, onRefresh }) => {
       >
         <div className='flex flex-col gap-4'>
           <div className='flex flex-col md:flex-row md:items-end justify-between gap-3'>
-            <Space align='end'>
+            <Space align='end' wrap>
               <div>
                 <Text type='tertiary' size='small'>
                   {t('并行请求数')}
@@ -363,6 +368,20 @@ const ChannelGroupManageModal = ({ visible, channel, onCancel, onRefresh }) => {
                   value={parallelRequests}
                   onChange={(value) => setParallelRequests(Number(value) || 1)}
                   style={{ width: 120, display: 'block', marginTop: 4 }}
+                />
+              </div>
+              <div>
+                <Text type='tertiary' size='small'>
+                  {t('亲和等待时间（毫秒）')}
+                </Text>
+                <InputNumber
+                  min={100}
+                  max={60000}
+                  value={affinityParallelDelay}
+                  onChange={(value) =>
+                    setAffinityParallelDelay(Number(value) || 3000)
+                  }
+                  style={{ width: 160, display: 'block', marginTop: 4 }}
                 />
               </div>
               <Button

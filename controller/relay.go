@@ -388,7 +388,8 @@ func setupChannelTarget(c *gin.Context, info *relaycommon.RelayInfo, channel *mo
 	if !channel.IsGroup {
 		return channel, nil
 	}
-	members, err := model.SelectEnabledChannelMembers(channel.Id, 1)
+	preferredMemberID := common.GetContextKeyInt(c, constant.ContextKeyChannelAffinityMemberId)
+	members, err := model.SelectEnabledChannelMembersPreferring(channel.Id, 1, preferredMemberID)
 	if err != nil {
 		return nil, types.NewError(fmt.Errorf("选择渠道组成员: %w", err), types.ErrorCodeGetChannelFailed)
 	}

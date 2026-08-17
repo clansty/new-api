@@ -7,6 +7,10 @@ import (
 )
 
 func SelectEnabledChannelMembers(channelId int, limit int) ([]ChannelMember, error) {
+	return SelectEnabledChannelMembersPreferring(channelId, limit, 0)
+}
+
+func SelectEnabledChannelMembersPreferring(channelId int, limit int, preferredMemberId int) ([]ChannelMember, error) {
 	if limit <= 0 {
 		return nil, nil
 	}
@@ -16,6 +20,14 @@ func SelectEnabledChannelMembers(channelId int, limit int) ([]ChannelMember, err
 	}
 	if limit > len(members) {
 		limit = len(members)
+	}
+	for index := range members {
+		if members[index].Id != preferredMemberId {
+			continue
+		}
+		members[0], members[index] = members[index], members[0]
+		selectRandomChannelMembers(members[1:], limit-1, rand.Intn)
+		return members[:limit], nil
 	}
 	return selectRandomChannelMembers(members, limit, rand.Intn), nil
 }

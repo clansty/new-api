@@ -30,12 +30,15 @@ const (
 	ginKeyChannelAffinitySkipRetry  = "channel_affinity_skip_retry_on_failure"
 
 	channelAffinityCacheNamespace           = "new-api:channel_affinity:v1"
+	channelAffinityMemberCacheNamespace     = "new-api:channel_affinity_member:v1"
 	channelAffinityUsageCacheStatsNamespace = "new-api:channel_affinity_usage_cache_stats:v1"
 )
 
 var (
-	channelAffinityCacheOnce sync.Once
-	channelAffinityCache     *cachex.HybridCache[int]
+	channelAffinityCacheOnce       sync.Once
+	channelAffinityCache           *cachex.HybridCache[int]
+	channelAffinityMemberCacheOnce sync.Once
+	channelAffinityMemberCache     *cachex.HybridCache[int]
 
 	channelAffinityUsageCacheStatsOnce  sync.Once
 	channelAffinityUsageCacheStatsCache *cachex.HybridCache[ChannelAffinityUsageCacheCounters]
@@ -115,6 +118,36 @@ func getChannelAffinityCache() *cachex.HybridCache[int] {
 		})
 	})
 	return channelAffinityCache
+}
+
+func getChannelAffinityMemberCache() *cachex.HybridCache[int] {
+	channelAffinityMemberCacheOnce.Do(func() {
+		setting := operation_setting.GetChannelAffinitySetting()
+		capacity := setting.MaxEntries
+		if capacity <= 0 {
+			capacity = 100_000
+		}
+		defaultTTLSeconds := setting.DefaultTTLSeconds
+		if defaultTTLSeconds <= 0 {
+			defaultTTLSeconds = 3600
+		}
+
+		channelAffinityMemberCache = cachex.NewHybridCache[int](cachex.HybridCacheConfig[int]{
+			Namespace: cachex.Namespace(channelAffinityMemberCacheNamespace),
+			Redis:     common.RDB,
+			RedisEnabled: func() bool {
+				return common.RedisEnabled && common.RDB != nil
+			},
+			RedisCodec: cachex.IntCodec{},
+			Memory: func() *hot.HotCache[string, int] {
+				return hot.NewHotCache[string, int](hot.LRU, capacity).
+					WithTTL(time.Duration(defaultTTLSeconds) * time.Second).
+					WithJanitor().
+					Build()
+			},
+		})
+	})
+	return channelAffinityMemberCache
 }
 
 func GetChannelAffinityCacheStats() ChannelAffinityCacheStats {
@@ -216,6 +249,15 @@ func ClearChannelAffinityCacheAll() int {
 			common.SysError(fmt.Sprintf("channel affinity cache delete many failed: err=%v", err))
 		}
 	}
+	memberCache := getChannelAffinityMemberCache()
+	memberKeys, memberErr := memberCache.Keys()
+	if memberErr != nil {
+		common.SysError(fmt.Sprintf("channel affinity member cache list keys failed: err=%v", memberErr))
+	} else if len(memberKeys) > 0 {
+		if _, err := memberCache.DeleteMany(memberKeys); err != nil {
+			common.SysError(fmt.Sprintf("channel affinity member cache delete many failed: err=%v", err))
+		}
+	}
 	return len(keys)
 }
 
@@ -249,6 +291,9 @@ func ClearChannelAffinityCacheByRuleName(ruleName string) (int, error) {
 	cache := getChannelAffinityCache()
 	deleted, err := cache.DeleteByPrefix(ruleName)
 	if err != nil {
+		return 0, err
+	}
+	if _, err := getChannelAffinityMemberCache().DeleteByPrefix(ruleName); err != nil {
 		return 0, err
 	}
 	return deleted, nil
@@ -685,6 +730,12 @@ func GetPreferredChannelByAffinity(c *gin.Context, modelName string, usingGroup 
 			return 0, false
 		}
 		if found {
+			memberID, memberFound, memberErr := getChannelAffinityMemberCache().Get(cacheKeySuffix)
+			if memberErr != nil {
+				common.SysError(fmt.Sprintf("channel affinity member cache get failed: key=%s, err=%v", cacheKeyFull, memberErr))
+			} else if memberFound {
+				common.SetContextKey(c, constant.ContextKeyChannelAffinityMemberId, memberID)
+			}
 			return channelID, true
 		}
 		return 0, false
@@ -780,6 +831,14 @@ func RecordChannelAffinity(c *gin.Context, channelID int) {
 	cache := getChannelAffinityCache()
 	if err := cache.SetWithTTL(cacheKey, channelID, time.Duration(ttlSeconds)*time.Second); err != nil {
 		common.SysError(fmt.Sprintf("channel affinity cache set failed: key=%s, err=%v", cacheKey, err))
+	}
+	memberCacheKey := strings.TrimPrefix(cacheKey, channelAffinityCacheNamespace+":")
+	if memberID := common.GetContextKeyInt(c, constant.ContextKeyChannelMemberId); memberID > 0 {
+		if err := getChannelAffinityMemberCache().SetWithTTL(memberCacheKey, memberID, time.Duration(ttlSeconds)*time.Second); err != nil {
+			common.SysError(fmt.Sprintf("channel affinity member cache set failed: key=%s, err=%v", cacheKey, err))
+		}
+	} else if _, err := getChannelAffinityMemberCache().DeleteMany([]string{memberCacheKey}); err != nil {
+		common.SysError(fmt.Sprintf("channel affinity member cache delete failed: key=%s, err=%v", cacheKey, err))
 	}
 }
 

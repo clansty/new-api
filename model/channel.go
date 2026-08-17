@@ -51,19 +51,20 @@ type Channel struct {
 	UsedQuota                      int64    `json:"used_quota" gorm:"bigint;default:0"`
 	ModelMapping                   *string  `json:"model_mapping" gorm:"type:text"`
 	//MaxInputTokens     *int    `json:"max_input_tokens" gorm:"default:0"`
-	StatusCodeMapping *string `json:"status_code_mapping" gorm:"type:varchar(1024);default:''"`
-	Priority          *int64  `json:"priority" gorm:"bigint;default:0"`
-	AutoBan           *int    `json:"auto_ban" gorm:"default:1"`
-	AutoRecover       *int    `json:"auto_recover" gorm:"default:1"`
-	OtherInfo         string  `json:"other_info"`
-	Tag               *string `json:"tag" gorm:"index"`
-	Collapsed         bool    `json:"collapsed" gorm:"default:false;index"`
-	Setting           *string `json:"setting" gorm:"type:text"` // 渠道额外设置
-	ParamOverride     *string `json:"param_override" gorm:"type:text"`
-	HeaderOverride    *string `json:"header_override" gorm:"type:text"`
-	Remark            *string `json:"remark" gorm:"type:varchar(255)" validate:"max=255"`
-	IsGroup           bool    `json:"is_group" gorm:"default:false;index"`
-	ParallelRequests  int     `json:"parallel_requests" gorm:"default:1"`
+	StatusCodeMapping     *string `json:"status_code_mapping" gorm:"type:varchar(1024);default:''"`
+	Priority              *int64  `json:"priority" gorm:"bigint;default:0"`
+	AutoBan               *int    `json:"auto_ban" gorm:"default:1"`
+	AutoRecover           *int    `json:"auto_recover" gorm:"default:1"`
+	OtherInfo             string  `json:"other_info"`
+	Tag                   *string `json:"tag" gorm:"index"`
+	Collapsed             bool    `json:"collapsed" gorm:"default:false;index"`
+	Setting               *string `json:"setting" gorm:"type:text"` // 渠道额外设置
+	ParamOverride         *string `json:"param_override" gorm:"type:text"`
+	HeaderOverride        *string `json:"header_override" gorm:"type:text"`
+	Remark                *string `json:"remark" gorm:"type:varchar(255)" validate:"max=255"`
+	IsGroup               bool    `json:"is_group" gorm:"default:false;index"`
+	ParallelRequests      int     `json:"parallel_requests" gorm:"default:1"`
+	AffinityParallelDelay int     `json:"affinity_parallel_delay" gorm:"default:3000"`
 	// add after v0.8.5
 	ChannelInfo ChannelInfo `json:"channel_info" gorm:"type:json"`
 
