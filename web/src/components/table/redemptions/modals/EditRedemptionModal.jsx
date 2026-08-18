@@ -63,6 +63,7 @@ const EditRedemptionModal = (props) => {
   const isMobile = useIsMobile();
   const formApiRef = useRef(null);
   const [showQuotaInput, setShowQuotaInput] = useState(false);
+  const [groupOptions, setGroupOptions] = useState([]);
 
   const getInitValues = () => ({
     name: '',
@@ -70,6 +71,7 @@ const EditRedemptionModal = (props) => {
     amount: Number(quotaToDisplayAmount(100000).toFixed(6)),
     count: 1,
     expired_time: null,
+    group: '',
   });
 
   const handleCancel = () => {
@@ -94,6 +96,15 @@ const EditRedemptionModal = (props) => {
     setLoading(false);
   };
 
+  const fetchGroups = async () => {
+    try {
+      const res = await API.get('/api/group/');
+      setGroupOptions(res.data.data.map((group) => ({ label: group, value: group })));
+    } catch (error) {
+      showError(error.message);
+    }
+  };
+
   useEffect(() => {
     if (formApiRef.current) {
       if (isEdit) {
@@ -102,6 +113,7 @@ const EditRedemptionModal = (props) => {
         formApiRef.current.setValues(getInitValues());
       }
     }
+    fetchGroups();
   }, [props.editingRedemption.id]);
 
   const submit = async (values) => {
@@ -113,7 +125,7 @@ const EditRedemptionModal = (props) => {
     let localInputs = { ...values };
     localInputs.count = parseInt(localInputs.count) || 0;
     localInputs.quota = displayAmountToQuota(localInputs.amount);
-    if (localInputs.quota <= 0) {
+    if (localInputs.quota <= 0 && !localInputs.group) {
       showError(t('请输入金额'));
       setLoading(false);
       return;
@@ -189,7 +201,15 @@ const EditRedemptionModal = (props) => {
               </Tag>
             )}
             <Title heading={4} className='m-0'>
-              {isEdit ? t('更新兑换码信息') : t('创建新的兑换码')}
+              <span style={{ whiteSpace: 'normal', overflowWrap: 'anywhere' }}>
+                {isEdit
+                  ? isMobile
+                    ? t('更新')
+                    : t('更新兑换码信息')
+                  : isMobile
+                    ? t('创建')
+                    : t('创建新的兑换码')}
+              </span>
             </Title>
           </Space>
         }
@@ -274,6 +294,26 @@ const EditRedemptionModal = (props) => {
                         showClear
                       />
                     </Col>
+                    <Col span={24}>
+                      <Form.Select
+                        field='group'
+                        label={t('用户组')}
+                        placeholder={
+                          isEdit ? t('留空表示不修改') : t('留空表示不设置用户组')
+                        }
+                        optionList={[
+                          {
+                            label: isEdit
+                              ? t('留空表示不修改')
+                              : t('留空表示不设置用户组'),
+                            value: '',
+                          },
+                          ...groupOptions,
+                        ]}
+                        style={{ width: '100%' }}
+                        showClear
+                      />
+                    </Col>
                   </Row>
                 </Card>
 
@@ -333,11 +373,14 @@ const EditRedemptionModal = (props) => {
                           label={t('额度')}
                           placeholder={t('输入额度')}
                           rules={[
-                            { required: true, message: t('请输入额度') },
+                            {
+                              required: !values.group,
+                              message: t('请输入额度'),
+                            },
                             {
                               validator: (rule, v) => {
                                 const num = parseInt(v, 10);
-                                return num > 0
+                                return num > 0 || values.group
                                   ? Promise.resolve()
                                   : Promise.reject(t('额度必须大于0'));
                               },

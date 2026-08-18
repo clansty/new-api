@@ -118,6 +118,11 @@ export const getRedemptionsColumns = ({
       },
     },
     {
+      title: t('用户组'),
+      dataIndex: 'group',
+      render: (text) => <div>{text || t('无')}</div>,
+    },
+    {
       title: t('创建时间'),
       dataIndex: 'created_time',
       render: (text) => {
