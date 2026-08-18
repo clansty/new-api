@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"strconv"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
@@ -245,13 +244,8 @@ func buildUserListQuery(tx *gorm.DB, params UserQueryParams) *gorm.DB {
 		likeCondition := "username " + commonLikeOp + " ? OR email " + commonLikeOp + " ? OR display_name " + commonLikeOp + " ? OR remark " + commonLikeOp + " ?"
 		likeArg := "%" + keyword + "%"
 		// 显式括号包裹 OR 组，避免与后续 AND 过滤条件产生优先级歧义
-		if keywordInt, err := strconv.Atoi(keyword); err == nil {
-			query = query.Where("(id = ? OR "+likeCondition+")",
-				keywordInt, likeArg, likeArg, likeArg, likeArg)
-		} else {
-			query = query.Where("("+likeCondition+")",
-				likeArg, likeArg, likeArg, likeArg)
-		}
+		query = query.Where("("+likeCondition+")",
+			likeArg, likeArg, likeArg, likeArg)
 	}
 
 	if params.Group != "" {
