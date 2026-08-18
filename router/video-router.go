@@ -47,6 +47,6 @@ func SetVideoRouter(router *gin.Engine) {
 	jimengOfficialGroup.Use(middleware.JimengRequestConvert(), middleware.TokenAuth(), middleware.Distribute())
 	{
 		// Maps to: /?Action=CVSync2AsyncSubmitTask&Version=2022-08-31 and /?Action=CVSync2AsyncGetResult&Version=2022-08-31
-		jimengOfficialGroup.POST("/", controller.RelayTask)
+		registerRootRoute(jimengOfficialGroup, "POST", controller.RelayTask)
 	}
 }
