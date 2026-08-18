@@ -1,5 +1,9 @@
 # QA 经验
 
+## zsh 路由批量请求
+
+- zsh 的 `path` 是与 `PATH` 绑定的特殊数组，批量 curl 脚本中给 `path` 赋值会覆盖命令搜索路径，表现为循环首轮开始后 `curl: command not found`；路由变量应使用 `request_path` 等非保留名称。
+
 ## 大型旧 JSX 与 i18n 校验
 
 - `EditChannelModal.jsx` 等旧文件尚未整体符合当前 Prettier，直接 `--write` 会产生数千行无关格式变化；应保持局部改动，并用构建和浏览器验证代替全文件格式化。
