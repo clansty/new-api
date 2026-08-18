@@ -66,6 +66,28 @@ func TestConvertResponsesRequestToChatCompletions_preservesCompatibleRequestStat
 	require.JSONEq(t, `{"name":"weather","strict":true,"schema":{"type":"object","properties":{"summary":{"type":"string"}}}}`, string(chatRequest.ResponseFormat.JsonSchema))
 }
 
+func TestConvertResponsesRequestToChatCompletions_preservesReasoningOnlyAssistantTurn(t *testing.T) {
+	// Given: 上一轮 Responses 只产出了推理内容，随后用户继续提问。
+	request := &dto.OpenAIResponsesRequest{
+		Model: "deepseek-v4-flash",
+		Input: json.RawMessage(`[
+			{"type":"reasoning","summary":[{"type":"summary_text","text":"上一轮仍在分析。"}]},
+			{"role":"user","content":[{"type":"input_text","text":"继续"}]}
+		]`),
+	}
+
+	// When: 请求被降级到 Chat Completions 协议。
+	chatRequest, err := convertResponsesRequestToChatCompletions(request, nil)
+
+	// Then: 独立的 assistant 推理轮仍通过 reasoning_content 回传给上游。
+	require.NoError(t, err)
+	require.Len(t, chatRequest.Messages, 2)
+	require.Equal(t, "assistant", chatRequest.Messages[0].Role)
+	require.Equal(t, "上一轮仍在分析。", chatRequest.Messages[0].ReasoningContent)
+	require.Equal(t, "user", chatRequest.Messages[1].Role)
+	require.Equal(t, "继续", chatRequest.Messages[1].ParseContent()[0].Text)
+}
+
 func TestConvertResponsesRequestToChatCompletions_rejectsStateWithoutChatEquivalent(t *testing.T) {
 	// Given: Chat Completions 无法表达的服务端会话状态。
 	request := &dto.OpenAIResponsesRequest{

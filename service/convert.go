@@ -221,7 +221,8 @@ func ClaudeToOpenAIRequest(claudeRequest dto.ClaudeRequest, info *relaycommon.Re
 				openAIMessage.SetMediaContent(mediaMessages)
 			}
 		}
-		if len(openAIMessage.ParseContent()) > 0 || len(openAIMessage.ToolCalls) > 0 {
+		if len(openAIMessage.ParseContent()) > 0 || len(openAIMessage.ToolCalls) > 0 ||
+			openAIMessage.GetReasoningContent() != "" || openAIMessage.GetReasoningOpaque() != "" {
 			openAIMessages = append(openAIMessages, openAIMessage)
 		}
 	}
