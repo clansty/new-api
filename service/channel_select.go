@@ -42,6 +42,9 @@ func (p *RetryParam) IncreaseRetry() {
 		p.resetNextTry = false
 		return
 	}
+	if p.RetryChannel != nil {
+		return
+	}
 	if p.Retry == nil {
 		p.Retry = new(int)
 	}
