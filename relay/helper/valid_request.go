@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/logger"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
@@ -57,14 +58,13 @@ func GetAndValidateRequest(c *gin.Context, format types.RelayFormat) (request dt
 }
 
 func GetAndValidateAlphaSearchRequest(c *gin.Context) (*dto.AlphaSearchRequest, error) {
-	request := &dto.AlphaSearchRequest{}
-	if err := common.UnmarshalBodyReusable(c, request); err != nil {
-		return nil, err
-	}
-	if request.Model == "" {
+	model := common.GetContextKeyString(c, constant.ContextKeyOriginalModel)
+	if model == "" {
 		return nil, errors.New("model is required")
 	}
-	return request, nil
+
+	// Alpha Search 请求体必须透传，避免协议字段变化在进入中继前造成解析失败。
+	return &dto.AlphaSearchRequest{Model: model}, nil
 }
 
 func GetAndValidAudioRequest(c *gin.Context, relayMode int) (*dto.AudioRequest, error) {
