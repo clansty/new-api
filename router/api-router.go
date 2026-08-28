@@ -280,7 +280,7 @@ func SetApiRouter(router *gin.Engine) {
 			channelRoute.POST("/upstream_updates/detect_all", controller.DetectAllChannelUpstreamModelUpdates)
 		}
 		apiTokenSubkeyRoute := apiRouter.Group("/token/subkeys")
-		apiTokenSubkeyRoute.Use(middleware.CORS(), middleware.CriticalRateLimit(), middleware.TokenAuthReadOnly())
+		apiTokenSubkeyRoute.Use(middleware.CORS(), middleware.TokenAuthReadOnly())
 		{
 			apiTokenSubkeyRoute.GET("", controller.GetSubTokensByApiKey)
 			apiTokenSubkeyRoute.POST("", controller.CreateSubTokenByApiKey)
