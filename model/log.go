@@ -28,6 +28,7 @@ type Log struct {
 	ChannelId        int      `json:"channel" gorm:"index"`
 	ChannelName      string   `json:"channel_name" gorm:"->"`
 	TokenId          int      `json:"token_id" gorm:"default:0;index"`
+	TokenRootId      int      `json:"token_root_id,omitempty" gorm:"default:0;index"`
 	Group            string   `json:"group" gorm:"index"`
 	Ip               string   `json:"ip" gorm:"index;default:''"`
 	RequestId        string   `json:"request_id,omitempty" gorm:"type:varchar(64);index:idx_logs_request_id;default:''"`
@@ -85,8 +86,12 @@ func formatUserLogs(logs []*Log, startIdx int) {
 	}
 }
 
-func GetLogByTokenId(tokenId int) (logs []*Log, err error) {
-	err = LOG_DB.Model(&Log{}).Where("token_id = ?", tokenId).Where("user_visible = ? OR user_visible IS NULL", true).Order("id desc").Limit(common.MaxRecentItems).Find(&logs).Error
+func GetLogByTokenId(tokenId int, rootTokenIds ...int) (logs []*Log, err error) {
+	query := LOG_DB.Model(&Log{}).Where("token_id = ?", tokenId)
+	if len(rootTokenIds) > 0 && rootTokenIds[0] > 0 {
+		query = LOG_DB.Model(&Log{}).Where("token_id = ? OR token_root_id = ?", tokenId, rootTokenIds[0])
+	}
+	err = query.Where("user_visible = ? OR user_visible IS NULL", true).Order("id desc").Limit(common.MaxRecentItems).Find(&logs).Error
 	formatUserLogs(logs, 0)
 	for _, log := range logs {
 		other, _ := common.StrToMap(log.Other)

@@ -33,6 +33,8 @@
 - 短时间反复创建无痕浏览器并登录会触发全局 API 限流，随后静态资源也可能返回 429，表现为登录页空白或 Playwright 定位超时。
 - 应在同一 browser context 中完成登录和页面验证；隔离实例已被限流时，可重启实例清空临时限流状态后一次完成 QA。
 
+本次子 key QA 再次复现该限制：多次独立 Playwright context 登录后，静态 `/console` 页面会返回 429；重启隔离后端并复用单一 context 可恢复。
+
 ## 会话鉴权与 Playwright API 请求
 
 - `/api/user/login` 返回的 session cookie 不能单独通过 `UserAuth`；Playwright context 还需要从登录响应的 `data.id` 设置 `New-Api-User` 请求头，这与前端 API helper 的行为一致。

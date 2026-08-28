@@ -269,6 +269,12 @@ func TokenAuthReadOnly() func(c *gin.Context) {
 		c.Set("id", token.UserId)
 		c.Set("token_id", token.Id)
 		c.Set("token_key", token.Key)
+		rootId := token.ParentId
+		if rootId == 0 {
+			rootId = token.Id
+		}
+		c.Set("token_root_id", rootId)
+		c.Set("token_is_subkey", token.ParentId != 0)
 		c.Next()
 	}
 }
@@ -329,7 +335,8 @@ func TokenAuth() func(c *gin.Context) {
 			parts = strings.Split(key, "-")
 			key = parts[0]
 		}
-		token, err := model.ValidateUserToken(key)
+		presentedToken, rootToken, err := model.ResolveUserToken(key)
+		token := model.EffectiveToken(presentedToken, rootToken)
 		if token != nil {
 			id := c.GetInt("id")
 			if id == 0 {
@@ -402,6 +409,15 @@ func TokenAuth() func(c *gin.Context) {
 		if err != nil {
 			return
 		}
+		billingTokenId := token.Id
+		billingTokenKey := token.Key
+		if rootToken != nil {
+			billingTokenId = rootToken.Id
+			billingTokenKey = rootToken.Key
+		}
+		c.Set("token_root_id", billingTokenId)
+		c.Set("billing_token_id", billingTokenId)
+		c.Set("billing_token_key", billingTokenKey)
 		c.Next()
 	}
 }

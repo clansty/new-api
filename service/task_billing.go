@@ -102,10 +102,14 @@ func taskAdjustFunding(task *model.Task, delta int) error {
 // taskAdjustTokenQuota 调整任务的令牌额度，delta > 0 表示扣费，delta < 0 表示退还。
 // 需要通过 resolveTokenKey 运行时获取 key（不从 PrivateData 中读取）。
 func taskAdjustTokenQuota(ctx context.Context, task *model.Task, delta int) {
-	if task.PrivateData.TokenId <= 0 || delta == 0 {
+	billingTokenId := task.PrivateData.BillingTokenId
+	if billingTokenId == 0 {
+		billingTokenId = task.PrivateData.TokenId
+	}
+	if billingTokenId <= 0 || delta == 0 {
 		return
 	}
-	tokenKey := resolveTokenKey(ctx, task.PrivateData.TokenId, task.TaskID)
+	tokenKey := resolveTokenKey(ctx, billingTokenId, task.TaskID)
 	if tokenKey == "" {
 		return
 	}
@@ -118,9 +122,9 @@ func taskAdjustTokenQuota(ctx context.Context, task *model.Task, delta int) {
 	}
 	var err error
 	if tokenDelta > 0 {
-		err = model.DecreaseTokenQuota(task.PrivateData.TokenId, tokenKey, tokenDelta)
+		err = model.DecreaseTokenQuota(billingTokenId, tokenKey, tokenDelta)
 	} else {
-		err = model.IncreaseTokenQuota(task.PrivateData.TokenId, tokenKey, -tokenDelta)
+		err = model.IncreaseTokenQuota(billingTokenId, tokenKey, -tokenDelta)
 	}
 	if err != nil {
 		logger.LogWarn(ctx, fmt.Sprintf("调整令牌额度失败 (delta=%d, task=%s): %s", delta, task.TaskID, err.Error()))
@@ -194,6 +198,10 @@ func RefundTaskQuota(ctx context.Context, task *model.Task, reason string) {
 	other := taskBillingOther(task)
 	other["task_id"] = task.TaskID
 	other["reason"] = reason
+	tokenRootId := task.PrivateData.BillingTokenId
+	if tokenRootId == 0 {
+		tokenRootId = task.PrivateData.TokenId
+	}
 	model.RecordTaskBillingLog(model.RecordTaskBillingLogParams{
 		UserId:        task.UserId,
 		LogType:       model.LogTypeRefund,
@@ -203,6 +211,7 @@ func RefundTaskQuota(ctx context.Context, task *model.Task, reason string) {
 		Quota:         quota,
 		OriginalQuota: taskLogOriginalQuota(task, quota),
 		TokenId:       task.PrivateData.TokenId,
+		TokenRootId:   tokenRootId,
 		Group:         task.Group,
 		Other:         other,
 	})
@@ -264,6 +273,10 @@ func RecalculateTaskQuota(ctx context.Context, task *model.Task, actualQuota int
 	} else {
 		other["token_quota"] = logQuota
 	}
+	tokenRootId := task.PrivateData.BillingTokenId
+	if tokenRootId == 0 {
+		tokenRootId = task.PrivateData.TokenId
+	}
 	model.RecordTaskBillingLog(model.RecordTaskBillingLogParams{
 		UserId:        task.UserId,
 		LogType:       logType,
@@ -273,6 +286,7 @@ func RecalculateTaskQuota(ctx context.Context, task *model.Task, actualQuota int
 		Quota:         logQuota,
 		OriginalQuota: taskLogOriginalQuota(task, logQuota),
 		TokenId:       task.PrivateData.TokenId,
+		TokenRootId:   tokenRootId,
 		Group:         task.Group,
 		Other:         other,
 	})

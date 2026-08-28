@@ -279,11 +279,22 @@ func SetApiRouter(router *gin.Engine) {
 			channelRoute.POST("/upstream_updates/detect", controller.DetectChannelUpstreamModelUpdates)
 			channelRoute.POST("/upstream_updates/detect_all", controller.DetectAllChannelUpstreamModelUpdates)
 		}
+		apiTokenSubkeyRoute := apiRouter.Group("/token/subkeys")
+		apiTokenSubkeyRoute.Use(middleware.CORS(), middleware.CriticalRateLimit(), middleware.TokenAuthReadOnly())
+		{
+			apiTokenSubkeyRoute.GET("", controller.GetSubTokensByApiKey)
+			apiTokenSubkeyRoute.POST("", controller.CreateSubTokenByApiKey)
+			apiTokenSubkeyRoute.DELETE("/:subkey_id", controller.DeleteSubTokenByApiKey)
+		}
+
 		tokenRoute := apiRouter.Group("/token")
 		tokenRoute.Use(middleware.UserAuth())
 		{
 			registerRootRoute(tokenRoute, "GET", controller.GetAllTokens)
 			tokenRoute.GET("/search", middleware.SearchRateLimit(), controller.SearchTokens)
+			tokenRoute.GET("/:id/subkeys", controller.GetSubTokens)
+			tokenRoute.POST("/:id/subkeys", middleware.CriticalRateLimit(), controller.CreateSubToken)
+			tokenRoute.DELETE("/:id/subkeys/:subkey_id", controller.DeleteSubToken)
 			tokenRoute.GET("/:id", controller.GetToken)
 			tokenRoute.POST("/:id/key", middleware.CriticalRateLimit(), middleware.DisableCache(), controller.GetTokenKey)
 			registerRootRoute(tokenRoute, "POST", controller.AddToken)

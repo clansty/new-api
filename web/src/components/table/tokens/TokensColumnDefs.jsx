@@ -45,6 +45,7 @@ import {
   IconCopy,
   IconEyeOpened,
   IconEyeClosed,
+  IconKey,
 } from '@douyinfe/semi-icons';
 
 // progress color helper
@@ -356,6 +357,8 @@ const renderOperations = (
   setEditingToken,
   setShowEdit,
   manageToken,
+  openSubTokens,
+  enableSubTokens,
   refresh,
   t,
 ) => {
@@ -444,6 +447,17 @@ const renderOperations = (
         {t('编辑')}
       </Button>
 
+      {enableSubTokens && record.parent_id === 0 && (
+        <Button
+          type='tertiary'
+          size='small'
+          icon={<IconKey />}
+          onClick={() => openSubTokens(record)}
+        >
+          {t('子令牌')}
+        </Button>
+      )}
+
       <Button
         type='danger'
         size='small'
@@ -475,6 +489,8 @@ export const getTokensColumns = ({
   copyTokenKey,
   copyTokenConnectionString,
   manageToken,
+  openSubTokens,
+  enableSubTokens,
   onOpenLink,
   setEditingToken,
   setShowEdit,
@@ -566,6 +582,8 @@ export const getTokensColumns = ({
           setEditingToken,
           setShowEdit,
           manageToken,
+          openSubTokens,
+          enableSubTokens,
           refresh,
           t,
         ),

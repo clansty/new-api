@@ -4496,6 +4496,14 @@
     "原有密钥将转为独立成员，渠道共享配置和 ID 保持不变。": "Các khóa hiện có sẽ trở thành thành viên riêng; cài đặt dùng chung và ID kênh được giữ nguyên.",
     "已转换为渠道组": "Đã chuyển thành nhóm kênh",
     "转换失败": "Chuyển đổi thất bại",
-    "同一请求最多并行发送到 4 个成员，首个有效响应胜出；不支持竞速的端点固定使用单成员。": "Một yêu cầu có thể gửi song song đến tối đa 4 thành viên; phản hồi hợp lệ đầu tiên sẽ được chọn. Điểm cuối không hỗ trợ đua chỉ dùng một thành viên."
+    "同一请求最多并行发送到 4 个成员，首个有效响应胜出；不支持竞速的端点固定使用单成员。": "Một yêu cầu có thể gửi song song đến tối đa 4 thành viên; phản hồi hợp lệ đầu tiên sẽ được chọn. Điểm cuối không hỗ trợ đua chỉ dùng một thành viên.",
+    "管理子令牌": "Quản lý khóa con",
+    "母令牌": "Khóa mẹ",
+    "请输入子令牌名称": "Nhập tên khóa con",
+    "创建子令牌": "Tạo khóa con",
+    "删除子令牌": "Xóa khóa con",
+    "复制子令牌": "Sao chép khóa con",
+    "暂无子令牌": "Chưa có khóa con",
+    "子令牌": "Khóa con"
   }
 }

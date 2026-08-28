@@ -78,7 +78,11 @@ func GetLogByKey(c *gin.Context) {
 		})
 		return
 	}
-	logs, err := model.GetLogByTokenId(tokenId)
+	rootTokenId := c.GetInt("token_root_id")
+	if c.GetBool("token_is_subkey") {
+		rootTokenId = 0
+	}
+	logs, err := model.GetLogByTokenId(tokenId, rootTokenId)
 	if err != nil {
 		c.JSON(200, gin.H{
 			"success": false,

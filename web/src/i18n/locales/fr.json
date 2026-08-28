@@ -3968,6 +3968,14 @@
     "原有密钥将转为独立成员，渠道共享配置和 ID 保持不变。": "Les clés existantes deviendront des membres distincts ; les paramètres partagés et l’ID du canal resteront inchangés.",
     "已转换为渠道组": "Converti en groupe de canaux",
     "转换失败": "Échec de la conversion",
-    "同一请求最多并行发送到 4 个成员，首个有效响应胜出；不支持竞速的端点固定使用单成员。": "Une requête peut être envoyée en parallèle à 4 membres maximum ; la première réponse valide l’emporte. Les points de terminaison incompatibles utilisent toujours un seul membre."
+    "同一请求最多并行发送到 4 个成员，首个有效响应胜出；不支持竞速的端点固定使用单成员。": "Une requête peut être envoyée en parallèle à 4 membres maximum ; la première réponse valide l’emporte. Les points de terminaison incompatibles utilisent toujours un seul membre.",
+    "管理子令牌": "Gérer les sous-clés",
+    "母令牌": "Clé parente",
+    "请输入子令牌名称": "Saisissez le nom de la sous-clé",
+    "创建子令牌": "Créer une sous-clé",
+    "删除子令牌": "Supprimer la sous-clé",
+    "复制子令牌": "Copier la sous-clé",
+    "暂无子令牌": "Aucune sous-clé",
+    "子令牌": "Sous-clés"
   }
 }

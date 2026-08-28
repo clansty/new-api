@@ -4123,6 +4123,14 @@
     "同一请求最多并行发送到 4 个成员，首个有效响应胜出；不支持竞速的端点固定使用单成员。": "A request can run on up to 4 members; the first valid response wins. Endpoints that do not support racing always use one member.",
     "成员操作": "Member actions",
     "成员管理": "Manage members",
-    "更多操作": "More actions"
+    "更多操作": "More actions",
+    "管理子令牌": "Manage sub-keys",
+    "母令牌": "Parent key",
+    "请输入子令牌名称": "Enter sub-key name",
+    "创建子令牌": "Create sub-key",
+    "删除子令牌": "Delete sub-key",
+    "复制子令牌": "Copy sub-key",
+    "暂无子令牌": "No sub-keys",
+    "子令牌": "Sub-keys"
   }
 }

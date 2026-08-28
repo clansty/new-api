@@ -61,7 +61,7 @@ func GetAllTokens(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	total, _ := model.CountUserTokens(userId)
+	total, _ := model.CountUserRootTokens(userId)
 	pageInfo.SetTotal(int(total))
 	pageInfo.SetItems(buildMaskedTokenResponses(tokens))
 	common.ApiSuccess(c, pageInfo)
@@ -157,12 +157,21 @@ func GetTokenUsage(c *gin.Context) {
 	}
 	tokenKey := parts[1]
 
-	token, err := model.GetTokenByKey(strings.TrimPrefix(tokenKey, "sk-"), false)
+	presentedToken, err := model.GetTokenByKey(strings.TrimPrefix(tokenKey, "sk-"), false)
 	if err != nil {
 		common.SysError("failed to get token by key: " + err.Error())
 		common.ApiErrorI18n(c, i18n.MsgTokenGetInfoFailed)
 		return
 	}
+	rootToken := presentedToken
+	if presentedToken.ParentId > 0 {
+		rootToken, err = model.GetTokenById(presentedToken.ParentId)
+		if err != nil || rootToken.UserId != presentedToken.UserId || rootToken.ParentId != 0 {
+			common.ApiErrorI18n(c, i18n.MsgTokenGetInfoFailed)
+			return
+		}
+	}
+	token := model.EffectiveToken(presentedToken, rootToken)
 
 	expiredAt := token.ExpiredTime
 	if expiredAt == -1 {
@@ -429,7 +438,7 @@ func AdminGetUserTokens(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	total, _ := model.CountUserTokens(userId)
+	total, _ := model.CountUserRootTokens(userId)
 	pageInfo.SetTotal(int(total))
 	pageInfo.SetItems(buildMaskedTokenResponses(tokens))
 	common.ApiSuccess(c, pageInfo)

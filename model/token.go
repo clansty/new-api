@@ -14,6 +14,7 @@ import (
 type Token struct {
 	Id                 int            `json:"id"`
 	UserId             int            `json:"user_id" gorm:"index"`
+	ParentId           int            `json:"parent_id" gorm:"index;default:0"`
 	Key                string         `json:"key" gorm:"type:varchar(128);uniqueIndex"`
 	Status             int            `json:"status" gorm:"default:1"`
 	Name               string         `json:"name" gorm:"index" `
@@ -82,7 +83,7 @@ func (token *Token) GetIpLimits() []string {
 func GetAllUserTokens(userId int, startIdx int, num int) ([]*Token, error) {
 	var tokens []*Token
 	var err error
-	err = DB.Where("user_id = ?", userId).Order("id desc").Limit(num).Offset(startIdx).Find(&tokens).Error
+	err = DB.Where("user_id = ? AND parent_id = 0", userId).Order("id desc").Limit(num).Offset(startIdx).Find(&tokens).Error
 	return tokens, err
 }
 
@@ -115,7 +116,7 @@ func SearchUserTokens(userId int, keyword string, token string, offset int, limi
 		}
 	}
 
-	baseQuery := DB.Model(&Token{}).Where("user_id = ?", userId)
+	baseQuery := DB.Model(&Token{}).Where("user_id = ? AND parent_id = 0", userId)
 
 	// 非空才加 LIKE 条件，空则跳过（不过滤该字段）
 	if keyword != "" {
@@ -155,30 +156,14 @@ func ValidateUserToken(key string) (token *Token, err error) {
 	}
 	token, err = GetTokenByKey(key, false)
 	if err == nil {
-		if token.Status == common.TokenStatusExhausted ||
-			token.Status == common.TokenStatusExpired ||
-			token.Status != common.TokenStatusEnabled {
-			return token, ErrTokenInvalid
-		}
-		if token.ExpiredTime != -1 && token.ExpiredTime < common.GetTimestamp() {
-			if !common.RedisEnabled {
-				token.Status = common.TokenStatusExpired
-				err := token.SelectUpdate()
-				if err != nil {
-					common.SysLog("failed to update token status" + err.Error())
-				}
+		if token.ParentId != 0 {
+			if token.Status != common.TokenStatusEnabled {
+				return token, ErrTokenInvalid
 			}
-			return token, ErrTokenInvalid
+			return token, nil
 		}
-		if !token.UnlimitedQuota && token.RemainQuota <= 0 {
-			if !common.RedisEnabled {
-				token.Status = common.TokenStatusExhausted
-				err := token.SelectUpdate()
-				if err != nil {
-					common.SysLog("failed to update token status" + err.Error())
-				}
-			}
-			return token, ErrTokenInvalid
+		if err := validateRootToken(token); err != nil {
+			return token, err
 		}
 		return token, nil
 	}
@@ -333,7 +318,31 @@ func DeleteTokenById(id int, userId int) (err error) {
 	if err != nil {
 		return err
 	}
-	return token.Delete()
+	if err = token.Delete(); err != nil {
+		return err
+	}
+	if token.ParentId == 0 {
+		return deleteSubTokensByParent(token.Id, userId)
+	}
+	return nil
+}
+
+func deleteSubTokensByParent(parentId int, userId int) error {
+	var tokens []Token
+	if err := DB.Where("parent_id = ? AND user_id = ?", parentId, userId).Find(&tokens).Error; err != nil {
+		return err
+	}
+	if err := DB.Where("parent_id = ? AND user_id = ?", parentId, userId).Delete(&Token{}).Error; err != nil {
+		return err
+	}
+	if common.RedisEnabled {
+		gopool.Go(func() {
+			for _, child := range tokens {
+				_ = cacheDeleteToken(child.Key)
+			}
+		})
+	}
+	return nil
 }
 
 func IncreaseTokenQuota(tokenId int, key string, quota int) (err error) {
@@ -403,6 +412,12 @@ func CountUserTokens(userId int) (int64, error) {
 	return total, err
 }
 
+func CountUserRootTokens(userId int) (int64, error) {
+	var total int64
+	err := DB.Model(&Token{}).Where("user_id = ? AND parent_id = 0", userId).Count(&total).Error
+	return total, err
+}
+
 // BatchDeleteTokens 删除指定用户的一组令牌，返回成功删除数量
 func BatchDeleteTokens(ids []int, userId int) (int, error) {
 	if len(ids) == 0 {
@@ -432,6 +447,13 @@ func BatchDeleteTokens(ids []int, userId int) (int, error) {
 				_ = cacheDeleteToken(t.Key)
 			}
 		})
+	}
+	for _, token := range tokens {
+		if token.ParentId == 0 {
+			if err := deleteSubTokensByParent(token.Id, userId); err != nil {
+				return len(tokens), err
+			}
+		}
 	}
 
 	return len(tokens), nil

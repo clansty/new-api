@@ -38,6 +38,7 @@ import TokensActions from './TokensActions';
 import TokensFilters from './TokensFilters';
 import TokensDescription from './TokensDescription';
 import EditTokenModal from './modals/EditTokenModal';
+import SubTokensModal from './modals/SubTokensModal';
 import CCSwitchModal from './modals/CCSwitchModal';
 import { useTokensData } from '../../../hooks/tokens/useTokensData';
 import { useIsMobile } from '../../../hooks/common/useIsMobile';
@@ -359,6 +360,13 @@ function TokensPage() {
     setShowEdit,
     batchCopyTokens,
     batchDeleteTokens,
+    subTokenParent,
+    subTokens,
+    subTokensLoading,
+    showSubTokens,
+    closeSubTokens,
+    createSubToken,
+    deleteSubToken,
 
     // Filters state
     formInitValues,
@@ -382,6 +390,23 @@ function TokensPage() {
         editingToken={editingToken}
         visiable={showEdit}
         handleClose={closeEdit}
+      />
+
+      <SubTokensModal
+        visible={showSubTokens}
+        parent={subTokenParent}
+        tokens={subTokens}
+        loading={subTokensLoading}
+        onCancel={closeSubTokens}
+        onCreate={createSubToken}
+        onDelete={async (id) => {
+          try {
+            await deleteSubToken(id);
+          } catch (error) {
+            showError(error.message || tokensData.t('删除失败'));
+          }
+        }}
+        t={tokensData.t}
       />
 
       <CCSwitchModal

@@ -112,7 +112,7 @@ func PreWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usag
 		return err
 	}
 
-	token, err := model.GetTokenByKey(strings.TrimPrefix(relayInfo.TokenKey, "sk-"), false)
+	token, err := model.GetTokenByKey(strings.TrimPrefix(relayInfo.GetBillingTokenKey(), "sk-"), false)
 	if err != nil {
 		return err
 	}
@@ -419,14 +419,14 @@ func PreConsumeTokenQuota(relayInfo *relaycommon.RelayInfo, quota int) error {
 	//if relayInfo.TokenUnlimited {
 	//	return nil
 	//}
-	token, err := model.GetTokenByKey(relayInfo.TokenKey, false)
+	token, err := model.GetTokenByKey(relayInfo.GetBillingTokenKey(), false)
 	if err != nil {
 		return err
 	}
 	if !relayInfo.TokenUnlimited && token.RemainQuota < quota {
 		return fmt.Errorf("token quota is not enough, token remain quota: %s, need quota: %s", logger.FormatQuota(token.RemainQuota), logger.FormatQuota(quota))
 	}
-	err = model.DecreaseTokenQuota(relayInfo.TokenId, relayInfo.TokenKey, quota)
+	err = model.DecreaseTokenQuota(relayInfo.GetBillingTokenId(), relayInfo.GetBillingTokenKey(), quota)
 	if err != nil {
 		return err
 	}
@@ -462,9 +462,9 @@ func PostConsumeQuota(relayInfo *relaycommon.RelayInfo, quota int, preConsumedQu
 	if !relayInfo.IsPlayground {
 		tokenQuota := TokenQuotaFor(relayInfo, quota)
 		if tokenQuota > 0 {
-			err = model.DecreaseTokenQuota(relayInfo.TokenId, relayInfo.TokenKey, tokenQuota)
+			err = model.DecreaseTokenQuota(relayInfo.GetBillingTokenId(), relayInfo.GetBillingTokenKey(), tokenQuota)
 		} else if tokenQuota < 0 {
-			err = model.IncreaseTokenQuota(relayInfo.TokenId, relayInfo.TokenKey, -tokenQuota)
+			err = model.IncreaseTokenQuota(relayInfo.GetBillingTokenId(), relayInfo.GetBillingTokenKey(), -tokenQuota)
 		}
 		if err != nil {
 			return err

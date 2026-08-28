@@ -79,6 +79,10 @@ export const useTokensData = (
   const [resolvedTokenKeys, setResolvedTokenKeys] = useState({});
   const [loadingTokenKeys, setLoadingTokenKeys] = useState({});
   const keyRequestsRef = useRef({});
+  const [subTokenParent, setSubTokenParent] = useState(null);
+  const [subTokens, setSubTokens] = useState([]);
+  const [subTokensLoading, setSubTokensLoading] = useState(false);
+  const [showSubTokens, setShowSubTokens] = useState(false);
 
   // Form state
   const [formApi, setFormApi] = useState(null);
@@ -226,6 +230,58 @@ export const useTokensData = (
     await copyText(connStr);
   };
 
+  const subTokenPath = (parentId) =>
+    adminUserId != null
+      ? `/api/user/${adminUserId}/tokens/${parentId}/subkeys`
+      : `/api/token/${parentId}/subkeys`;
+
+  const loadSubTokens = async (parentId) => {
+    setSubTokensLoading(true);
+    try {
+      const res = await API.get(subTokenPath(parentId));
+      if (res.data.success) {
+        setSubTokens(res.data.data || []);
+      } else {
+        showError(res.data.message);
+      }
+    } catch (error) {
+      showError(error?.message || t('获取失败'));
+    } finally {
+      setSubTokensLoading(false);
+    }
+  };
+
+  const openSubTokens = async (parent) => {
+    setSubTokenParent(parent);
+    setShowSubTokens(true);
+    await loadSubTokens(parent.id);
+  };
+
+  const closeSubTokens = () => {
+    setShowSubTokens(false);
+    setSubTokenParent(null);
+    setSubTokens([]);
+  };
+
+  const createSubToken = async (name) => {
+    const res = await API.post(subTokenPath(subTokenParent.id), { name });
+    if (!res.data.success) {
+      throw new Error(res.data.message || t('创建失败'));
+    }
+    await loadSubTokens(subTokenParent.id);
+    return res.data.data;
+  };
+
+  const deleteSubToken = async (subTokenId) => {
+    const res = await API.delete(
+      `${subTokenPath(subTokenParent.id)}/${subTokenId}`,
+    );
+    if (!res.data.success) {
+      throw new Error(res.data.message || t('删除失败'));
+    }
+    await loadSubTokens(subTokenParent.id);
+  };
+
   // Open link function for chat integrations
   const onOpenLink = async (type, url, record) => {
     const fullKey = await fetchTokenKey(record);
@@ -311,8 +367,7 @@ export const useTokensData = (
   // Search tokens function
   const searchTokens = async (page = 1, size = pageSize) => {
     const normalizedPage = Number.isInteger(page) && page > 0 ? page : 1;
-    const normalizedSize =
-      Number.isInteger(size) && size > 0 ? size : pageSize;
+    const normalizedSize = Number.isInteger(size) && size > 0 ? size : pageSize;
 
     const { searchKeyword, searchToken } = getFormValues();
     if (searchKeyword === '' && searchToken === '') {
@@ -476,6 +531,7 @@ export const useTokensData = (
     pageSize,
     searching,
     groupRatios,
+    enableSubTokens: adminUserId == null,
 
     // Selection state
     selectedKeys,
@@ -495,6 +551,10 @@ export const useTokensData = (
     setShowKeys,
     resolvedTokenKeys,
     loadingTokenKeys,
+    subTokenParent,
+    subTokens,
+    subTokensLoading,
+    showSubTokens,
 
     // Form state
     formApi,
@@ -521,6 +581,10 @@ export const useTokensData = (
     batchDeleteTokens,
     batchCopyTokens,
     syncPageData,
+    openSubTokens,
+    closeSubTokens,
+    createSubToken,
+    deleteSubToken,
 
     // Translation
     t,

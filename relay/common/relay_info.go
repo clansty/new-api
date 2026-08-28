@@ -91,6 +91,9 @@ type TokenCountMeta struct {
 type RelayInfo struct {
 	TokenId           int
 	TokenKey          string
+	TokenRootId       int
+	BillingTokenId    int
+	BillingTokenKey   string
 	TokenGroup        string
 	UserId            int
 	UsingGroup        string // 使用的分组，当auto跨分组重试时，会变动
@@ -185,6 +188,26 @@ type RelayInfo struct {
 	*ResponsesUsageInfo
 	*ChannelMeta
 	*TaskRelayInfo
+}
+
+func (info *RelayInfo) GetBillingTokenId() int {
+	if info == nil || info.BillingTokenId == 0 {
+		if info == nil {
+			return 0
+		}
+		return info.TokenId
+	}
+	return info.BillingTokenId
+}
+
+func (info *RelayInfo) GetBillingTokenKey() string {
+	if info == nil || info.BillingTokenKey == "" {
+		if info == nil {
+			return ""
+		}
+		return info.TokenKey
+	}
+	return info.BillingTokenKey
 }
 
 func (info *RelayInfo) InitChannelMeta(c *gin.Context) {
@@ -494,6 +517,9 @@ func genBaseRelayInfo(c *gin.Context, request dto.Request) *RelayInfo {
 
 		TokenId:          common.GetContextKeyInt(c, constant.ContextKeyTokenId),
 		TokenKey:         common.GetContextKeyString(c, constant.ContextKeyTokenKey),
+		TokenRootId:      common.GetContextKeyInt(c, constant.ContextKeyTokenRootId),
+		BillingTokenId:   common.GetContextKeyInt(c, constant.ContextKeyBillingTokenId),
+		BillingTokenKey:  common.GetContextKeyString(c, constant.ContextKeyBillingTokenKey),
 		TokenUnlimited:   common.GetContextKeyBool(c, constant.ContextKeyTokenUnlimited),
 		TokenCustomRatio: c.GetFloat64("token_custom_ratio"),
 		TokenGroup:       tokenGroup,
@@ -518,6 +544,13 @@ func genBaseRelayInfo(c *gin.Context, request dto.Request) *RelayInfo {
 
 	if info.RelayMode == relayconstant.RelayModeUnknown {
 		info.RelayMode = c.GetInt("relay_mode")
+	}
+	if info.TokenRootId == 0 {
+		info.TokenRootId = info.TokenId
+	}
+	if info.BillingTokenId == 0 {
+		info.BillingTokenId = info.TokenId
+		info.BillingTokenKey = info.TokenKey
 	}
 
 	if strings.HasPrefix(c.Request.URL.Path, "/pg") {
