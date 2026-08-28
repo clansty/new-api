@@ -28,6 +28,7 @@ func TestShouldRetryAndRecord_whenChannelTimeoutHasRetryRemaining(t *testing.T) 
 	shouldRetry := shouldRetryAndRecord(c, timeoutErr, 1, retryParam, &model.Channel{Id: 7})
 
 	require.True(t, shouldRetry)
+	require.True(t, common.GetContextKeyBool(c, constant.ContextKeyAutoRetryAttempted))
 	require.True(t, retryParam.RequireDifferentChannel)
 	require.Contains(t, retryParam.FailedChannelIDs, 7)
 }

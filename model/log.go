@@ -32,6 +32,7 @@ type Log struct {
 	Ip               string   `json:"ip" gorm:"index;default:''"`
 	RequestId        string   `json:"request_id,omitempty" gorm:"type:varchar(64);index:idx_logs_request_id;default:''"`
 	UserAgent        string   `json:"user_agent,omitempty" gorm:"type:text"`
+	UserVisible      bool     `json:"-" gorm:"default:true"`
 	Other            string   `json:"other"`
 	OidcId           string   `json:"oidc_id,omitempty" gorm:"-"`
 }
@@ -85,7 +86,7 @@ func formatUserLogs(logs []*Log, startIdx int) {
 }
 
 func GetLogByTokenId(tokenId int) (logs []*Log, err error) {
-	err = LOG_DB.Model(&Log{}).Where("token_id = ?", tokenId).Order("id desc").Limit(common.MaxRecentItems).Find(&logs).Error
+	err = LOG_DB.Model(&Log{}).Where("token_id = ?", tokenId).Where("user_visible = ? OR user_visible IS NULL", true).Order("id desc").Limit(common.MaxRecentItems).Find(&logs).Error
 	formatUserLogs(logs, 0)
 	for _, log := range logs {
 		other, _ := common.StrToMap(log.Other)
@@ -216,6 +217,7 @@ func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int
 	} else {
 		tx = LOG_DB.Where("logs.user_id = ? and logs.type = ?", userId, logType)
 	}
+	tx = tx.Where("logs.user_visible = ? OR logs.user_visible IS NULL", true)
 
 	tx, err = applyLogTextFilter(tx, "logs.model_name", modelName)
 	if err != nil {
