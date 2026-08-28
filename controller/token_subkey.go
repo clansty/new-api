@@ -17,6 +17,11 @@ type subTokenRequest struct {
 	Name string `json:"name"`
 }
 
+type subTokenUpdateRequest struct {
+	Name   *string `json:"name"`
+	Status *int    `json:"status"`
+}
+
 func subTokenResponse(token *model.Token) gin.H {
 	return gin.H{
 		"id":           token.Id,
@@ -176,4 +181,68 @@ func DeleteSubTokenByApiKey(c *gin.Context) {
 		return
 	}
 	deleteSubToken(c, parent.Id, subTokenId)
+}
+
+func UpdateSubTokenByApiKey(c *gin.Context) {
+	parent, ok := getApiParentToken(c)
+	if !ok {
+		return
+	}
+	subTokenId, err := strconv.Atoi(c.Param("subkey_id"))
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	var request subTokenUpdateRequest
+	if err := c.ShouldBindJSON(&request); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	var token model.Token
+	if err := model.DB.Where("id = ? AND parent_id = ? AND user_id = ?", subTokenId, parent.Id, parent.UserId).First(&token).Error; err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if request.Name != nil {
+		name := strings.TrimSpace(*request.Name)
+		if name == "" || len(name) > 50 {
+			common.ApiError(c, errors.New("子令牌名称长度必须为 1-50 个字符"))
+			return
+		}
+		token.Name = name
+	}
+	if request.Status != nil {
+		if *request.Status != common.TokenStatusEnabled && *request.Status != common.TokenStatusDisabled {
+			common.ApiError(c, errors.New("子令牌状态无效"))
+			return
+		}
+		token.Status = *request.Status
+	}
+	if request.Name == nil && request.Status == nil {
+		common.ApiError(c, errors.New("至少提供一个要修改的字段"))
+		return
+	}
+	if err := token.Update(); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "", "data": subTokenResponse(&token)})
+}
+
+func GetSubTokenKeyByApiKey(c *gin.Context) {
+	parent, ok := getApiParentToken(c)
+	if !ok {
+		return
+	}
+	subTokenId, err := strconv.Atoi(c.Param("subkey_id"))
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	var token model.Token
+	if err := model.DB.Where("id = ? AND parent_id = ? AND user_id = ?", subTokenId, parent.Id, parent.UserId).First(&token).Error; err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "", "data": gin.H{"key": "sk-" + token.GetFullKey()}})
 }

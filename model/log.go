@@ -11,7 +11,7 @@ import (
 )
 
 type Log struct {
-	Id               int      `json:"id" gorm:"index:idx_created_at_id,priority:1;index:idx_user_id_id,priority:2"`
+	Id               int      `json:"id" gorm:"index:idx_created_at_id,priority:1;index:idx_user_id_id,priority:2;index:idx_logs_token_id_id_desc,priority:2,sort:desc;index:idx_logs_token_root_id_id_desc,priority:2,sort:desc"`
 	UserId           int      `json:"user_id" gorm:"index;index:idx_user_id_id,priority:1"`
 	CreatedAt        int64    `json:"created_at" gorm:"bigint;index:idx_created_at_id,priority:2;index:idx_created_at_type"`
 	Type             int      `json:"type" gorm:"index:idx_created_at_type"`
@@ -27,8 +27,8 @@ type Log struct {
 	IsStream         bool     `json:"is_stream"`
 	ChannelId        int      `json:"channel" gorm:"index"`
 	ChannelName      string   `json:"channel_name" gorm:"->"`
-	TokenId          int      `json:"token_id" gorm:"default:0;index"`
-	TokenRootId      int      `json:"token_root_id,omitempty" gorm:"default:0;index"`
+	TokenId          int      `json:"token_id" gorm:"default:0;index;index:idx_logs_token_id_id_desc,priority:1"`
+	TokenRootId      int      `json:"token_root_id,omitempty" gorm:"default:0;index;index:idx_logs_token_root_id_id_desc,priority:1"`
 	Group            string   `json:"group" gorm:"index"`
 	Ip               string   `json:"ip" gorm:"index;default:''"`
 	RequestId        string   `json:"request_id,omitempty" gorm:"type:varchar(64);index:idx_logs_request_id;default:''"`
@@ -86,11 +86,20 @@ func formatUserLogs(logs []*Log, startIdx int) {
 	}
 }
 
-func GetLogByTokenId(tokenId int, rootTokenIds ...int) (logs []*Log, err error) {
-	query := LOG_DB.Model(&Log{}).Where("token_id = ?", tokenId)
-	if len(rootTokenIds) > 0 && rootTokenIds[0] > 0 {
-		query = LOG_DB.Model(&Log{}).Where("token_id = ? OR token_root_id = ?", tokenId, rootTokenIds[0])
+func tokenLogQuery(tokenId int, rootTokenId int) *gorm.DB {
+	query := LOG_DB.Model(&Log{})
+	if rootTokenId > 0 {
+		return query.Where("token_id = ? OR token_root_id = ?", tokenId, rootTokenId)
 	}
+	return query.Where("token_id = ?", tokenId)
+}
+
+func GetLogByTokenId(tokenId int, rootTokenIds ...int) (logs []*Log, err error) {
+	rootTokenId := 0
+	if len(rootTokenIds) > 0 {
+		rootTokenId = rootTokenIds[0]
+	}
+	query := tokenLogQuery(tokenId, rootTokenId)
 	err = query.Where("user_visible = ? OR user_visible IS NULL", true).Order("id desc").Limit(common.MaxRecentItems).Find(&logs).Error
 	formatUserLogs(logs, 0)
 	for _, log := range logs {
@@ -100,6 +109,30 @@ func GetLogByTokenId(tokenId int, rootTokenIds ...int) (logs []*Log, err error) 
 		}
 	}
 	return logs, err
+}
+
+const tokenLogPageHardLimit = 100
+
+func GetLogByTokenIdPage(tokenId int, rootTokenId int, startIdx int, pageSize int) (logs []*Log, total int64, err error) {
+	if startIdx < 0 {
+		startIdx = 0
+	}
+	if pageSize <= 0 || pageSize > tokenLogPageHardLimit {
+		pageSize = tokenLogPageHardLimit
+	}
+	query := tokenLogQuery(tokenId, rootTokenId).Where("user_visible = ? OR user_visible IS NULL", true)
+	if err = query.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	err = query.Order("id desc").Offset(startIdx).Limit(pageSize).Find(&logs).Error
+	formatUserLogs(logs, startIdx)
+	for _, log := range logs {
+		other, _ := common.StrToMap(log.Other)
+		if tokenQuota, ok := other["token_quota"].(float64); ok {
+			log.Quota = int(tokenQuota)
+		}
+	}
+	return logs, total, err
 }
 
 func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, startIdx int, num int, channel int, group string, requestId string) (logs []*Log, total int64, err error) {

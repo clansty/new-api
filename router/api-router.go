@@ -284,6 +284,8 @@ func SetApiRouter(router *gin.Engine) {
 		{
 			apiTokenSubkeyRoute.GET("", controller.GetSubTokensByApiKey)
 			apiTokenSubkeyRoute.POST("", controller.CreateSubTokenByApiKey)
+			apiTokenSubkeyRoute.GET("/:subkey_id/key", controller.GetSubTokenKeyByApiKey)
+			apiTokenSubkeyRoute.PUT("/:subkey_id", controller.UpdateSubTokenByApiKey)
 			apiTokenSubkeyRoute.DELETE("/:subkey_id", controller.DeleteSubTokenByApiKey)
 		}
 

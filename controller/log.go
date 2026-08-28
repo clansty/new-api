@@ -82,6 +82,18 @@ func GetLogByKey(c *gin.Context) {
 	if c.GetBool("token_is_subkey") {
 		rootTokenId = 0
 	}
+	if hasLogPaginationQuery(c) {
+		pageInfo := common.GetPageQuery(c)
+		logs, total, err := model.GetLogByTokenIdPage(tokenId, rootTokenId, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
+		if err != nil {
+			common.ApiError(c, err)
+			return
+		}
+		pageInfo.SetTotal(int(total))
+		pageInfo.SetItems(logs)
+		common.ApiSuccess(c, pageInfo)
+		return
+	}
 	logs, err := model.GetLogByTokenId(tokenId, rootTokenId)
 	if err != nil {
 		c.JSON(200, gin.H{
@@ -95,6 +107,15 @@ func GetLogByKey(c *gin.Context) {
 		"message": "",
 		"data":    logs,
 	})
+}
+
+func hasLogPaginationQuery(c *gin.Context) bool {
+	for _, key := range []string{"p", "page_size", "ps", "size"} {
+		if _, ok := c.GetQuery(key); ok {
+			return true
+		}
+	}
+	return false
 }
 
 func GetLogsStat(c *gin.Context) {

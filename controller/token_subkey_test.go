@@ -98,3 +98,38 @@ func TestCreateSubTokenByApiKeyAllowsExhaustedParent(t *testing.T) {
 	require.NoError(t, common.Unmarshal(response.Data, &created))
 	require.NotEmpty(t, created.Key)
 }
+
+func TestSubTokenApiKeyCanReadAndUpdateChild(t *testing.T) {
+	db := setupTokenControllerTestDB(t)
+	parent := seedToken(t, db, 1, "parent", "parent-key")
+	child, err := model.CreateSubToken(parent.Id, parent.UserId, "child")
+	require.NoError(t, err)
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodGet, "/api/token/subkeys/2/key", nil, 1)
+	ctx.Set("token_id", parent.Id)
+	ctx.Params = gin.Params{{Key: "subkey_id", Value: strconv.Itoa(child.Id)}}
+	GetSubTokenKeyByApiKey(ctx)
+	response := decodeAPIResponse(t, recorder)
+	require.True(t, response.Success)
+	var keyPayload struct {
+		Key string `json:"key"`
+	}
+	require.NoError(t, common.Unmarshal(response.Data, &keyPayload))
+	require.Equal(t, "sk-"+child.Key, keyPayload.Key)
+
+	newName := "renamed"
+	status := common.TokenStatusDisabled
+	ctx, recorder = newAuthenticatedContext(t, http.MethodPut, "/api/token/subkeys/2", map[string]any{"name": newName, "status": status}, 1)
+	ctx.Set("token_id", parent.Id)
+	ctx.Params = gin.Params{{Key: "subkey_id", Value: strconv.Itoa(child.Id)}}
+	UpdateSubTokenByApiKey(ctx)
+	response = decodeAPIResponse(t, recorder)
+	require.True(t, response.Success)
+	var updated struct {
+		Name   string `json:"name"`
+		Status int    `json:"status"`
+	}
+	require.NoError(t, common.Unmarshal(response.Data, &updated))
+	require.Equal(t, newName, updated.Name)
+	require.Equal(t, status, updated.Status)
+}
