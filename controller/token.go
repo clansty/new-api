@@ -172,6 +172,11 @@ func GetTokenUsage(c *gin.Context) {
 		}
 	}
 	token := model.EffectiveToken(presentedToken, rootToken)
+	usedQuota := token.UsedQuota
+	if presentedToken.ParentId > 0 {
+		// 子密钥继承主密钥的权限和可用额度，但使用量必须按自身统计。
+		usedQuota = presentedToken.UsedQuota
+	}
 
 	expiredAt := token.ExpiredTime
 	if expiredAt == -1 {
@@ -184,8 +189,8 @@ func GetTokenUsage(c *gin.Context) {
 		"data": gin.H{
 			"object":               "token_usage",
 			"name":                 token.Name,
-			"total_granted":        token.RemainQuota + token.UsedQuota,
-			"total_used":           token.UsedQuota,
+			"total_granted":        token.RemainQuota + usedQuota,
+			"total_used":           usedQuota,
 			"total_available":      token.RemainQuota,
 			"unlimited_quota":      token.UnlimitedQuota,
 			"model_limits":         token.GetModelLimitsMap(),
