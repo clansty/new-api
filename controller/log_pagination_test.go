@@ -64,6 +64,43 @@ func TestGetLogByKeySupportsPagination(t *testing.T) {
 	require.Equal(t, 2, payload.Data.Items[0].Quota)
 }
 
+func TestGetLogByKeyReturnsEmptyItemsForEmptyPage(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	originalDB, originalLogDB := model.DB, model.LOG_DB
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	model.DB, model.LOG_DB = db, db
+	require.NoError(t, db.AutoMigrate(&model.Log{}))
+	t.Cleanup(func() {
+		model.DB, model.LOG_DB = originalDB, originalLogDB
+		sqlDB, dbErr := db.DB()
+		if dbErr == nil {
+			require.NoError(t, sqlDB.Close())
+		}
+	})
+	require.NoError(t, db.Create(&model.Log{TokenId: 7, Type: model.LogTypeConsume, Quota: 1}).Error)
+
+	r := gin.New()
+	r.GET("/api/log/token", func(c *gin.Context) {
+		c.Set("token_id", 7)
+		GetLogByKey(c)
+	})
+	recorder := httptest.NewRecorder()
+	r.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/log/token?p=2&page_size=1", nil))
+
+	var payload struct {
+		Data struct {
+			Items []struct {
+				Quota int `json:"quota"`
+			} `json:"items"`
+		} `json:"data"`
+	}
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &payload))
+	require.Equal(t, http.StatusOK, recorder.Code)
+	require.NotNil(t, payload.Data.Items)
+	require.Empty(t, payload.Data.Items)
+}
+
 func TestGetLogByKeyMergesRootTokenLogs(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	originalDB, originalLogDB := model.DB, model.LOG_DB

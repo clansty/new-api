@@ -126,7 +126,7 @@ func getTokenLogPage(tokenId int, rootTokenId int, startIdx int, pageSize int, e
 	}
 	sort.SliceStable(logs, func(i, j int) bool { return logs[i].Id > logs[j].Id })
 	if startIdx >= len(logs) {
-		logs = nil
+		logs = make([]*Log, 0)
 	} else {
 		end := startIdx + pageSize
 		if end > len(logs) {
