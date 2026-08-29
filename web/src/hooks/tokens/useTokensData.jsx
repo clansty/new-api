@@ -531,7 +531,7 @@ export const useTokensData = (
     pageSize,
     searching,
     groupRatios,
-    enableSubTokens: adminUserId == null,
+    enableSubTokens: true,
 
     // Selection state
     selectedKeys,

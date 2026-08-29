@@ -141,6 +141,9 @@ func SetApiRouter(router *gin.Engine) {
 				{
 					registerRootRoute(adminUserTokenRoute, "GET", controller.AdminGetUserTokens)
 					adminUserTokenRoute.GET("/search", middleware.SearchRateLimit(), controller.AdminSearchUserTokens)
+					adminUserTokenRoute.GET("/:token_id/subkeys", controller.GetSubTokensByAdmin)
+					adminUserTokenRoute.POST("/:token_id/subkeys", controller.CreateSubTokenByAdmin)
+					adminUserTokenRoute.DELETE("/:token_id/subkeys/:subkey_id", controller.DeleteSubTokenByAdmin)
 					adminUserTokenRoute.GET("/:token_id", controller.AdminGetUserToken)
 					registerRootRoute(adminUserTokenRoute, "POST", controller.AdminAddUserToken)
 					registerRootRoute(adminUserTokenRoute, "PUT", controller.AdminUpdateUserToken)
@@ -295,7 +298,7 @@ func SetApiRouter(router *gin.Engine) {
 			registerRootRoute(tokenRoute, "GET", controller.GetAllTokens)
 			tokenRoute.GET("/search", middleware.SearchRateLimit(), controller.SearchTokens)
 			tokenRoute.GET("/:id/subkeys", controller.GetSubTokens)
-			tokenRoute.POST("/:id/subkeys", middleware.CriticalRateLimit(), controller.CreateSubToken)
+			tokenRoute.POST("/:id/subkeys", controller.CreateSubToken)
 			tokenRoute.DELETE("/:id/subkeys/:subkey_id", controller.DeleteSubToken)
 			tokenRoute.GET("/:id", controller.GetToken)
 			tokenRoute.POST("/:id/key", middleware.CriticalRateLimit(), middleware.DisableCache(), controller.GetTokenKey)

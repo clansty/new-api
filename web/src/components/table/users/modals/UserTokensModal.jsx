@@ -32,6 +32,7 @@ import TokensTable from '../../tokens/TokensTable';
 import TokensActions from '../../tokens/TokensActions';
 import TokensFilters from '../../tokens/TokensFilters';
 import EditTokenModal from '../../tokens/modals/EditTokenModal';
+import SubTokensModal from '../../tokens/modals/SubTokensModal';
 
 const { Title } = Typography;
 
@@ -82,6 +83,17 @@ const UserTokensContent = ({ user }) => {
         editingToken={tokensData.editingToken}
         visiable={tokensData.showEdit}
         handleClose={tokensData.closeEdit}
+      />
+
+      <SubTokensModal
+        visible={tokensData.showSubTokens}
+        parent={tokensData.subTokenParent}
+        tokens={tokensData.subTokens}
+        loading={tokensData.subTokensLoading}
+        onCancel={tokensData.closeSubTokens}
+        onCreate={tokensData.createSubToken}
+        onDelete={tokensData.deleteSubToken}
+        t={t}
       />
     </div>
   );

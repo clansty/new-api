@@ -71,6 +71,10 @@ func createSubToken(c *gin.Context, parentId int) {
 	if !ok {
 		return
 	}
+	createSubTokenForUser(c, parent, parent.UserId)
+}
+
+func createSubTokenForUser(c *gin.Context, parent *model.Token, userId int) {
 	var request subTokenRequest
 	if err := c.ShouldBindJSON(&request); err != nil {
 		common.ApiError(c, err)
@@ -81,7 +85,7 @@ func createSubToken(c *gin.Context, parentId int) {
 		common.ApiError(c, errors.New("子令牌名称长度必须为 1-50 个字符"))
 		return
 	}
-	count, err := model.CountUserTokens(parent.UserId)
+	count, err := model.CountUserTokens(userId)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -90,7 +94,7 @@ func createSubToken(c *gin.Context, parentId int) {
 		common.ApiError(c, errors.New("已达到最大令牌数量限制"))
 		return
 	}
-	token, err := model.CreateSubToken(parent.Id, parent.UserId, name)
+	token, err := model.CreateSubToken(parent.Id, userId, name)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -152,6 +156,70 @@ func getApiParentToken(c *gin.Context) (*model.Token, bool) {
 		return nil, false
 	}
 	return token, true
+}
+
+func getAdminSubTokenParent(c *gin.Context) (*model.Token, int, bool) {
+	userId, ok := resolveTargetUserId(c)
+	if !ok {
+		return nil, 0, false
+	}
+	parentId, err := strconv.Atoi(c.Param("token_id"))
+	if err != nil {
+		common.ApiError(c, err)
+		return nil, 0, false
+	}
+	parent, err := model.GetTokenByIds(parentId, userId)
+	if err != nil {
+		common.ApiError(c, err)
+		return nil, 0, false
+	}
+	if parent.ParentId != 0 {
+		common.ApiError(c, model.ErrSubTokenParentRequired)
+		return nil, 0, false
+	}
+	return parent, userId, true
+}
+
+func GetSubTokensByAdmin(c *gin.Context) {
+	parent, userId, ok := getAdminSubTokenParent(c)
+	if !ok {
+		return
+	}
+	tokens, err := model.GetSubTokens(parent.Id, userId)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	items := make([]*model.Token, 0, len(tokens))
+	for _, token := range tokens {
+		items = append(items, model.EffectiveToken(token, parent))
+	}
+	common.ApiSuccess(c, buildMaskedTokenResponses(items))
+}
+
+func CreateSubTokenByAdmin(c *gin.Context) {
+	parent, userId, ok := getAdminSubTokenParent(c)
+	if !ok {
+		return
+	}
+	createSubTokenForUser(c, parent, userId)
+}
+
+func DeleteSubTokenByAdmin(c *gin.Context) {
+	parent, userId, ok := getAdminSubTokenParent(c)
+	if !ok {
+		return
+	}
+	subTokenId, err := strconv.Atoi(c.Param("subkey_id"))
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if err := model.DeleteSubToken(parent.Id, userId, subTokenId); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": ""})
 }
 
 func GetSubTokensByApiKey(c *gin.Context) {
