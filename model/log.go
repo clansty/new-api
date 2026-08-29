@@ -3,6 +3,7 @@ package model
 import (
 	"context"
 	"errors"
+	"sort"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/types"
@@ -86,45 +87,53 @@ func formatUserLogs(logs []*Log, startIdx int) {
 	}
 }
 
-func tokenLogQuery(tokenId int, rootTokenId int) *gorm.DB {
-	query := LOG_DB.Model(&Log{})
-	if rootTokenId > 0 {
-		return query.Where("token_id = ? OR token_root_id = ?", tokenId, rootTokenId)
-	}
-	return query.Where("token_id = ?", tokenId)
-}
-
 func GetLogByTokenId(tokenId int, rootTokenIds ...int) (logs []*Log, err error) {
 	rootTokenId := 0
 	if len(rootTokenIds) > 0 {
 		rootTokenId = rootTokenIds[0]
 	}
-	query := tokenLogQuery(tokenId, rootTokenId)
-	err = query.Where("user_visible = ? OR user_visible IS NULL", true).Order("id desc").Limit(common.MaxRecentItems).Find(&logs).Error
-	formatUserLogs(logs, 0)
-	for _, log := range logs {
-		other, _ := common.StrToMap(log.Other)
-		if tokenQuota, ok := other["token_quota"].(float64); ok {
-			log.Quota = int(tokenQuota)
-		}
-	}
+	logs, _, err = getTokenLogPage(tokenId, rootTokenId, 0, common.MaxRecentItems, false)
 	return logs, err
 }
 
 const tokenLogPageHardLimit = 100
 
 func GetLogByTokenIdPage(tokenId int, rootTokenId int, startIdx int, pageSize int) (logs []*Log, total int64, err error) {
+	return getTokenLogPage(tokenId, rootTokenId, startIdx, pageSize, true)
+}
+
+func getTokenLogPage(tokenId int, rootTokenId int, startIdx int, pageSize int, enforceHardLimit bool) (logs []*Log, total int64, err error) {
 	if startIdx < 0 {
 		startIdx = 0
 	}
-	if pageSize <= 0 || pageSize > tokenLogPageHardLimit {
+	if pageSize <= 0 || (enforceHardLimit && pageSize > tokenLogPageHardLimit) {
 		pageSize = tokenLogPageHardLimit
 	}
-	query := tokenLogQuery(tokenId, rootTokenId).Where("user_visible = ? OR user_visible IS NULL", true)
-	if err = query.Count(&total).Error; err != nil {
+	branchLimit := startIdx + pageSize
+	primaryLogs, primaryTotal, err := queryTokenLogBranch("token_id = ?", branchLimit, tokenId)
+	if err != nil {
 		return nil, 0, err
 	}
-	err = query.Order("id desc").Offset(startIdx).Limit(pageSize).Find(&logs).Error
+	logs = primaryLogs
+	total = primaryTotal
+	if rootTokenId > 0 {
+		rootLogs, rootTotal, branchErr := queryTokenLogBranch("token_root_id = ? AND token_id <> ?", branchLimit, rootTokenId, tokenId)
+		if branchErr != nil {
+			return nil, 0, branchErr
+		}
+		logs = append(logs, rootLogs...)
+		total += rootTotal
+	}
+	sort.SliceStable(logs, func(i, j int) bool { return logs[i].Id > logs[j].Id })
+	if startIdx >= len(logs) {
+		logs = nil
+	} else {
+		end := startIdx + pageSize
+		if end > len(logs) {
+			end = len(logs)
+		}
+		logs = logs[startIdx:end]
+	}
 	formatUserLogs(logs, startIdx)
 	for _, log := range logs {
 		other, _ := common.StrToMap(log.Other)
@@ -132,6 +141,15 @@ func GetLogByTokenIdPage(tokenId int, rootTokenId int, startIdx int, pageSize in
 			log.Quota = int(tokenQuota)
 		}
 	}
+	return logs, total, err
+}
+
+func queryTokenLogBranch(condition string, branchLimit int, args ...any) (logs []*Log, total int64, err error) {
+	query := LOG_DB.Model(&Log{}).Where(condition, args...).Where("user_visible = ? OR user_visible IS NULL", true)
+	if err = query.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	err = query.Order("id desc").Limit(branchLimit).Find(&logs).Error
 	return logs, total, err
 }
 
