@@ -319,6 +319,12 @@ func SetApiRouter(router *gin.Engine) {
 			}
 		}
 
+		pricingTokenRoute := apiRouter.Group("/pricing/token")
+		pricingTokenRoute.Use(middleware.CORS(), middleware.TokenAuthReadOnly())
+		{
+			pricingTokenRoute.GET("", controller.GetTokenPricing)
+		}
+
 		redemptionRoute := apiRouter.Group("/redemption")
 		redemptionRoute.Use(middleware.AdminAuth())
 		{
