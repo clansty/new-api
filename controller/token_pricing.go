@@ -30,6 +30,7 @@ type tokenModelPricing struct {
 
 type tokenPricingTier struct {
 	Label             string   `json:"label"`
+	Condition         string   `json:"condition,omitempty"`
 	InputPrice        *float64 `json:"input_price,omitempty"`
 	OutputPrice       *float64 `json:"output_price,omitempty"`
 	CacheReadPrice    *float64 `json:"cache_read_price,omitempty"`
@@ -38,12 +39,37 @@ type tokenPricingTier struct {
 }
 
 var (
-	tierTermPattern = regexp.MustCompile(`^\(?\s*(p|c|cr|cc|cc1h)\s*\)?\s*\*\s*([+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?)\s*$`)
+	tierTermPattern      = regexp.MustCompile(`^\(?\s*(p|c|cr|cc|cc1h)\s*\)?\s*\*\s*([+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?)\s*$`)
+	tierConditionPattern = regexp.MustCompile(`(?:^|:)\s*([^?:]+?)\s*\?\s*tier\(`)
 )
 
 type tierCall struct {
 	label string
 	body  string
+}
+
+func extractTierConditions(expr string) []string {
+	matches := tierConditionPattern.FindAllStringSubmatch(expr, -1)
+	conditions := make([]string, 0, len(matches))
+	for _, match := range matches {
+		if len(match) == 2 {
+			conditions = append(conditions, strings.TrimSpace(match[1]))
+		}
+	}
+	return conditions
+}
+
+func complementTierCondition(condition string) string {
+	parts := strings.Fields(condition)
+	if len(parts) != 3 || parts[0] != "len" {
+		return ""
+	}
+	complement := map[string]string{"<": ">=", "<=": ">", ">": "<=", ">=": "<"}
+	operator, ok := complement[parts[1]]
+	if !ok {
+		return ""
+	}
+	return strings.Join([]string{parts[0], operator, parts[2]}, " ")
 }
 
 func extractTierCalls(expr string) []tierCall {
@@ -156,7 +182,8 @@ func parseTieredPricing(expr string, multiplier float64) []tokenPricingTier {
 		return nil
 	}
 	tiers := make([]tokenPricingTier, 0, len(calls))
-	for _, call := range calls {
+	conditions := extractTierConditions(expr)
+	for index, call := range calls {
 		prices := make(map[string]float64)
 		for _, term := range strings.Split(call.body, "+") {
 			termMatch := tierTermPattern.FindStringSubmatch(strings.TrimSpace(term))
@@ -169,7 +196,13 @@ func parseTieredPricing(expr string, multiplier float64) []tokenPricingTier {
 			}
 			prices[termMatch[1]] = coefficient * multiplier
 		}
-		tier := tokenPricingTier{Label: call.label}
+		condition := ""
+		if index < len(conditions) {
+			condition = conditions[index]
+		} else if index == 1 && len(calls) == 2 && len(conditions) == 1 {
+			condition = complementTierCondition(conditions[0])
+		}
+		tier := tokenPricingTier{Label: call.label, Condition: condition}
 		if value, ok := prices["p"]; ok {
 			tier.InputPrice = &value
 		}
