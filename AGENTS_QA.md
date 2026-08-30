@@ -35,6 +35,11 @@
 
 本次子 key QA 再次复现该限制：多次独立 Playwright context 登录后，静态 `/console` 页面会返回 429；重启隔离后端并复用单一 context 可恢复。
 
+## 隔离浏览器语言与设置页截图时序
+
+- 隔离 Playwright context 的浏览器语言可能与应用默认语言不同，登录流程优先用 `input[name="username"]`、`input[name="password"]` 和 `button[type="submit"]` 等稳定语义定位；需要检查中文文案时显式设置 `locale: 'zh-CN'`。
+- 设置页的表单内容可能早于顶栏和侧栏状态加载完成，仅等待目标输入框可见会截到 Skeleton；截图前应等待 `.semi-skeleton` 全部退出，再分别在 1280、768、375 视口重新加载并取证。
+
 ## 会话鉴权与 Playwright API 请求
 
 - `/api/user/login` 返回的 session cookie 不能单独通过 `UserAuth`；Playwright context 还需要从登录响应的 `data.id` 设置 `New-Api-User` 请求头，这与前端 API helper 的行为一致。

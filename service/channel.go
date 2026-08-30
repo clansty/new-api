@@ -100,6 +100,12 @@ func ShouldDisableChannel(err *types.NewAPIError) bool {
 	return search
 }
 
+func ShouldSkipRetryByKeyword(message string) bool {
+	lowerMessage := strings.ToLower(message)
+	search, _ := AcSearch(lowerMessage, operation_setting.AutomaticSkipRetryKeywords, true)
+	return search
+}
+
 func ShouldDisableChannelForRequest(c *gin.Context, err *types.NewAPIError) bool {
 	if c != nil && c.Request != nil && relayconstant.Path2RelayMode(c.Request.URL.Path) == relayconstant.RelayModeAlphaSearch {
 		return false

@@ -2,6 +2,7 @@ package controller
 
 import (
 	"errors"
+	"net/http"
 	"net/http/httptest"
 	"testing"
 
@@ -11,12 +12,52 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 )
+
+func TestShouldRetry_whenErrorMatchesAutomaticSkipRetryKeyword(t *testing.T) {
+	original := operation_setting.AutomaticSkipRetryKeywords
+	operation_setting.AutomaticSkipRetryKeywordsFromString("request blocked")
+	t.Cleanup(func() { operation_setting.AutomaticSkipRetryKeywords = original })
+
+	c, _ := gin.CreateTestContext(nil)
+	upstreamErr := types.NewOpenAIError(
+		errors.New("Request Blocked by upstream policy"),
+		types.ErrorCodeBadResponseStatusCode,
+		http.StatusInternalServerError,
+	)
+
+	require.False(t, shouldRetry(c, upstreamErr, 1))
+
+	otherErr := types.NewOpenAIError(
+		errors.New("temporary upstream failure"),
+		types.ErrorCodeBadResponseStatusCode,
+		http.StatusInternalServerError,
+	)
+	require.True(t, shouldRetry(c, otherErr, 1))
+}
+
+func TestShouldRetryTaskRelay_whenErrorMatchesAutomaticSkipRetryKeyword(t *testing.T) {
+	original := operation_setting.AutomaticSkipRetryKeywords
+	operation_setting.AutomaticSkipRetryKeywordsFromString("request blocked")
+	t.Cleanup(func() { operation_setting.AutomaticSkipRetryKeywords = original })
+
+	c, _ := gin.CreateTestContext(nil)
+	taskErr := &dto.TaskError{
+		Message:    "Request Blocked by upstream policy",
+		StatusCode: http.StatusInternalServerError,
+	}
+
+	require.False(t, shouldRetryTaskRelay(c, 1, taskErr, 1))
+
+	taskErr.Message = "temporary upstream failure"
+	require.True(t, shouldRetryTaskRelay(c, 1, taskErr, 1))
+}
 
 func TestShouldRetryAndRecord_whenChannelTimeoutHasRetryRemaining(t *testing.T) {
 	t.Parallel()
