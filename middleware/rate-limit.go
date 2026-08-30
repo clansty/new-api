@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -96,9 +97,24 @@ func GlobalWebRateLimit() func(c *gin.Context) {
 
 func GlobalAPIRateLimit() func(c *gin.Context) {
 	if common.GlobalApiRateLimitEnable {
-		return rateLimitFactory(common.GlobalApiRateLimitNum, common.GlobalApiRateLimitDuration, "GA")
+		limiter := rateLimitFactory(common.GlobalApiRateLimitNum, common.GlobalApiRateLimitDuration, "GA")
+		return func(c *gin.Context) {
+			if isCodexManagementAPI(c.Request.URL.Path) {
+				return
+			}
+			limiter(c)
+		}
 	}
 	return defNext
+}
+
+func isCodexManagementAPI(path string) bool {
+	switch path {
+	case "/api/usage/token", "/api/pricing/token", "/api/token/subkeys", "/api/log/token":
+		return true
+	default:
+		return strings.HasPrefix(path, "/api/token/subkeys/")
+	}
 }
 
 func CriticalRateLimit() func(c *gin.Context) {
