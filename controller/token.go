@@ -157,7 +157,7 @@ func GetTokenUsage(c *gin.Context) {
 	}
 	tokenKey := parts[1]
 
-	presentedToken, err := model.GetTokenByKey(strings.TrimPrefix(tokenKey, "sk-"), false)
+	presentedToken, err := model.GetTokenByKey(strings.TrimPrefix(tokenKey, "sk-"), true)
 	if err != nil {
 		common.SysError("failed to get token by key: " + err.Error())
 		common.ApiErrorI18n(c, i18n.MsgTokenGetInfoFailed)
@@ -174,8 +174,13 @@ func GetTokenUsage(c *gin.Context) {
 	token := model.EffectiveToken(presentedToken, rootToken)
 	usedQuota := token.UsedQuota
 	if presentedToken.ParentId > 0 {
-		// 子密钥继承主密钥的权限和可用额度，但使用量必须按自身统计。
-		usedQuota = presentedToken.UsedQuota
+		logUsedQuota, logErr := model.GetTokenLogUsedQuota(presentedToken.Id)
+		if logErr != nil {
+			common.ApiError(c, logErr)
+			return
+		}
+		// 历史版本没有维护子密钥计数，日志值可补齐旧数据，但不能覆盖更完整的持久计数。
+		usedQuota = max(presentedToken.UsedQuota, logUsedQuota)
 	}
 
 	expiredAt := token.ExpiredTime

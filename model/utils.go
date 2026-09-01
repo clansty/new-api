@@ -15,6 +15,7 @@ import (
 const (
 	BatchUpdateTypeUserQuota = iota
 	BatchUpdateTypeTokenQuota
+	BatchUpdateTypeTokenUsedQuota
 	BatchUpdateTypeUsedQuota
 	BatchUpdateTypeChannelUsedQuota
 	BatchUpdateTypeRequestCount
@@ -117,6 +118,8 @@ func batchUpdate() error {
 				err = increaseUserQuota(key, value)
 			case BatchUpdateTypeTokenQuota:
 				err = increaseTokenQuota(key, value)
+			case BatchUpdateTypeTokenUsedQuota:
+				err = updateTokenUsedQuota(key, value)
 			case BatchUpdateTypeUsedQuota:
 				updateUserUsedQuota(key, value)
 			case BatchUpdateTypeRequestCount:
@@ -141,6 +144,8 @@ func batchUpdateTypeName(t int) string {
 		return "user_quota"
 	case BatchUpdateTypeTokenQuota:
 		return "token_quota"
+	case BatchUpdateTypeTokenUsedQuota:
+		return "token_used_quota"
 	case BatchUpdateTypeUsedQuota:
 		return "used_quota"
 	case BatchUpdateTypeChannelUsedQuota:

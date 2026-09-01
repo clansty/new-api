@@ -1,10 +1,12 @@
 package service
 
 import (
+	"errors"
 	"fmt"
 	"math"
 
 	"github.com/QuantumNous/new-api/logger"
+	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
@@ -20,6 +22,32 @@ func TokenQuotaFor(relayInfo *relaycommon.RelayInfo, quota int) int {
 		return quota
 	}
 	return int(math.Round(float64(quota) * relayInfo.TokenQuotaRatio))
+}
+
+func adjustTokenQuota(relayInfo *relaycommon.RelayInfo, tokenQuota int) error {
+	if tokenQuota == 0 {
+		return nil
+	}
+	billingTokenId := relayInfo.GetBillingTokenId()
+	var err error
+	if tokenQuota > 0 {
+		err = model.DecreaseTokenQuota(billingTokenId, relayInfo.GetBillingTokenKey(), tokenQuota)
+	} else {
+		err = model.IncreaseTokenQuota(billingTokenId, relayInfo.GetBillingTokenKey(), -tokenQuota)
+	}
+	if err != nil || relayInfo.TokenId == billingTokenId {
+		return err
+	}
+	if err := model.UpdateTokenUsedQuota(relayInfo.TokenId, tokenQuota); err != nil {
+		var rollbackErr error
+		if tokenQuota > 0 {
+			rollbackErr = model.IncreaseTokenQuota(billingTokenId, relayInfo.GetBillingTokenKey(), tokenQuota)
+		} else {
+			rollbackErr = model.DecreaseTokenQuota(billingTokenId, relayInfo.GetBillingTokenKey(), -tokenQuota)
+		}
+		return errors.Join(fmt.Errorf("更新子密钥已使用额度: %w", err), rollbackErr)
+	}
+	return nil
 }
 
 // PreConsumeBilling 根据用户计费偏好创建 BillingSession 并执行预扣费。

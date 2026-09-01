@@ -120,12 +120,11 @@ func taskAdjustTokenQuota(ctx context.Context, task *model.Task, delta int) {
 	if tokenDelta == 0 {
 		return
 	}
-	var err error
-	if tokenDelta > 0 {
-		err = model.DecreaseTokenQuota(billingTokenId, tokenKey, tokenDelta)
-	} else {
-		err = model.IncreaseTokenQuota(billingTokenId, tokenKey, -tokenDelta)
-	}
+	err := adjustTokenQuota(&relaycommon.RelayInfo{
+		TokenId:         task.PrivateData.TokenId,
+		BillingTokenId:  billingTokenId,
+		BillingTokenKey: tokenKey,
+	}, tokenDelta)
 	if err != nil {
 		logger.LogWarn(ctx, fmt.Sprintf("调整令牌额度失败 (delta=%d, task=%s): %s", delta, task.TaskID, err.Error()))
 	}

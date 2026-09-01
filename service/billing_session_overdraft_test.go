@@ -41,6 +41,38 @@ func TestNewBillingSessionUsesCustomRatioOnlyForTokenQuota(t *testing.T) {
 	assert.Equal(t, 8400, getTokenRemainQuota(t, tokenID))
 }
 
+func TestNewBillingSessionTracksSameUsageForRootAndSubToken(t *testing.T) {
+	truncate(t)
+	const userID = 105
+	const rootTokenID = 105
+	const subTokenID = 106
+	const tokenRemain = 10000
+	seedUser(t, userID, tokenRemain)
+	seedToken(t, rootTokenID, userID, "root-token", tokenRemain)
+	seedToken(t, subTokenID, userID, "sub-token", 0)
+	require.NoError(t, model.DB.Model(&model.Token{}).Where("id = ?", subTokenID).Update("parent_id", rootTokenID).Error)
+
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	ctx.Set("token_quota", tokenRemain)
+	relayInfo := &relaycommon.RelayInfo{
+		UserId:          userID,
+		TokenId:         subTokenID,
+		TokenKey:        "sub-token",
+		BillingTokenId:  rootTokenID,
+		BillingTokenKey: "root-token",
+		TokenQuotaRatio: 1.5,
+	}
+
+	_, apiErr := NewBillingSession(ctx, relayInfo, 100)
+
+	require.Nil(t, apiErr)
+	require.Equal(t, tokenRemain-150, getTokenRemainQuota(t, rootTokenID))
+	require.Equal(t, 150, getTokenUsedQuota(t, rootTokenID))
+	require.Equal(t, 0, getTokenRemainQuota(t, subTokenID))
+	require.Equal(t, 150, getTokenUsedQuota(t, subTokenID))
+}
+
 func TestNewBillingSession_AllowsWalletOverdraftWhenUserAllowsOverdraft(t *testing.T) {
 	truncate(t)
 

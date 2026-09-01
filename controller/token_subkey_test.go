@@ -67,6 +67,53 @@ func TestParentTokenLogsIncludeSubTokenLogs(t *testing.T) {
 	require.Equal(t, child.Id, childLogs[0].TokenId)
 }
 
+func TestGetTokenUsageReturnsRecordedUsageForSubToken(t *testing.T) {
+	db := setupTokenControllerTestDB(t)
+	require.NoError(t, db.AutoMigrate(&model.Log{}))
+	parent := seedToken(t, db, 1, "parent", "parent-key")
+	child, err := model.CreateSubToken(parent.Id, parent.UserId, "child")
+	require.NoError(t, err)
+	require.NoError(t, db.Create(&[]model.Log{
+		{
+			UserId:      parent.UserId,
+			TokenId:     child.Id,
+			TokenRootId: parent.Id,
+			Type:        model.LogTypeConsume,
+			Quota:       50,
+			Other:       common.MapToJsonStr(map[string]any{"token_quota": 70}),
+		},
+		{
+			UserId:      parent.UserId,
+			TokenId:     child.Id,
+			TokenRootId: parent.Id,
+			Type:        model.LogTypeConsume,
+			Quota:       30,
+		},
+		{
+			UserId:      parent.UserId,
+			TokenId:     child.Id,
+			TokenRootId: parent.Id,
+			Type:        model.LogTypeRefund,
+			Quota:       10,
+			Other:       common.MapToJsonStr(map[string]any{"token_quota": 20}),
+		},
+	}).Error)
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodGet, "/api/usage/token", nil, parent.UserId)
+	ctx.Request.Header.Set("Authorization", "Bearer sk-"+child.Key)
+	GetTokenUsage(ctx)
+
+	var response struct {
+		Code bool `json:"code"`
+		Data struct {
+			TotalUsed int `json:"total_used"`
+		} `json:"data"`
+	}
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	require.True(t, response.Code)
+	require.Equal(t, 80, response.Data.TotalUsed)
+}
+
 func TestDeleteParentTokenDeletesSubTokens(t *testing.T) {
 	db := setupTokenControllerTestDB(t)
 	parent := seedToken(t, db, 1, "parent", "parent-key")
