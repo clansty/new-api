@@ -120,14 +120,15 @@ func CreateSubToken(parentId int, userId int, name string) (*Token, error) {
 	}
 	now := common.GetTimestamp()
 	token := &Token{
-		UserId:       userId,
-		ParentId:     parentId,
-		Key:          key,
-		Name:         name,
-		Status:       common.TokenStatusEnabled,
-		CreatedTime:  now,
-		AccessedTime: now,
-		ExpiredTime:  -1,
+		UserId:               userId,
+		ParentId:             parentId,
+		Key:                  key,
+		Name:                 name,
+		Status:               common.TokenStatusEnabled,
+		CreatedTime:          now,
+		AccessedTime:         now,
+		ExpiredTime:          -1,
+		UsedQuotaInitialized: true,
 	}
 	if err := DB.Create(token).Error; err != nil {
 		return nil, err

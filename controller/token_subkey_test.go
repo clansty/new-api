@@ -45,6 +45,12 @@ func TestSubTokenCreateInheritsParentPolicy(t *testing.T) {
 	require.Equal(t, parent.ModelLimits, effective.ModelLimits)
 	require.Equal(t, parent.CustomRatio, effective.CustomRatio)
 	require.Equal(t, parent.Group, effective.Group)
+	var usedQuotaInitialized bool
+	require.NoError(t, db.Model(&model.Token{}).
+		Select("used_quota_initialized").
+		Where("id = ?", child.Id).
+		Scan(&usedQuotaInitialized).Error)
+	require.True(t, usedQuotaInitialized)
 }
 
 func TestParentTokenLogsIncludeSubTokenLogs(t *testing.T) {
@@ -73,6 +79,9 @@ func TestGetTokenUsageReturnsRecordedUsageForSubToken(t *testing.T) {
 	parent := seedToken(t, db, 1, "parent", "parent-key")
 	child, err := model.CreateSubToken(parent.Id, parent.UserId, "child")
 	require.NoError(t, err)
+	require.NoError(t, db.Model(&model.Token{}).
+		Where("id = ?", child.Id).
+		Update("used_quota_initialized", false).Error)
 	require.NoError(t, db.Create(&[]model.Log{
 		{
 			UserId:      parent.UserId,
@@ -98,6 +107,7 @@ func TestGetTokenUsageReturnsRecordedUsageForSubToken(t *testing.T) {
 			Other:       common.MapToJsonStr(map[string]any{"token_quota": 20}),
 		},
 	}).Error)
+	require.NoError(t, model.MigrateSubTokenUsedQuota())
 
 	ctx, recorder := newAuthenticatedContext(t, http.MethodGet, "/api/usage/token", nil, parent.UserId)
 	ctx.Request.Header.Set("Authorization", "Bearer sk-"+child.Key)
@@ -111,6 +121,20 @@ func TestGetTokenUsageReturnsRecordedUsageForSubToken(t *testing.T) {
 	}
 	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
 	require.True(t, response.Code)
+	require.Equal(t, 80, response.Data.TotalUsed)
+
+	require.NoError(t, db.Create(&model.Log{
+		UserId:      parent.UserId,
+		TokenId:     child.Id,
+		TokenRootId: parent.Id,
+		Type:        model.LogTypeConsume,
+		Quota:       500,
+	}).Error)
+	require.NoError(t, model.MigrateSubTokenUsedQuota())
+	ctx, recorder = newAuthenticatedContext(t, http.MethodGet, "/api/usage/token", nil, parent.UserId)
+	ctx.Request.Header.Set("Authorization", "Bearer sk-"+child.Key)
+	GetTokenUsage(ctx)
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
 	require.Equal(t, 80, response.Data.TotalUsed)
 }
 

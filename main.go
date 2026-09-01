@@ -389,6 +389,11 @@ func InitResources() error {
 	if err != nil {
 		return err
 	}
+	if common.IsMasterNode {
+		if err := model.MigrateSubTokenUsedQuota(); err != nil {
+			return err
+		}
+	}
 
 	// Initialize Redis
 	err = common.InitRedisClient()

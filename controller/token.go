@@ -172,16 +172,7 @@ func GetTokenUsage(c *gin.Context) {
 		}
 	}
 	token := model.EffectiveToken(presentedToken, rootToken)
-	usedQuota := token.UsedQuota
-	if presentedToken.ParentId > 0 {
-		logUsedQuota, logErr := model.GetTokenLogUsedQuota(presentedToken.Id)
-		if logErr != nil {
-			common.ApiError(c, logErr)
-			return
-		}
-		// 历史版本没有维护子密钥计数，日志值可补齐旧数据，但不能覆盖更完整的持久计数。
-		usedQuota = max(presentedToken.UsedQuota, logUsedQuota)
-	}
+	usedQuota := presentedToken.UsedQuota
 
 	expiredAt := token.ExpiredTime
 	if expiredAt == -1 {
