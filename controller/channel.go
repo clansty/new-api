@@ -69,6 +69,35 @@ func clearChannelInfo(channel *model.Channel) {
 	}
 }
 
+// PlaygroundChannelOption 操练场中管理员可选择的渠道选项
+type PlaygroundChannelOption struct {
+	Id     int    `json:"id"`
+	Name   string `json:"name"`
+	Status int    `json:"status"`
+}
+
+// GetPlaygroundChannels 返回操练场可选择的所有渠道（含已禁用渠道）
+func GetPlaygroundChannels(c *gin.Context) {
+	var channels []*model.Channel
+	err := model.DB.Model(&model.Channel{}).
+		Select("id", "name", "status").
+		Order("id asc").
+		Find(&channels).Error
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	options := make([]PlaygroundChannelOption, 0, len(channels))
+	for _, channel := range channels {
+		options = append(options, PlaygroundChannelOption{
+			Id:     channel.Id,
+			Name:   channel.Name,
+			Status: channel.Status,
+		})
+	}
+	common.ApiSuccess(c, options)
+}
+
 func GetAllChannels(c *gin.Context) {
 	pageInfo := common.GetPageQuery(c)
 	channelData := make([]*model.Channel, 0)

@@ -78,6 +78,7 @@ export const API_ENDPOINTS = {
   CHAT_COMPLETIONS: '/pg/chat/completions',
   USER_MODELS: '/api/user/models',
   USER_GROUPS: '/api/user/self/groups',
+  PLAYGROUND_CHANNELS: '/api/channel/playground',
 };
 
 // ========== 配置默认值 ==========
@@ -85,6 +86,7 @@ export const DEFAULT_CONFIG = {
   inputs: {
     model: 'gpt-4o',
     group: '',
+    channelId: null,
     temperature: 0.7,
     top_p: 1,
     max_tokens: 4096,

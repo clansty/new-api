@@ -2239,6 +2239,7 @@
     "请选择多密钥使用策略": "Vui lòng chọn chính sách sử dụng đa khóa",
     "请选择发布日期": "Vui lòng chọn ngày xuất bản",
     "请选择分组": "Vui lòng chọn nhóm",
+    "加载渠道失败": "Không thể tải danh sách kênh",
     "请选择该令牌支持的模型，留空支持所有模型": "Vui lòng chọn các mô hình được mã thông báo này hỗ trợ, để trống để hỗ trợ tất cả các mô hình",
     "请选择该渠道所支持的模型": "Vui lòng chọn mô hình được kênh này hỗ trợ",
     "请选择该渠道所支持的模型，留空则不更改": "Vui lòng chọn mô hình được kênh này hỗ trợ, để trống sẽ không thay đổi",

@@ -231,6 +231,7 @@ func SetApiRouter(router *gin.Engine) {
 		{
 			registerRootRoute(channelRoute, "GET", controller.GetAllChannels)
 			channelRoute.GET("/search", controller.SearchChannels)
+			channelRoute.GET("/playground", controller.GetPlaygroundChannels)
 			channelRoute.GET("/affinity_forces", controller.ListChannelAffinityForces)
 			channelRoute.GET("/models", controller.ChannelListModels)
 			channelRoute.GET("/models_enabled", controller.EnabledListModels)

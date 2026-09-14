@@ -94,6 +94,7 @@ const Playground = () => {
     showSettings,
     models,
     groups,
+    channels,
     status,
     message,
     debugData,
@@ -110,6 +111,7 @@ const Playground = () => {
     setShowSettings,
     setModels,
     setGroups,
+    setChannels,
     setStatus,
     setMessage,
     setDebugData,
@@ -119,6 +121,9 @@ const Playground = () => {
     setCustomRequestMode,
     setCustomRequestBody,
   } = state;
+
+  // 管理员在操练场中直接选择渠道，普通用户选择分组
+  const isAdminUser = (userState?.user?.role ?? 0) >= 10;
 
   // API 请求相关
   const { sendRequest, onStopGenerator } = useApiRequest(
@@ -130,7 +135,16 @@ const Playground = () => {
   );
 
   // 数据加载
-  useDataLoader(userState, inputs, handleInputChange, setModels, setGroups);
+  useDataLoader(
+    userState,
+    inputs,
+    groups,
+    channels,
+    handleInputChange,
+    setModels,
+    setGroups,
+    setChannels,
+  );
 
   // 消息编辑
   const {
@@ -478,6 +492,8 @@ const Playground = () => {
                 parameterEnabled={parameterEnabled}
                 models={models}
                 groups={groups}
+                channels={channels}
+                isAdminUser={isAdminUser}
                 styleState={styleState}
                 showSettings={showSettings}
                 showDebugPanel={showDebugPanel}

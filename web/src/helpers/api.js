@@ -36,7 +36,6 @@ export let API = axios.create({
   },
 });
 
-
 function redirectToOAuthUrl(url, options = {}) {
   const { openInNewTab = false } = options;
   const targetUrl = typeof url === 'string' ? url : url.toString();
@@ -48,7 +47,6 @@ function redirectToOAuthUrl(url, options = {}) {
 
   window.location.assign(targetUrl);
 }
-
 
 function patchAPIInstance(instance) {
   const originalGet = instance.get.bind(instance);
@@ -130,10 +128,16 @@ export const buildApiPayload = (
 
   const payload = {
     model: inputs.model,
-    group: inputs.group,
     messages: processedMessages,
     stream: inputs.stream,
   };
+
+  // 管理员在操练场中直接指定渠道，普通用户按分组路由
+  if (inputs.channelId) {
+    payload.channel_id = inputs.channelId;
+  } else {
+    payload.group = inputs.group;
+  }
 
   // 添加启用的参数
   const parameterMappings = {
@@ -236,6 +240,27 @@ export const processGroupsData = (data, userGroup) => {
   }
 
   return groupOptions;
+};
+
+// 处理操练场渠道数据（管理员选择渠道时使用）
+export const processChannelsData = (data, currentChannelId) => {
+  const channelOptions = (data || []).map((channel) => ({
+    label: `#${channel.id} ${channel.name}`,
+    value: channel.id,
+    id: channel.id,
+    name: channel.name,
+    status: channel.status,
+  }));
+
+  const hasCurrentChannel = channelOptions.some(
+    (option) => option.value === currentChannelId,
+  );
+  const selectedChannel =
+    hasCurrentChannel && channelOptions.length > 0
+      ? currentChannelId
+      : (channelOptions[0]?.value ?? null);
+
+  return { channelOptions, selectedChannel };
 };
 
 // 原来components中的utils.js

@@ -599,6 +599,45 @@ func GetUserModels(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+
+	// 操练场：管理员可直接查看指定渠道实际可用的模型（含已禁用渠道）
+	if channelIdStr := c.Query("channel_id"); channelIdStr != "" {
+		if c.GetInt("role") < common.RoleAdminUser {
+			common.ApiErrorI18n(c, i18n.MsgDistributorChannelAccessDenied)
+			return
+		}
+		channelId, convErr := strconv.Atoi(channelIdStr)
+		if convErr != nil || channelId <= 0 {
+			common.ApiErrorI18n(c, i18n.MsgDistributorInvalidChannelId)
+			return
+		}
+		channel, channelErr := model.GetChannelById(channelId, false)
+		if channelErr != nil || channel == nil {
+			common.ApiErrorI18n(c, i18n.MsgDistributorInvalidChannelId)
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{
+			"success": true,
+			"message": "",
+			"data":    splitChannelModels(channel.Models),
+		})
+		return
+	}
+
+	// 操练场：按所选分组筛选模型
+	if group := c.Query("group"); group != "" {
+		if !service.GroupInUserUsableGroups(user.Group, group) {
+			common.ApiErrorI18n(c, i18n.MsgDistributorGroupAccessDenied)
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{
+			"success": true,
+			"message": "",
+			"data":    getEnabledModelsByGroup(user.Group, group),
+		})
+		return
+	}
+
 	groups := service.GetUserUsableGroups(user.Group)
 	var models []string
 	for group := range groups {
@@ -614,6 +653,38 @@ func GetUserModels(c *gin.Context) {
 		"data":    models,
 	})
 	return
+}
+
+// getEnabledModelsByGroup 返回指定分组实际可用的模型，auto 分组会展开为用户可用的自动分组
+func getEnabledModelsByGroup(userGroup, group string) []string {
+	models := make([]string, 0)
+	appendGroupModels := func(groupName string) {
+		for _, modelName := range model.GetGroupEnabledModels(groupName) {
+			if !common.StringsContains(models, modelName) {
+				models = append(models, modelName)
+			}
+		}
+	}
+	if group == "auto" {
+		for _, autoGroup := range service.GetUserAutoGroup(userGroup) {
+			appendGroupModels(autoGroup)
+		}
+		return models
+	}
+	appendGroupModels(group)
+	return models
+}
+
+// splitChannelModels 拆分渠道配置中的模型列表并去重
+func splitChannelModels(models string) []string {
+	result := make([]string, 0)
+	for _, modelName := range strings.Split(models, ",") {
+		modelName = strings.TrimSpace(modelName)
+		if modelName != "" && !common.StringsContains(result, modelName) {
+			result = append(result, modelName)
+		}
+	}
+	return result
 }
 
 func UpdateUser(c *gin.Context) {

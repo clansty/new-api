@@ -2038,6 +2038,8 @@
     "请选择多密钥使用策略": "Please select multi-key usage policy",
     "请选择发布日期": "Please select the publish date",
     "请选择分组": "Please select a group",
+    "请选择渠道": "Please select a channel",
+    "加载渠道失败": "Failed to load channels",
     "请选择该令牌支持的模型，留空支持所有模型": "Select models supported by the token, leave blank to support all models",
     "请选择该渠道所支持的模型": "Please select the model supported by this channel",
     "请选择该渠道所支持的模型，留空则不更改": "Please select the models supported by the channel, leaving blank will not change",

@@ -997,6 +997,73 @@ export const renderGroupOption = (item) => {
   );
 };
 
+// 操练场渠道选项：展示渠道 ID 与名称，禁用渠道仍然可选并加以标记
+export const renderChannelOption = (item) => {
+  const {
+    disabled,
+    selected,
+    label,
+    value,
+    id,
+    name,
+    status,
+    focused,
+    className,
+    style,
+    onMouseEnter,
+    onClick,
+    empty,
+    emptyContent,
+    ...rest
+  } = item;
+
+  const channelId = id ?? value;
+  const channelName = name ?? label;
+
+  const baseStyle = {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: '8px',
+    padding: '8px 16px',
+    cursor: disabled ? 'not-allowed' : 'pointer',
+    backgroundColor: focused ? 'var(--semi-color-fill-0)' : 'transparent',
+    opacity: disabled ? 0.5 : 1,
+    ...(selected && {
+      backgroundColor: 'var(--semi-color-primary-light-default)',
+    }),
+  };
+
+  const handleClick = () => {
+    if (!disabled && onClick) {
+      onClick();
+    }
+  };
+
+  const handleMouseEnter = (e) => {
+    if (!disabled && onMouseEnter) {
+      onMouseEnter(e);
+    }
+  };
+
+  return (
+    <div
+      style={baseStyle}
+      onClick={handleClick}
+      onMouseEnter={handleMouseEnter}
+    >
+      <Typography.Text strong type={disabled ? 'tertiary' : undefined} ellipsis>
+        #{channelId} {channelName}
+      </Typography.Text>
+      {status !== undefined && status !== 1 && (
+        <Tag color='grey' size='small' type='light'>
+          {i18next.t('已禁用')}
+        </Tag>
+      )}
+    </div>
+  );
+};
+
 export function renderNumber(num) {
   if (num >= 1000000000) {
     return (num / 1000000000).toFixed(1) + 'B';

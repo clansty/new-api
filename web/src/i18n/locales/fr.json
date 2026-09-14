@@ -1975,6 +1975,8 @@
     "请选择多密钥使用策略": "Veuillez sélectionner la stratégie d'utilisation de plusieurs clés",
     "请选择发布日期": "Veuillez sélectionner la date de publication",
     "请选择分组": "Veuillez sélectionner un groupe",
+    "请选择渠道": "Veuillez sélectionner un canal",
+    "加载渠道失败": "Échec du chargement des canaux",
     "请选择该令牌支持的模型，留空支持所有模型": "Sélectionnez les modèles pris en charge par le jeton, laissez vide pour prendre en charge tous les modèles",
     "请选择该渠道所支持的模型": "Veuillez sélectionner le modèle pris en charge par ce canal",
     "请选择该渠道所支持的模型，留空则不更改": "Veuillez sélectionner les modèles pris en charge par le canal, laisser vide ne changera rien",

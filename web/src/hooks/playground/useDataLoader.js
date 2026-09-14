@@ -17,42 +17,90 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { API, processModelsData, processGroupsData } from '../../helpers';
+import {
+  API,
+  isAdmin,
+  processModelsData,
+  processGroupsData,
+  processChannelsData,
+  showError,
+} from '../../helpers';
 import { API_ENDPOINTS } from '../../constants/playground.constants';
 
 export const useDataLoader = (
   userState,
   inputs,
+  groups,
+  channels,
   handleInputChange,
   setModels,
   setGroups,
+  setChannels,
 ) => {
   const { t } = useTranslation();
+  const isAdminUser = isAdmin();
 
-  const loadModels = useCallback(async () => {
-    try {
-      const res = await API.get(API_ENDPOINTS.USER_MODELS);
-      const { success, message, data } = res.data;
+  // 使用 ref 读取最新的 inputs，避免回调因 inputs 变化而频繁重建
+  const inputsRef = useRef(inputs);
+  inputsRef.current = inputs;
 
-      if (success) {
-        const { modelOptions, selectedModel } = processModelsData(
-          data,
-          inputs.model,
-        );
-        setModels(modelOptions);
+  // 记录上一次请求的模型筛选条件，避免重复请求
+  const lastModelKeyRef = useRef(null);
 
-        if (selectedModel !== inputs.model) {
-          handleInputChange('model', selectedModel);
-        }
-      } else {
-        showError(t(message));
+  const applyModels = useCallback(
+    (modelNames) => {
+      const { modelOptions, selectedModel } = processModelsData(
+        modelNames,
+        inputsRef.current.model,
+      );
+      setModels(modelOptions);
+
+      if (selectedModel !== inputsRef.current.model) {
+        handleInputChange('model', selectedModel);
       }
-    } catch (error) {
-      showError(t('加载模型失败'));
-    }
-  }, [inputs.model, handleInputChange, setModels, t]);
+    },
+    [handleInputChange, setModels],
+  );
+
+  // 加载模型列表，可按分组或渠道筛选
+  const loadModels = useCallback(
+    async ({ group, channelId } = {}) => {
+      const useChannel = channelId !== undefined && channelId !== null;
+      const key = useChannel ? `channel:${channelId}` : `group:${group ?? ''}`;
+      if (lastModelKeyRef.current === key) {
+        return;
+      }
+      lastModelKeyRef.current = key;
+
+      try {
+        const params = {};
+        if (useChannel) {
+          params.channel_id = channelId;
+        } else if (group !== undefined && group !== null && group !== '') {
+          params.group = group;
+        }
+
+        const res = await API.get(
+          API_ENDPOINTS.USER_MODELS,
+          Object.keys(params).length > 0 ? { params } : undefined,
+        );
+        const { success, message, data } = res.data;
+
+        if (success) {
+          applyModels(data);
+        } else {
+          lastModelKeyRef.current = null;
+          showError(t(message));
+        }
+      } catch (error) {
+        lastModelKeyRef.current = null;
+        showError(t('加载模型失败'));
+      }
+    },
+    [applyModels, t],
+  );
 
   const loadGroups = useCallback(async () => {
     try {
@@ -65,31 +113,90 @@ export const useDataLoader = (
           JSON.parse(localStorage.getItem('user'))?.group;
         const groupOptions = processGroupsData(data, userGroup);
         setGroups(groupOptions);
-
-        const hasCurrentGroup = groupOptions.some(
-          (option) => option.value === inputs.group,
-        );
-        if (!hasCurrentGroup) {
-          handleInputChange('group', groupOptions[0]?.value || '');
-        }
       } else {
         showError(t(message));
       }
     } catch (error) {
       showError(t('加载分组失败'));
     }
-  }, [userState, inputs.group, handleInputChange, setGroups, t]);
+  }, [userState, setGroups, t]);
 
-  // 自动加载数据
+  const loadChannels = useCallback(async () => {
+    try {
+      const res = await API.get(API_ENDPOINTS.PLAYGROUND_CHANNELS);
+      const { success, message, data } = res.data;
+
+      if (success) {
+        const { channelOptions } = processChannelsData(
+          data,
+          inputsRef.current.channelId,
+        );
+        setChannels(channelOptions);
+      } else {
+        showError(t(message));
+      }
+    } catch (error) {
+      showError(t('加载渠道失败'));
+    }
+  }, [setChannels, t]);
+
+  // 首次加载：管理员加载渠道，普通用户加载分组
   useEffect(() => {
-    if (userState?.user) {
-      loadModels();
+    if (!userState?.user) return;
+    if (isAdminUser) {
+      loadChannels();
+    } else {
       loadGroups();
     }
-  }, [userState?.user, loadModels, loadGroups]);
+  }, [userState?.user, isAdminUser, loadChannels, loadGroups]);
+
+  // 普通用户：分组变化时按分组筛选模型
+  useEffect(() => {
+    if (!userState?.user || isAdminUser) return;
+    if (groups.length === 0) return;
+
+    const hasCurrentGroup = groups.some(
+      (option) => option.value === inputs.group,
+    );
+    if (!hasCurrentGroup) {
+      handleInputChange('group', groups[0].value);
+      return;
+    }
+    loadModels({ group: inputs.group });
+  }, [
+    userState?.user,
+    isAdminUser,
+    groups,
+    inputs.group,
+    handleInputChange,
+    loadModels,
+  ]);
+
+  // 管理员：渠道变化时按渠道筛选模型
+  useEffect(() => {
+    if (!userState?.user || !isAdminUser) return;
+    if (channels.length === 0) return;
+
+    const hasCurrentChannel = channels.some(
+      (option) => option.value === inputs.channelId,
+    );
+    if (!hasCurrentChannel) {
+      handleInputChange('channelId', channels[0].value);
+      return;
+    }
+    loadModels({ channelId: inputs.channelId });
+  }, [
+    userState?.user,
+    isAdminUser,
+    channels,
+    inputs.channelId,
+    handleInputChange,
+    loadModels,
+  ]);
 
   return {
     loadModels,
     loadGroups,
+    loadChannels,
   };
 };

@@ -19,9 +19,13 @@ For commercial licensing, please contact support@quantumnous.com
 
 import React from 'react';
 import { Card, Select, Typography, Button, Switch } from '@douyinfe/semi-ui';
-import { Sparkles, Users, ToggleLeft, X, Settings } from 'lucide-react';
+import { Sparkles, Users, ToggleLeft, X, Settings, Server } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { renderGroupOption, selectFilter } from '../../helpers';
+import {
+  renderGroupOption,
+  renderChannelOption,
+  selectFilter,
+} from '../../helpers';
 import ParameterControl from './ParameterControl';
 import ImageUrlInput from './ImageUrlInput';
 import ConfigManager from './ConfigManager';
@@ -32,6 +36,8 @@ const SettingsPanel = ({
   parameterEnabled,
   models,
   groups,
+  channels,
+  isAdminUser,
   styleState,
   showDebugPanel,
   customRequestMode,
@@ -113,37 +119,70 @@ const SettingsPanel = ({
           defaultPayload={previewPayload}
         />
 
-        {/* 分组选择 */}
-        <div className={customRequestMode ? 'opacity-50' : ''}>
-          <div className='flex items-center gap-2 mb-2'>
-            <Users size={16} className='text-gray-500' />
-            <Typography.Text strong className='text-sm'>
-              {t('分组')}
-            </Typography.Text>
-            {customRequestMode && (
-              <Typography.Text className='text-xs text-orange-600'>
-                ({t('已在自定义模式中忽略')})
+        {/* 分组 / 渠道选择：管理员直接选择渠道，普通用户选择分组 */}
+        {isAdminUser ? (
+          <div className={customRequestMode ? 'opacity-50' : ''}>
+            <div className='flex items-center gap-2 mb-2'>
+              <Server size={16} className='text-gray-500' />
+              <Typography.Text strong className='text-sm'>
+                {t('渠道')}
               </Typography.Text>
-            )}
+              {customRequestMode && (
+                <Typography.Text className='text-xs text-orange-600'>
+                  ({t('已在自定义模式中忽略')})
+                </Typography.Text>
+              )}
+            </div>
+            <Select
+              placeholder={t('请选择渠道')}
+              name='channel'
+              required
+              selection
+              filter={selectFilter}
+              autoClearSearchValue={false}
+              onChange={(value) => onInputChange('channelId', value)}
+              value={inputs.channelId}
+              autoComplete='new-password'
+              optionList={channels}
+              renderOptionItem={renderChannelOption}
+              style={{ width: '100%' }}
+              dropdownStyle={{ width: '100%', maxWidth: '100%' }}
+              className='!rounded-lg'
+              disabled={customRequestMode}
+            />
           </div>
-          <Select
-            placeholder={t('请选择分组')}
-            name='group'
-            required
-            selection
-            filter={selectFilter}
-            autoClearSearchValue={false}
-            onChange={(value) => onInputChange('group', value)}
-            value={inputs.group}
-            autoComplete='new-password'
-            optionList={groups}
-            renderOptionItem={renderGroupOption}
-            style={{ width: '100%' }}
-            dropdownStyle={{ width: '100%', maxWidth: '100%' }}
-            className='!rounded-lg'
-            disabled={customRequestMode}
-          />
-        </div>
+        ) : (
+          <div className={customRequestMode ? 'opacity-50' : ''}>
+            <div className='flex items-center gap-2 mb-2'>
+              <Users size={16} className='text-gray-500' />
+              <Typography.Text strong className='text-sm'>
+                {t('分组')}
+              </Typography.Text>
+              {customRequestMode && (
+                <Typography.Text className='text-xs text-orange-600'>
+                  ({t('已在自定义模式中忽略')})
+                </Typography.Text>
+              )}
+            </div>
+            <Select
+              placeholder={t('请选择分组')}
+              name='group'
+              required
+              selection
+              filter={selectFilter}
+              autoClearSearchValue={false}
+              onChange={(value) => onInputChange('group', value)}
+              value={inputs.group}
+              autoComplete='new-password'
+              optionList={groups}
+              renderOptionItem={renderGroupOption}
+              style={{ width: '100%' }}
+              dropdownStyle={{ width: '100%', maxWidth: '100%' }}
+              className='!rounded-lg'
+              disabled={customRequestMode}
+            />
+          </div>
+        )}
 
         {/* 模型选择 */}
         <div className={customRequestMode ? 'opacity-50' : ''}>

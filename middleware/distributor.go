@@ -114,6 +114,21 @@ func Distribute() func(c *gin.Context) {
 						usingGroup = playgroundRequest.Group
 						common.SetContextKey(c, constant.ContextKeyUsingGroup, usingGroup)
 					}
+					// 管理员在操练场中可直接指定渠道（含已禁用渠道），用于调试特定渠道
+					if playgroundRequest.ChannelId > 0 {
+						if c.GetInt("role") < common.RoleAdminUser {
+							abortWithOpenAiMessage(c, http.StatusForbidden, i18n.T(c, i18n.MsgDistributorChannelAccessDenied))
+							return
+						}
+						selectedChannel, selectErr := model.GetChannelById(playgroundRequest.ChannelId, true)
+						if selectErr != nil || selectedChannel == nil {
+							abortWithOpenAiMessage(c, http.StatusBadRequest, i18n.T(c, i18n.MsgDistributorInvalidChannelId))
+							return
+						}
+						channel = selectedChannel
+						// 标记为指定渠道，避免重试时切换到其它渠道
+						c.Set(string(constant.ContextKeyTokenSpecificChannelId), strconv.Itoa(selectedChannel.Id))
+					}
 				}
 
 				if preferredChannelID, found := service.GetPreferredChannelByAffinity(c, modelRequest.Model, usingGroup); found {
