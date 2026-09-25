@@ -28,6 +28,7 @@ const (
 	ginKeyChannelAffinityMeta       = "channel_affinity_meta"
 	ginKeyChannelAffinityLogInfo    = "channel_affinity_log_info"
 	ginKeyChannelAffinitySkipRetry  = "channel_affinity_skip_retry_on_failure"
+	ginKeyChannelAffinityBroken     = "channel_affinity_broken"
 
 	channelAffinityCacheNamespace           = "new-api:channel_affinity:v1"
 	channelAffinityMemberCacheNamespace     = "new-api:channel_affinity_member:v1"
@@ -838,6 +839,48 @@ func RecordChannelAffinity(c *gin.Context, channelID int) {
 			common.SysError(fmt.Sprintf("channel affinity member cache set failed: key=%s, err=%v", cacheKey, err))
 		}
 	} else if _, err := getChannelAffinityMemberCache().DeleteMany([]string{memberCacheKey}); err != nil {
+		common.SysError(fmt.Sprintf("channel affinity member cache delete failed: key=%s, err=%v", cacheKey, err))
+	}
+}
+
+// MarkChannelAffinityBroken 标记本次请求没有从上游拿到任何有效结果。
+// 上游空响应时 HTTP 状态码仍是 200，若继续按成功写入亲和性，客户端重试会反复落到同一渠道。
+func MarkChannelAffinityBroken(c *gin.Context) {
+	if c == nil {
+		return
+	}
+	if _, ok := getChannelAffinityMeta(c); !ok {
+		return
+	}
+	c.Set(ginKeyChannelAffinityBroken, true)
+}
+
+func IsChannelAffinityBroken(c *gin.Context) bool {
+	if c == nil {
+		return false
+	}
+	v, ok := c.Get(ginKeyChannelAffinityBroken)
+	if !ok {
+		return false
+	}
+	broken, _ := v.(bool)
+	return broken
+}
+
+// ResetChannelAffinity 删除当前请求亲和键上的渠道记录，让下一次请求重新随机选路
+func ResetChannelAffinity(c *gin.Context) {
+	if c == nil {
+		return
+	}
+	cacheKey, _, ok := getChannelAffinityContext(c)
+	if !ok {
+		return
+	}
+	if _, err := getChannelAffinityCache().DeleteMany([]string{cacheKey}); err != nil {
+		common.SysError(fmt.Sprintf("channel affinity cache delete failed: key=%s, err=%v", cacheKey, err))
+	}
+	memberCacheKey := strings.TrimPrefix(cacheKey, channelAffinityCacheNamespace+":")
+	if _, err := getChannelAffinityMemberCache().DeleteMany([]string{memberCacheKey}); err != nil {
 		common.SysError(fmt.Sprintf("channel affinity member cache delete failed: key=%s, err=%v", cacheKey, err))
 	}
 }

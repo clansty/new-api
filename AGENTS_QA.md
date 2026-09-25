@@ -60,6 +60,11 @@
 - 通过一次性 shell 后台命令启动隔离实例时，命令执行器可能在父 shell 结束后回收子进程；需要后续多次 `curl` 的 QA 应使用持久 PTY 会话，并在完成后发送 SIGINT 验证优雅退出。
 - 用 `nc` 模拟首响应超时上游时，延迟响应的计时从监听进程启动就开始；应预留足够长的延迟并立即发起请求，否则响应可能在客户端连接前已进入管道缓冲，导致请求看似瞬时成功。
 
+## 隔离实例新增渠道后立即中继
+
+- `MEMORY_CACHE_ENABLED=true` 时渠道选择走内存缓存，`POST /api/channel` 新建的渠道不会立刻对中继可见，表现为 `503 No available channel for model ... under group default`；要么等一次渠道同步（默认 60s，日志出现 `syncing channels from database`），要么重启实例后再发中继请求。
+- 用 `pkill -f '/path/to/new-api'` 结束隔离实例时，模式会匹配到执行该命令的 shell 自身（命令行里含有同样的字符串），导致 shell 被杀、命令提前退出；应先 `pgrep -af` 拿到 PID 再 `kill -INT <pid>`。
+
 ## 渠道组弹窗 QA
 
 - Codex 内置浏览器不可用时，可按 browser skill 的降级路径使用独立 Playwright 脚本；Semi 弹窗动画结束前定位 footer 按钮容易命中旧 DOM，应等待过渡稳定并限定到当前可见弹窗。

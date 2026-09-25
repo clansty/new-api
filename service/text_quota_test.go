@@ -1,6 +1,8 @@
 package service
 
 import (
+	"fmt"
+	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
@@ -14,6 +16,41 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
+
+func TestPostTextConsumeQuotaMarksAffinityBrokenWhenUpstreamReturnsNothing(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	setChannelAffinityContext(ctx, channelAffinityMeta{
+		CacheKey:   channelAffinityCacheNamespace + ":empty-quota:" + fmt.Sprintf("%d", time.Now().UnixNano()),
+		TTLSeconds: 60,
+		RuleName:   "rule-empty-quota",
+		UsingGroup: "default",
+		ModelName:  "gpt-5",
+	})
+
+	relayInfo := &relaycommon.RelayInfo{
+		UserId:          1,
+		TokenId:         2,
+		OriginModelName: "gpt-5",
+		IsStream:        true,
+		StartTime:       time.Now(),
+		StreamStatus:    relaycommon.NewStreamStatus(),
+		ChannelMeta:     &relaycommon.ChannelMeta{ChannelId: 9},
+		PriceData: types.PriceData{
+			ModelRatio:      1,
+			CompletionRatio: 1,
+			GroupRatioInfo:  types.GroupRatioInfo{GroupRatio: 1},
+		},
+	}
+	relayInfo.StreamStatus.SetEndReason(relaycommon.StreamEndReasonEOF, nil)
+
+	PostTextConsumeQuota(ctx, relayInfo, &dto.Usage{}, nil)
+
+	require.True(t, IsChannelAffinityBroken(ctx))
+	require.True(t, relayInfo.StreamStatus.HasErrors())
+	require.Equal(t, relaycommon.StreamEndReasonEOF, relayInfo.StreamStatus.EndReason)
+}
 
 func TestCalculateTextQuotaSummaryUnifiedForClaudeSemantic(t *testing.T) {
 	gin.SetMode(gin.TestMode)

@@ -274,3 +274,52 @@ func TestRecordChannelAffinity_preservesWinningGroupMember(t *testing.T) {
 	require.Equal(t, 9, channelID)
 	require.Equal(t, 77, common.GetContextKeyInt(next, constant.ContextKeyChannelAffinityMemberId))
 }
+
+func TestResetChannelAffinity_clearsRecordAfterEmptyUpstream(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	affinityValue := fmt.Sprintf("empty-upstream-%d", time.Now().UnixNano())
+	cacheKeySuffix := "codex cli trace:default:" + affinityValue
+	ctx := buildChannelAffinityTemplateContextForTest(channelAffinityMeta{
+		CacheKey:   channelAffinityCacheNamespace + ":" + cacheKeySuffix,
+		TTLSeconds: 60,
+		UsingGroup: "default",
+		ModelName:  "gpt-5",
+	})
+	t.Cleanup(func() {
+		_, _ = getChannelAffinityCache().DeleteMany([]string{cacheKeySuffix})
+		_, _ = getChannelAffinityMemberCache().DeleteMany([]string{cacheKeySuffix})
+	})
+
+	RecordChannelAffinity(ctx, 9)
+
+	newLookupContext := func() *gin.Context {
+		recorder := httptest.NewRecorder()
+		next, _ := gin.CreateTestContext(recorder)
+		next.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(fmt.Sprintf(`{"prompt_cache_key":%q}`, affinityValue)))
+		next.Request.Header.Set("Content-Type", "application/json")
+		return next
+	}
+
+	channelID, found := GetPreferredChannelByAffinity(newLookupContext(), "gpt-5", "default")
+	require.True(t, found)
+	require.Equal(t, 9, channelID)
+
+	MarkChannelAffinityBroken(ctx)
+	require.True(t, IsChannelAffinityBroken(ctx))
+	ResetChannelAffinity(ctx)
+
+	_, found = GetPreferredChannelByAffinity(newLookupContext(), "gpt-5", "default")
+	require.False(t, found)
+}
+
+func TestMarkChannelAffinityBroken_requiresAffinityMeta(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+
+	MarkChannelAffinityBroken(ctx)
+
+	require.False(t, IsChannelAffinityBroken(ctx))
+}

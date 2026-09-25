@@ -392,6 +392,11 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 	if summary.TotalTokens == 0 && summary.ToolCallSurchargeQuota.IsZero() {
 		extraContent = append(extraContent, "上游没有返回计费信息，无法扣费（可能是上游超时）")
 		logger.LogError(ctx, fmt.Sprintf("total tokens is 0, cannot consume quota, userId %d, channelId %d, tokenId %d, model %s， pre-consumed quota %d", relayInfo.UserId, relayInfo.ChannelId, relayInfo.TokenId, summary.ModelName, relayInfo.FinalPreConsumedQuota))
+		// 上游返回空响应但状态码仍是 200，按失败处理：重置亲和性并标记流状态，避免客户端重试继续命中同一渠道
+		MarkChannelAffinityBroken(ctx)
+		if relayInfo.IsStream && relayInfo.StreamStatus != nil {
+			relayInfo.StreamStatus.RecordError("上游未返回任何内容，无法计费")
+		}
 	} else {
 		if summary.TotalTokens == 0 {
 			extraContent = append(extraContent, "上游未返回 token 用量，仅结算工具调用费用")
