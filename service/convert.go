@@ -96,6 +96,8 @@ func ClaudeToOpenAIRequest(claudeRequest dto.ClaudeRequest, info *relaycommon.Re
 	}
 	openAIRequest.Tools = openAITools
 
+	applyClaudeToolChoiceToOpenAI(&claudeRequest, &openAIRequest)
+
 	// Convert messages
 	openAIMessages := make([]dto.Message, 0)
 
@@ -126,13 +128,15 @@ func ClaudeToOpenAIRequest(claudeRequest dto.ClaudeRequest, info *relaycommon.Re
 					}
 					openAIMessage.SetMediaContent(systemMediaMessages)
 				} else {
-					systemStr := ""
+					// 各 block 用换行拼接：直接相连会把两段指令粘成一个词
+					// （"...keep it brief" + "Never use tables" → "briefNever"）。
+					systemParts := make([]string, 0, len(systems))
 					for _, system := range systems {
-						if system.Text != nil {
-							systemStr += *system.Text
+						if system.Text != nil && *system.Text != "" {
+							systemParts = append(systemParts, *system.Text)
 						}
 					}
-					openAIMessage.SetStringContent(systemStr)
+					openAIMessage.SetStringContent(strings.Join(systemParts, "\n"))
 				}
 				openAIMessages = append(openAIMessages, openAIMessage)
 			}
@@ -158,8 +162,13 @@ func ClaudeToOpenAIRequest(claudeRequest dto.ClaudeRequest, info *relaycommon.Re
 			for _, mediaMsg := range contents {
 				switch mediaMsg.Type {
 				case "thinking":
-					if mediaMsg.Thinking != nil {
-						openAIMessage.ReasoningContent = *mediaMsg.Thinking
+					// 交错思考下一个 assistant 消息可能带多个 thinking 块，逐个累积而不是只留最后一个，
+					// 否则前面几轮的推理过程会在转发到 chat 上游时整段消失。
+					if mediaMsg.Thinking != nil && *mediaMsg.Thinking != "" {
+						if openAIMessage.ReasoningContent != "" {
+							openAIMessage.ReasoningContent += "\n"
+						}
+						openAIMessage.ReasoningContent += *mediaMsg.Thinking
 					}
 					if mediaMsg.Signature != nil && *mediaMsg.Signature != "" {
 						openAIMessage.ReasoningOpaque = mediaMsg.Signature
@@ -172,14 +181,24 @@ func ClaudeToOpenAIRequest(claudeRequest dto.ClaudeRequest, info *relaycommon.Re
 					}
 					mediaMessages = append(mediaMessages, message)
 				case "image":
-					// Handle image conversion (base64 to URL or keep as is)
-					imageData := fmt.Sprintf("data:%s;base64,%s", mediaMsg.Source.MediaType, mediaMsg.Source.Data)
-					//textContent += fmt.Sprintf("[Image: %s]", imageData)
-					mediaMessage := dto.MediaContent{
-						Type:     "image_url",
-						ImageUrl: &dto.MessageImageUrl{Url: imageData},
+					// Anthropic 的 image source 有 base64 与 url 两种：url 源直接透传，
+					// 否则会拼出 "data:;base64,<nil>" 这种坏 URL 把整个请求带坏。
+					// source 缺失也不能直接解引用（畸形请求会 panic 成 500）。
+					imageUrl := ""
+					if mediaMsg.Source != nil {
+						if mediaMsg.Source.Type == "url" && mediaMsg.Source.Url != "" {
+							imageUrl = mediaMsg.Source.Url
+						} else if data := common.Interface2String(mediaMsg.Source.Data); data != "" {
+							imageUrl = fmt.Sprintf("data:%s;base64,%s", mediaMsg.Source.MediaType, data)
+						}
 					}
-					mediaMessages = append(mediaMessages, mediaMessage)
+					if imageUrl == "" {
+						continue
+					}
+					mediaMessages = append(mediaMessages, dto.MediaContent{
+						Type:     "image_url",
+						ImageUrl: &dto.MessageImageUrl{Url: imageUrl},
+					})
 				case "tool_use":
 					toolCall := dto.ToolCallRequest{
 						ID:   mediaMsg.Id,
@@ -217,8 +236,18 @@ func ClaudeToOpenAIRequest(claudeRequest dto.ClaudeRequest, info *relaycommon.Re
 				openAIMessage.SetToolCalls(toolCalls)
 			}
 
-			if len(mediaMessages) > 0 && len(toolCalls) == 0 {
-				openAIMessage.SetMediaContent(mediaMessages)
+			// 文本与 tool_calls 在 OpenAI 侧是并列字段，不能二选一：assistant 同一轮既说话又调工具很常见
+			// （「我先读一下这个文件」+ read 调用），任一被丢掉客户端都会看到残缺的对话。
+			// 单段纯文本折叠成字符串，与 cc-switch 的输出形态一致，对严格上游也更友好；
+			// 但带 cache_control 的块必须保持数组形态——字符串形态承载不了缓存断点，
+			// 折叠会静默丢掉断点，让该轮之后的前缀缓存全部失效（OpenRouter 的 anthropic/claude 走这条路）。
+			if len(mediaMessages) > 0 {
+				if len(mediaMessages) == 1 && mediaMessages[0].Type == "text" &&
+					len(mediaMessages[0].CacheControl) == 0 {
+					openAIMessage.SetStringContent(mediaMessages[0].Text)
+				} else {
+					openAIMessage.SetMediaContent(mediaMessages)
+				}
 			}
 		}
 		if len(openAIMessage.ParseContent()) > 0 || len(openAIMessage.ToolCalls) > 0 ||
@@ -230,6 +259,73 @@ func ClaudeToOpenAIRequest(claudeRequest dto.ClaudeRequest, info *relaycommon.Re
 	openAIRequest.Messages = openAIMessages
 
 	return &openAIRequest, nil
+}
+
+// claudeToolChoiceShape 兼容 ToolChoice 在解析路径上是字符串、对象、*dto.ClaudeToolChoice 三种形态。
+type claudeToolChoiceShape struct {
+	Type                   string `json:"type"`
+	Name                   string `json:"name"`
+	DisableParallelToolUse bool   `json:"disable_parallel_tool_use"`
+}
+
+// Anthropic 与 OpenAI 的 tool_choice 语义并不完全同名："any" 在 OpenAI 侧叫 "required"，
+// 指定工具要展开成 {"type":"function","function":{"name":X}}。此前这个字段完全没被转换，
+// 客户端的强制工具约束被静默丢弃，依赖 forced tool call 的 agent 只会收到一句普通回答。
+func applyClaudeToolChoiceToOpenAI(claudeRequest *dto.ClaudeRequest, openAIRequest *dto.GeneralOpenAIRequest) {
+	if claudeRequest == nil || openAIRequest == nil || claudeRequest.ToolChoice == nil {
+		return
+	}
+
+	var choice claudeToolChoiceShape
+	if raw, ok := claudeRequest.ToolChoice.(string); ok {
+		choice.Type = raw
+	} else {
+		encoded, err := common.Marshal(claudeRequest.ToolChoice)
+		if err != nil {
+			return
+		}
+		if err := common.Unmarshal(encoded, &choice); err != nil {
+			return
+		}
+	}
+
+	// Anthropic 的 tool_choice 只在有工具表时合法，严格 OpenAI 上游同理。"none" 例外：
+	// 它表达「本轮不要用工具」，没有工具表也成立，且是客户端主动关闭工具的信号。
+	switch choice.Type {
+	case "any":
+		if len(openAIRequest.Tools) == 0 {
+			return
+		}
+		openAIRequest.ToolChoice = "required"
+	case "auto":
+		if len(openAIRequest.Tools) == 0 {
+			return
+		}
+		openAIRequest.ToolChoice = "auto"
+	case "none":
+		// cc-switch 对 "none" 也做同样的空工具表剔除：语义上宁可不下发，
+		// 也不要给严格上游一个「带 tool_choice 却没有 tools」的 400。
+		if len(openAIRequest.Tools) == 0 {
+			return
+		}
+		openAIRequest.ToolChoice = "none"
+	case "tool":
+		if choice.Name == "" || len(openAIRequest.Tools) == 0 {
+			return
+		}
+		openAIRequest.ToolChoice = map[string]any{
+			"type":     "function",
+			"function": map[string]any{"name": choice.Name},
+		}
+	default:
+		return
+	}
+
+	// Anthropic 只能把并行开关挂在 tool_choice 上，OpenAI 有独立的 parallel_tool_calls 字段。
+	// type=none 时 Anthropic 不允许附加字段，此时并行与否也没有意义。
+	if choice.DisableParallelToolUse && choice.Type != "none" {
+		openAIRequest.ParallelTooCalls = common.GetPointer(false)
+	}
 }
 
 func generateStopBlock(index int) *dto.ClaudeResponse {
@@ -652,6 +748,7 @@ func ResponseOpenAI2Claude(openAIResponse *dto.OpenAITextResponse, info *relayco
 		Role:  "assistant",
 		Model: openAIResponse.Model,
 	}
+	hasToolUse := false
 	for _, choice := range openAIResponse.Choices {
 		stopReason = stopReasonOpenAI2Claude(choice.FinishReason)
 		if reasoning := choice.Message.GetReasoningContent(); reasoning != "" {
@@ -664,26 +761,38 @@ func ResponseOpenAI2Claude(openAIResponse *dto.OpenAITextResponse, info *relayco
 			}
 			contents = append(contents, thinkingBlock)
 		}
-		if choice.FinishReason == "tool_calls" {
-			for _, toolUse := range choice.Message.ParseToolCalls() {
-				claudeContent := dto.ClaudeMediaMessage{}
-				claudeContent.Type = "tool_use"
-				claudeContent.Id = toolUse.ID
-				claudeContent.Name = toolUse.Function.Name
-				var mapParams map[string]interface{}
-				if err := common.Unmarshal([]byte(toolUse.Function.Arguments), &mapParams); err == nil {
-					claudeContent.Input = mapParams
-				} else {
-					claudeContent.Input = toolUse.Function.Arguments
-				}
-				contents = append(contents, claudeContent)
-			}
-		} else {
+		// 文本与 tool_use 可以出现在同一条 choice 里（模型先说一句再调工具），
+		// 必须按 Anthropic 的块顺序依次输出 text、tool_use，而不是按 finish_reason 二选一：
+		// 旧写法在 finish_reason 为 tool_calls 时会把这一轮的可见文本整段丢掉，
+		// 在 finish_reason 为 stop 时又会把已经产生的 tool_calls 丢掉。
+		if text := choice.Message.StringContent(); text != "" {
+			contents = append(contents, dto.ClaudeMediaMessage{
+				Type: "text",
+				Text: common.GetPointer[string](text),
+			})
+		}
+		for _, toolUse := range choice.Message.ParseToolCalls() {
+			hasToolUse = true
 			claudeContent := dto.ClaudeMediaMessage{}
-			claudeContent.Type = "text"
-			claudeContent.SetText(choice.Message.StringContent())
+			claudeContent.Type = "tool_use"
+			claudeContent.Id = toolUse.ID
+			claudeContent.Name = toolUse.Function.Name
+			var mapParams map[string]interface{}
+			if err := common.Unmarshal([]byte(toolUse.Function.Arguments), &mapParams); err == nil {
+				claudeContent.Input = mapParams
+			} else {
+				claudeContent.Input = toolUse.Function.Arguments
+			}
 			contents = append(contents, claudeContent)
 		}
+	}
+	// 上游没给 finish_reason 时靠 tool_use 反推，否则 Claude 客户端会以为本轮是正常结束而不去执行工具。
+	if hasToolUse && (stopReason == "" || stopReason == "null") {
+		stopReason = "tool_use"
+	}
+	// Anthropic 要求 content 至少有一个块，空补一个空 text 块而不是返回空数组。
+	if len(contents) == 0 {
+		contents = append(contents, dto.ClaudeMediaMessage{Type: "text", Text: common.GetPointer[string]("")})
 	}
 	claudeResponse.Content = contents
 	claudeResponse.StopReason = stopReason

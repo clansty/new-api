@@ -1,10 +1,12 @@
 package claude
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"path/filepath"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
@@ -44,6 +46,95 @@ func maybeMarkClaudeRefusal(c *gin.Context, stopReason string) {
 	}
 }
 
+// 文件名后缀推断 MIME；未知后缀返回空串（表示「客户端声明的类型无法识别」，不是「内容不可识别」）。
+func claudeMimeTypeFromFileName(name string) string {
+	ext := strings.TrimPrefix(strings.ToLower(filepath.Ext(name)), ".")
+	if ext == "" {
+		return ""
+	}
+	if detected := service.GetMimeTypeByExtension(ext); detected != "application/octet-stream" {
+		return detected
+	}
+	return ""
+}
+
+// OpenAI 的 file content 在 Anthropic 侧没有统一等价物：PDF 走 document 块、纯文本内联成 text 块，
+// 其余类型 Anthropic 一律不接受。这里必须显式丢弃而不是伪装成 image 块——image 块的 media_type
+// 只允许 jpeg/png/gif/webp，把其它 MIME 塞进去会被上游 400 拒绝整个请求。
+func buildClaudeFileBlock(c *gin.Context, file *dto.MessageFile) (*dto.ClaudeMediaMessage, error) {
+	if file == nil || file.FileData == "" {
+		return nil, nil
+	}
+	mimeHint := claudeMimeTypeFromFileName(file.FileName)
+	source := types.NewFileSourceFromData(file.FileData, mimeHint)
+	base64Data, mimeType, err := service.GetBase64Data(c, source, "formatting document for Claude")
+	if err != nil {
+		return nil, fmt.Errorf("get file data failed: %w", err)
+	}
+	// loader 只在 MIME 为空时对图片做嗅探，base64 源不会做通用内容识别，
+	// 所以「没给文件名」时无法识别的 PDF/文本会被整块丢掉。文件名给了但后缀不认识属于
+	// 客户端主动声明了不受支持的类型（既有测试依赖这一语义），这里不覆盖它；只在完全
+	// 没有文件名可依据时才退回内容嗅探，避免无声丢内容。
+	if mimeType == "" && file.FileName == "" {
+		if decoded, decodeErr := base64.StdEncoding.DecodeString(base64Data); decodeErr == nil {
+			mimeType = sniffClaudeFileMimeType(decoded)
+		}
+	}
+	switch {
+	case strings.EqualFold(mimeType, "application/pdf"):
+		return &dto.ClaudeMediaMessage{
+			Type: "document",
+			Source: &dto.ClaudeMessageSource{
+				Type:      "base64",
+				MediaType: mimeType,
+				Data:      base64Data,
+			},
+		}, nil
+	case strings.HasPrefix(mimeType, "image/"):
+		return &dto.ClaudeMediaMessage{
+			Type: "image",
+			Source: &dto.ClaudeMessageSource{
+				Type:      "base64",
+				MediaType: mimeType,
+				Data:      base64Data,
+			},
+		}, nil
+	case strings.HasPrefix(mimeType, "text/"):
+		decoded, err := base64.StdEncoding.DecodeString(base64Data)
+		if err != nil {
+			return nil, fmt.Errorf("decode text file data failed: %w", err)
+		}
+		return &dto.ClaudeMediaMessage{
+			Type: "text",
+			Text: common.GetPointer(string(decoded)),
+		}, nil
+	default:
+		msg := fmt.Sprintf("claude: skip unsupported file content, filename=%q, mime=%q", file.FileName, mimeType)
+		if c != nil {
+			logger.LogInfo(c, msg)
+		} else {
+			common.SysLog(msg)
+		}
+		return nil, nil
+	}
+}
+
+// sniffClaudeFileMimeType 按内容头识别 MIME；无法识别时返回空串，由调用方按「不支持」处理。
+func sniffClaudeFileMimeType(data []byte) string {
+	if len(data) == 0 {
+		return ""
+	}
+	detected := http.DetectContentType(data)
+	if idx := strings.Index(detected, ";"); idx >= 0 {
+		detected = detected[:idx]
+	}
+	detected = strings.TrimSpace(detected)
+	if detected == "" || detected == "application/octet-stream" {
+		return ""
+	}
+	return detected
+}
+
 func RequestOpenAI2ClaudeMessage(c *gin.Context, textRequest dto.GeneralOpenAIRequest) (*dto.ClaudeRequest, error) {
 	claudeTools := make([]any, 0, len(textRequest.Tools))
 
@@ -54,8 +145,9 @@ func RequestOpenAI2ClaudeMessage(c *gin.Context, textRequest dto.GeneralOpenAIRe
 				Description: tool.Function.Description,
 			}
 			claudeTool.InputSchema = make(map[string]interface{})
-			if params["type"] != nil {
-				claudeTool.InputSchema["type"] = params["type"].(string)
+			// type 不是字符串时交给下面的通用拷贝原样带过去，硬断言会 panic(500)。
+			if schemaType, ok := params["type"].(string); ok {
+				claudeTool.InputSchema["type"] = schemaType
 			}
 			// 仅在源字段存在且非 nil 时写入，避免序列化出 "required": null / "properties": null
 			// 违反 Anthropic input_schema (JSON Schema Draft 2020-12) 规范
@@ -150,7 +242,10 @@ func RequestOpenAI2ClaudeMessage(c *gin.Context, textRequest dto.GeneralOpenAIRe
 	}
 
 	// 处理 tool_choice 和 parallel_tool_calls
-	if textRequest.ToolChoice != nil || textRequest.ParallelTooCalls != nil {
+	// Anthropic 在没有工具表时拒绝 tool_choice（"tool_choice may only be specified while providing
+	// tools"），而这个 400 不可重试。客户端只传了 parallel_tool_calls 时 mapToolChoice 会凭空造出
+	// 一个 {"type":"auto"}，因此必须以下游真的拿到了工具为前提才下发。
+	if len(claudeTools) > 0 && (textRequest.ToolChoice != nil || textRequest.ParallelTooCalls != nil) {
 		claudeToolChoice := mapToolChoice(textRequest.ToolChoice, textRequest.ParallelTooCalls)
 		if claudeToolChoice != nil {
 			claudeRequest.ToolChoice = claudeToolChoice
@@ -249,16 +344,21 @@ func RequestOpenAI2ClaudeMessage(c *gin.Context, textRequest dto.GeneralOpenAIRe
 	}
 
 	if textRequest.Stop != nil {
-		// stop maybe string/array string, convert to array string
-		switch textRequest.Stop.(type) {
+		// stop 允许 string / []string 两种形态；元素不是字符串时跳过而不是硬断言，
+		// 否则一个 "stop": [1] 就能把整个请求打成 panic(500)。
+		switch stop := textRequest.Stop.(type) {
 		case string:
-			claudeRequest.StopSequences = []string{textRequest.Stop.(string)}
+			claudeRequest.StopSequences = []string{stop}
 		case []interface{}:
-			stopSequences := make([]string, 0)
-			for _, stop := range textRequest.Stop.([]interface{}) {
-				stopSequences = append(stopSequences, stop.(string))
+			stopSequences := make([]string, 0, len(stop))
+			for _, item := range stop {
+				if s, ok := item.(string); ok {
+					stopSequences = append(stopSequences, s)
+				}
 			}
-			claudeRequest.StopSequences = stopSequences
+			if len(stopSequences) > 0 {
+				claudeRequest.StopSequences = stopSequences
+			}
 		}
 	}
 	formatMessages := make([]dto.Message, 0)
@@ -385,6 +485,14 @@ func RequestOpenAI2ClaudeMessage(c *gin.Context, textRequest dto.GeneralOpenAIRe
 								Text: common.GetPointer[string](mediaMessage.Text),
 							})
 						}
+					case dto.ContentTypeFile:
+						block, err := buildClaudeFileBlock(c, mediaMessage.GetFile())
+						if err != nil {
+							return nil, err
+						}
+						if block != nil {
+							claudeMediaMessages = append(claudeMediaMessages, *block)
+						}
 					default:
 						source := mediaMessage.ToFileSource()
 						if source == nil {
@@ -493,13 +601,17 @@ func StreamResponseClaude2OpenAI(claudeResponse *dto.ClaudeResponse) *dto.ChatCo
 			choice.Delta.Content = claudeResponse.Delta.Text
 			switch claudeResponse.Delta.Type {
 			case "input_json_delta":
-				tools = append(tools, dto.ToolCallResponse{
-					Type:  "function",
-					Index: common.GetPointer(fcIdx),
-					Function: dto.FunctionResponse{
-						Arguments: *claudeResponse.Delta.PartialJson,
-					},
-				})
+				// partial_json 缺失（畸形或空 delta）时不能直接解引用指针，
+				// 跳过这一片参数增量比 panic 成 500 更安全。
+				if claudeResponse.Delta.PartialJson != nil {
+					tools = append(tools, dto.ToolCallResponse{
+						Type:  "function",
+						Index: common.GetPointer(fcIdx),
+						Function: dto.FunctionResponse{
+							Arguments: *claudeResponse.Delta.PartialJson,
+						},
+					})
+				}
 			case "signature_delta":
 				// 加密的不处理
 				signatureContent := "\n"
@@ -537,16 +649,11 @@ func ResponseClaude2OpenAI(claudeResponse *dto.ClaudeResponse) *dto.OpenAITextRe
 		Object:  "chat.completion",
 		Created: common.GetTimestamp(),
 	}
-	var responseText string
-	var responseThinking string
-	if len(claudeResponse.Content) > 0 {
-		responseText = claudeResponse.Content[0].GetText()
-		if claudeResponse.Content[0].Thinking != nil {
-			responseThinking = *claudeResponse.Content[0].Thinking
-		}
-	}
 	tools := make([]dto.ToolCallResponse, 0)
-	thinkingContent := ""
+	// 一条 Claude 消息里可以有多个 text / thinking 块（交错思考、工具轮之间的分段输出），
+	// 必须逐块拼接而不是只留最后一个，否则前面几段的可见回答会整段消失。
+	var responseText strings.Builder
+	var thinkingContent strings.Builder
 
 	fullTextResponse.Id = claudeResponse.Id
 	for _, message := range claudeResponse.Content {
@@ -563,11 +670,11 @@ func ResponseClaude2OpenAI(claudeResponse *dto.ClaudeResponse) *dto.OpenAITextRe
 			})
 		case "thinking":
 			// 加密的不管， 只输出明文的推理过程
-			if message.Thinking != nil {
-				thinkingContent = *message.Thinking
+			if message.Thinking != nil && *message.Thinking != "" {
+				thinkingContent.WriteString(*message.Thinking)
 			}
 		case "text":
-			responseText = message.GetText()
+			responseText.WriteString(message.GetText())
 		}
 	}
 	choice := dto.OpenAITextResponseChoice{
@@ -577,14 +684,13 @@ func ResponseClaude2OpenAI(claudeResponse *dto.ClaudeResponse) *dto.OpenAITextRe
 		},
 		FinishReason: stopReasonClaude2OpenAI(claudeResponse.StopReason),
 	}
-	choice.SetStringContent(responseText)
-	if len(responseThinking) > 0 {
-		choice.ReasoningContent = responseThinking
-	}
+	choice.SetStringContent(responseText.String())
 	if len(tools) > 0 {
 		choice.Message.SetToolCalls(tools)
 	}
-	choice.Message.ReasoningContent = thinkingContent
+	if thinkingContent.Len() > 0 {
+		choice.Message.ReasoningContent = thinkingContent.String()
+	}
 	fullTextResponse.Model = claudeResponse.Model
 	choices = append(choices, choice)
 	fullTextResponse.Choices = choices

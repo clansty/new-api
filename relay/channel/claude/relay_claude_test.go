@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/dto"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/types"
@@ -446,4 +447,52 @@ func TestRequestOpenAI2ClaudeMessage_ConvertsTextFileContentToText(t *testing.T)
 	require.Equal(t, "text", content[0].Type)
 	require.NotNil(t, content[0].Text)
 	require.Equal(t, "alpha\nbeta", *content[0].Text)
+}
+
+func TestResponseClaude2OpenAIConcatenatesMultipleTextAndThinkingBlocks(t *testing.T) {
+	first := "第一段推理。"
+	second := "第二段推理。"
+	response := ResponseClaude2OpenAI(&dto.ClaudeResponse{
+		Id:         "msg_1",
+		Model:      "claude-opus-4-7",
+		StopReason: "end_turn",
+		Content: []dto.ClaudeMediaMessage{
+			{Type: "thinking", Thinking: &first},
+			{Type: "text", Text: common.GetPointer("我先看 A。")},
+			{Type: "thinking", Thinking: &second},
+			{Type: "text", Text: common.GetPointer("再看 B。")},
+		},
+	})
+
+	require.Len(t, response.Choices, 1)
+	require.Equal(t, "我先看 A。再看 B。", response.Choices[0].Message.StringContent())
+	require.Equal(t, "第一段推理。第二段推理。", response.Choices[0].Message.ReasoningContent)
+}
+
+func TestRequestOpenAI2ClaudeMessageSniffsFileContentWithoutFileName(t *testing.T) {
+	// 客户端没给文件名时无法靠后缀判断类型，只能按内容识别，否则 PDF 会被整块丢掉。
+	request := dto.GeneralOpenAIRequest{
+		Model: "claude-3-5-sonnet",
+		Messages: []dto.Message{
+			{
+				Role: "user",
+				Content: []any{
+					dto.MediaContent{
+						Type: dto.ContentTypeFile,
+						File: &dto.MessageFile{FileData: base64.StdEncoding.EncodeToString([]byte("%PDF-1.4\n"))},
+					},
+				},
+			},
+		},
+	}
+
+	claudeRequest, err := RequestOpenAI2ClaudeMessage(nil, request)
+	require.NoError(t, err)
+	require.Len(t, claudeRequest.Messages, 1)
+
+	content, ok := claudeRequest.Messages[0].Content.([]dto.ClaudeMediaMessage)
+	require.True(t, ok)
+	require.Len(t, content, 1)
+	require.Equal(t, "document", content[0].Type)
+	require.Equal(t, "application/pdf", content[0].Source.MediaType)
 }

@@ -38,7 +38,7 @@ func TestConvertResponsesRequestToChatCompletions_preservesCompatibleRequestStat
 	}
 
 	// When: 渠道将请求降级到 Chat Completions 协议。
-	chatRequest, err := convertResponsesRequestToChatCompletions(request, nil)
+	chatRequest, _, err := convertResponsesRequestToChatCompletions(request, nil)
 
 	// Then: 所有可表达的请求状态都被保留在 Chat Completions 请求中。
 	require.NoError(t, err)
@@ -77,15 +77,18 @@ func TestConvertResponsesRequestToChatCompletions_preservesReasoningOnlyAssistan
 	}
 
 	// When: 请求被降级到 Chat Completions 协议。
-	chatRequest, err := convertResponsesRequestToChatCompletions(request, nil)
+	chatRequest, _, err := convertResponsesRequestToChatCompletions(request, nil)
 
 	// Then: 独立的 assistant 推理轮仍通过 reasoning_content 回传给上游。
+	// 历史以 assistant 开头（Anthropic 要求首条必须是 user），中间转换会补一条占位 user 轮，
+	// 因此预期是 [占位 user, assistant 推理, user]。
 	require.NoError(t, err)
-	require.Len(t, chatRequest.Messages, 2)
-	require.Equal(t, "assistant", chatRequest.Messages[0].Role)
-	require.Equal(t, "上一轮仍在分析。", chatRequest.Messages[0].ReasoningContent)
-	require.Equal(t, "user", chatRequest.Messages[1].Role)
-	require.Equal(t, "继续", chatRequest.Messages[1].ParseContent()[0].Text)
+	require.Len(t, chatRequest.Messages, 3)
+	require.Equal(t, "user", chatRequest.Messages[0].Role)
+	require.Equal(t, "assistant", chatRequest.Messages[1].Role)
+	require.Equal(t, "上一轮仍在分析。", chatRequest.Messages[1].ReasoningContent)
+	require.Equal(t, "user", chatRequest.Messages[2].Role)
+	require.Equal(t, "继续", chatRequest.Messages[2].ParseContent()[0].Text)
 }
 
 func TestConvertResponsesRequestToChatCompletions_rejectsStateWithoutChatEquivalent(t *testing.T) {
@@ -97,7 +100,7 @@ func TestConvertResponsesRequestToChatCompletions_rejectsStateWithoutChatEquival
 	}
 
 	// When: 渠道尝试降级请求。
-	_, err := convertResponsesRequestToChatCompletions(request, nil)
+	_, _, err := convertResponsesRequestToChatCompletions(request, nil)
 
 	// Then: 返回明确错误而不是丢弃状态后继续请求。
 	require.ErrorContains(t, err, "previous_response_id")
@@ -112,7 +115,7 @@ func TestConvertResponsesRequestToChatCompletions_ignoresIncludeWithoutChatEquiv
 	}
 
 	// When: 渠道将请求降级到 Chat Completions 协议。
-	chatRequest, err := convertResponsesRequestToChatCompletions(request, nil)
+	chatRequest, _, err := convertResponsesRequestToChatCompletions(request, nil)
 
 	// Then: include 被静默丢弃，不阻断主要生成请求。
 	require.NoError(t, err)
@@ -123,7 +126,7 @@ func TestConvertResponsesRequestToChatCompletions_ignoresIncludeWithoutChatEquiv
 
 func TestChatCompletionsResponsesState_emitsResponsesEventsForTextAndToolCalls(t *testing.T) {
 	// Given: Chat Completions 上游先输出文本，再输出函数调用及用量。
-	state := newChatCompletionsResponsesState("gpt-test")
+	state := newChatCompletionsResponsesState("gpt-test", nil)
 	content := "你好"
 	arguments := `{"city":"Shanghai"}`
 	finishReason := "tool_calls"
@@ -178,7 +181,7 @@ func TestChatCompletionsResponsesState_emitsResponsesEventsForTextAndToolCalls(t
 }
 
 func TestChatCompletionsResponsesStatePlacesReasoningBeforeTextInCombinedDelta(t *testing.T) {
-	state := newChatCompletionsResponsesState("deepseek-v4-flash")
+	state := newChatCompletionsResponsesState("deepseek-v4-flash", nil)
 	content := "答案"
 	reasoning := "先分析问题。"
 	finishReason := "stop"
@@ -239,7 +242,7 @@ func TestChatCompletionsResponseAsResponsesPreservesReasoningContent(t *testing.
 		}},
 	}
 
-	converted, _ := chatCompletionsResponseAsResponses(response)
+	converted, _ := chatCompletionsResponseAsResponses(response, nil)
 
 	require.Len(t, converted.Output, 2)
 	require.Equal(t, "reasoning", converted.Output[0].Type)
@@ -390,4 +393,47 @@ func mustMarshal(t *testing.T, value any) []byte {
 	data, err := common.Marshal(value)
 	require.NoError(t, err)
 	return data
+}
+
+func TestChatCompletionsResponsesState_restoresCustomToolCall(t *testing.T) {
+	// Given: 请求侧把 Responses 的 custom tool 降级成 function tool，
+	// 上游因此回的是 function_call 形态的 {"input": "..."}。
+	state := newChatCompletionsResponsesState("gpt-test", map[string]bool{"apply_patch": true})
+	arguments := `{"input":"*** Begin Patch\n*** End Patch\n"}`
+	finishReason := "tool_calls"
+	toolIndex := 0
+	events := state.Handle(&dto.ChatCompletionsStreamResponse{
+		Id:    "chatcmpl_1",
+		Model: "gpt-test",
+		Choices: []dto.ChatCompletionsStreamResponseChoice{{
+			Delta: dto.ChatCompletionsStreamResponseChoiceDelta{
+				Role: "assistant",
+				ToolCalls: []dto.ToolCallResponse{{
+					Index: &toolIndex,
+					ID:    "call_1",
+					Type:  "function",
+					Function: dto.FunctionResponse{
+						Name:      "apply_patch",
+						Arguments: arguments,
+					},
+				}},
+			},
+			FinishReason: &finishReason,
+		}},
+	})
+	events = append(events, state.FinalEvents()...)
+
+	// Then: 客户端拿到 custom_tool_call 与解包后的自由文本，而不是包了一层 JSON 的 function_call。
+	eventTypes := make([]string, 0, len(events))
+	for _, event := range events {
+		eventTypes = append(eventTypes, event.Type)
+	}
+	require.Contains(t, eventTypes, "response.custom_tool_call_input.delta")
+
+	completed := events[len(events)-1]
+	require.NotNil(t, completed.Response)
+	require.Len(t, completed.Response.Output, 1)
+	require.Equal(t, "custom_tool_call", completed.Response.Output[0].Type)
+	require.Equal(t, "apply_patch", completed.Response.Output[0].Name)
+	require.Equal(t, "*** Begin Patch\n*** End Patch\n", completed.Response.Output[0].Input)
 }

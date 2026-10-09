@@ -20,3 +20,8 @@ func ResponsesResponseToChatCompletionsResponse(resp *dto.OpenAIResponsesRespons
 func ExtractOutputTextFromResponses(resp *dto.OpenAIResponsesResponse) string {
 	return openaicompat.ExtractOutputTextFromResponses(resp)
 }
+
+// ResponsesIncompleteByLength 判断 Responses 响应是否因为输出长度上限被截断。
+func ResponsesIncompleteByLength(resp *dto.OpenAIResponsesResponse) bool {
+	return openaicompat.ResponsesIncompleteByLength(resp)
+}

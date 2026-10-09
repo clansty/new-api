@@ -521,3 +521,219 @@ func TestResponseOpenAI2ClaudePreservesReasoningBeforeToolUse(t *testing.T) {
 	require.Equal(t, "call_123", claudeResponse.Content[1].Id)
 	require.Equal(t, "read", claudeResponse.Content[1].Name)
 }
+
+func TestClaudeToOpenAIRequestKeepsTextAlongsideToolCalls(t *testing.T) {
+	claudeRequest := dto.ClaudeRequest{
+		Model: "gpt-5",
+		Messages: []dto.ClaudeMessage{
+			{
+				Role: "assistant",
+				Content: []dto.ClaudeMediaMessage{
+					{Type: "text", Text: common.GetPointer("我先读一下这个文件")},
+					{Type: "tool_use", Id: "call_1", Name: "read", Input: map[string]any{"path": "/tmp/a.txt"}},
+				},
+			},
+		},
+	}
+
+	openAIRequest, err := ClaudeToOpenAIRequest(claudeRequest, testRelayInfo())
+	require.NoError(t, err)
+	require.Len(t, openAIRequest.Messages, 1)
+
+	message := openAIRequest.Messages[0]
+	require.Equal(t, "我先读一下这个文件", message.StringContent())
+	require.Len(t, message.ParseToolCalls(), 1)
+	require.Equal(t, "read", message.ParseToolCalls()[0].Function.Name)
+}
+
+func TestClaudeToOpenAIRequestAccumulatesInterleavedThinking(t *testing.T) {
+	first := "第一步推理。"
+	second := "第二步推理。"
+	claudeRequest := dto.ClaudeRequest{
+		Model: "deepseek-v4-pro",
+		Messages: []dto.ClaudeMessage{
+			{
+				Role: "assistant",
+				Content: []dto.ClaudeMediaMessage{
+					{Type: "thinking", Thinking: &first},
+					{Type: "text", Text: common.GetPointer("继续")},
+					{Type: "thinking", Thinking: &second},
+				},
+			},
+		},
+	}
+
+	openAIRequest, err := ClaudeToOpenAIRequest(claudeRequest, testRelayInfo())
+	require.NoError(t, err)
+	require.Len(t, openAIRequest.Messages, 1)
+	require.Equal(t, "第一步推理。\n第二步推理。", openAIRequest.Messages[0].GetReasoningContent())
+}
+
+func TestResponseOpenAI2ClaudeKeepsTextAlongsideToolUse(t *testing.T) {
+	response := &dto.OpenAITextResponse{
+		Id:    "chatcmpl-1",
+		Model: "gpt-5",
+		Choices: []dto.OpenAITextResponseChoice{
+			{
+				Index:        0,
+				FinishReason: "tool_calls",
+				Message: dto.Message{
+					Role:    "assistant",
+					Content: "我先读一下这个文件",
+				},
+			},
+		},
+	}
+	response.Choices[0].Message.SetToolCalls([]dto.ToolCallRequest{
+		{
+			ID:   "call_1",
+			Type: "function",
+			Function: dto.FunctionRequest{
+				Name:      "read",
+				Arguments: `{"path":"/tmp/a.txt"}`,
+			},
+		},
+	})
+
+	converted := ResponseOpenAI2Claude(response, testRelayInfo())
+
+	blocks := converted.Content
+	require.Len(t, blocks, 2)
+	require.Equal(t, "text", blocks[0].Type)
+	require.Equal(t, "我先读一下这个文件", blocks[0].GetText())
+	require.Equal(t, "tool_use", blocks[1].Type)
+	require.Equal(t, "read", blocks[1].Name)
+	require.Equal(t, "tool_use", converted.StopReason)
+}
+
+func TestResponseOpenAI2ClaudeKeepsToolUseWhenFinishReasonIsStop(t *testing.T) {
+	response := &dto.OpenAITextResponse{
+		Id:    "chatcmpl-2",
+		Model: "gpt-5",
+		Choices: []dto.OpenAITextResponseChoice{
+			{
+				Index:        0,
+				FinishReason: "stop",
+				Message:      dto.Message{Role: "assistant"},
+			},
+		},
+	}
+	response.Choices[0].Message.SetToolCalls([]dto.ToolCallRequest{
+		{
+			ID:       "call_9",
+			Type:     "function",
+			Function: dto.FunctionRequest{Name: "search", Arguments: `{"q":"x"}`},
+		},
+	})
+
+	converted := ResponseOpenAI2Claude(response, testRelayInfo())
+
+	blocks := converted.Content
+	require.Len(t, blocks, 1)
+	require.Equal(t, "tool_use", blocks[0].Type)
+}
+
+func TestClaudeToOpenAIRequestMapsToolChoice(t *testing.T) {
+	tools := []any{
+		map[string]any{
+			"name":         "read",
+			"input_schema": map[string]any{"type": "object"},
+		},
+	}
+
+	cases := []struct {
+		name     string
+		choice   any
+		want     any
+		parallel *bool
+	}{
+		{name: "any to required", choice: map[string]any{"type": "any"}, want: "required"},
+		{name: "auto stays auto", choice: map[string]any{"type": "auto"}, want: "auto"},
+		{name: "none stays none", choice: map[string]any{"type": "none"}, want: "none"},
+		{
+			name:   "named tool expands to function selector",
+			choice: map[string]any{"type": "tool", "name": "read"},
+			want:   map[string]any{"type": "function", "function": map[string]any{"name": "read"}},
+		},
+		{
+			name:     "disable parallel maps to parallel_tool_calls",
+			choice:   map[string]any{"type": "auto", "disable_parallel_tool_use": true},
+			want:     "auto",
+			parallel: common.GetPointer(false),
+		},
+		{
+			name:   "string form",
+			choice: "any",
+			want:   "required",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			claudeRequest := dto.ClaudeRequest{
+				Model:      "gpt-5",
+				Tools:      tools,
+				ToolChoice: tc.choice,
+			}
+
+			openAIRequest, err := ClaudeToOpenAIRequest(claudeRequest, testRelayInfo())
+			require.NoError(t, err)
+			require.Equal(t, tc.want, openAIRequest.ToolChoice)
+			if tc.parallel == nil {
+				require.Nil(t, openAIRequest.ParallelTooCalls)
+			} else {
+				require.NotNil(t, openAIRequest.ParallelTooCalls)
+				require.Equal(t, *tc.parallel, *openAIRequest.ParallelTooCalls)
+			}
+		})
+	}
+}
+
+func TestClaudeToOpenAIRequestDropsForcedToolChoiceWithoutTools(t *testing.T) {
+	claudeRequest := dto.ClaudeRequest{
+		Model:      "gpt-5",
+		ToolChoice: map[string]any{"type": "tool", "name": "read"},
+	}
+
+	openAIRequest, err := ClaudeToOpenAIRequest(claudeRequest, testRelayInfo())
+	require.NoError(t, err)
+	require.Nil(t, openAIRequest.ToolChoice)
+}
+
+func TestClaudeToOpenAIRequestKeepsCacheControlOnSingleTextBlock(t *testing.T) {
+	claudeRequest := dto.ClaudeRequest{
+		Model: "claude-sonnet-4-5",
+		Messages: []dto.ClaudeMessage{
+			{
+				Role: "user",
+				Content: []dto.ClaudeMediaMessage{{
+					Type:         "text",
+					Text:         common.GetPointer("hello"),
+					CacheControl: json.RawMessage(`{"type":"ephemeral"}`),
+				}},
+			},
+		},
+	}
+
+	openAIRequest, err := ClaudeToOpenAIRequest(claudeRequest, testRelayInfo())
+	require.NoError(t, err)
+	require.Len(t, openAIRequest.Messages, 1)
+
+	// 带缓存断点的块必须保持数组形态，折叠成字符串会把 cache_control 整个丢掉。
+	parts := openAIRequest.Messages[0].ParseContent()
+	require.Len(t, parts, 1)
+	require.Equal(t, "hello", parts[0].Text)
+	require.JSONEq(t, `{"type":"ephemeral"}`, string(parts[0].CacheControl))
+}
+
+func TestClaudeToOpenAIRequestDropsToolChoiceNoneWithoutTools(t *testing.T) {
+	claudeRequest := dto.ClaudeRequest{
+		Model:      "gpt-5",
+		ToolChoice: map[string]any{"type": "none"},
+	}
+
+	openAIRequest, err := ClaudeToOpenAIRequest(claudeRequest, testRelayInfo())
+	require.NoError(t, err)
+	// 严格 OpenAI 兼容上游会拒绝「带 tool_choice 却没有 tools」的请求。
+	require.Nil(t, openAIRequest.ToolChoice)
+}

@@ -169,7 +169,7 @@ func appendClaudeUserMessageAsResponsesInput(input *[]map[string]any, message dt
 			*input = append(*input, map[string]any{
 				"type":    "function_call_output",
 				"call_id": block.ToolUseId,
-				"output":  serializeClaudeToolResultContent(block.Content),
+				"output":  convertClaudeToolResultOutput(block),
 			})
 		case dto.ContentTypeText, "input_text":
 			content = append(content, map[string]any{"type": "input_text", "text": block.GetText()})
@@ -180,13 +180,47 @@ func appendClaudeUserMessageAsResponsesInput(input *[]map[string]any, message dt
 			}
 			content = append(content, image)
 		case "document":
-			return fmt.Errorf("document blocks are not supported in Claude to Responses compatibility mode")
+			if document := convertClaudeDocumentBlockToResponsesContent(block); document != nil {
+				content = append(content, document)
+			}
 		default:
 			content = append(content, map[string]any{"type": block.Type})
 		}
 	}
 	if len(content) > 0 {
 		*input = append(*input, map[string]any{"role": "user", "content": content})
+	}
+	return nil
+}
+
+// Responses 的 input_file 是 Anthropic document 的等价物（都接受 base64 data URL / 远程 URL）。
+// 之前这里直接 400，导致「Claude 客户端发 PDF + 走 Responses 上游」整条链路不可用。
+func convertClaudeDocumentBlockToResponsesContent(block dto.ClaudeMediaMessage) map[string]any {
+	if block.Source == nil {
+		return nil
+	}
+	switch block.Source.Type {
+	case "url":
+		if !strings.HasPrefix(block.Source.Url, "http://") && !strings.HasPrefix(block.Source.Url, "https://") {
+			return nil
+		}
+		return map[string]any{
+			"type":     "input_file",
+			"file_url": block.Source.Url,
+		}
+	case "base64", "":
+		data := common.Interface2String(block.Source.Data)
+		if data == "" {
+			return nil
+		}
+		mediaType := block.Source.MediaType
+		if mediaType == "" {
+			mediaType = "application/pdf"
+		}
+		return map[string]any{
+			"type":      "input_file",
+			"file_data": fmt.Sprintf("data:%s;base64,%s", mediaType, data),
+		}
 	}
 	return nil
 }
@@ -261,26 +295,82 @@ func convertClaudeImageBlockToResponsesContent(block dto.ClaudeMediaMessage) (ma
 	return map[string]any{"type": "input_image"}, nil
 }
 
-func serializeClaudeToolResultContent(content any) string {
-	if content == nil {
-		return ""
-	}
+const toolResultErrorMarker = "[tool_result_error]"
+
+// Anthropic 的 tool_result 可以内嵌图片/文档块，而 Responses 的 function_call_output.output
+// 同时接受裸字符串与内容块数组。旧实现把整个块数组 JSON 编码成一个字符串，模型只能看到一串
+// base64，图片/文档等于丢失；is_error 也被整个丢掉。
+// 对齐 cc-switch 的两条路径：纯文本保持裸字符串（形态与旧实现一致，维持 prompt 前缀缓存），
+// 只有出现非文本块时才升级成结构化数组。
+func convertClaudeToolResultOutput(block dto.ClaudeMediaMessage) any {
+	content := block.Content
 	if text, ok := content.(string); ok {
-		return text
+		if !block.IsError {
+			return text
+		}
+		return toolResultErrorMarker + "\n" + text
 	}
+
 	blocks, err := common.Any2Type[[]dto.ClaudeMediaMessage](content)
-	if err == nil {
-		texts := make([]string, 0, len(blocks))
-		for _, block := range blocks {
-			if block.Type != dto.ContentTypeText && block.Type != "" {
-				encoded, _ := common.Marshal(content)
-				return string(encoded)
+	if err != nil {
+		if content == nil {
+			if block.IsError {
+				return toolResultErrorMarker
 			}
-			texts = append(texts, block.GetText())
+			return ""
+		}
+		encoded, _ := common.Marshal(content)
+		return string(encoded)
+	}
+
+	parts := make([]map[string]any, 0, len(blocks)+1)
+	if block.IsError {
+		parts = append(parts, map[string]any{"type": "input_text", "text": toolResultErrorMarker})
+	}
+	structured := false
+	for _, b := range blocks {
+		switch b.Type {
+		case dto.ContentTypeText, "":
+			parts = append(parts, map[string]any{"type": "input_text", "text": b.GetText()})
+		case "image":
+			if image, err := convertClaudeImageBlockToResponsesContent(b); err == nil {
+				if _, ok := image["image_url"]; ok {
+					parts = append(parts, image)
+					structured = true
+					continue
+				}
+			}
+			parts = append(parts, map[string]any{"type": "input_text", "text": encodedClaudeBlock(b)})
+		case "document":
+			if document := convertClaudeDocumentBlockToResponsesContent(b); document != nil {
+				parts = append(parts, document)
+				structured = true
+				continue
+			}
+			parts = append(parts, map[string]any{"type": "input_text", "text": encodedClaudeBlock(b)})
+		default:
+			parts = append(parts, map[string]any{"type": "input_text", "text": encodedClaudeBlock(b)})
+		}
+	}
+
+	// 没有非文本块时退回单字符串，保证文字型 tool_result 的形态与旧实现完全一致。
+	if !structured {
+		texts := make([]string, 0, len(parts))
+		for _, part := range parts {
+			if text, ok := part["text"].(string); ok {
+				texts = append(texts, text)
+			}
 		}
 		return strings.Join(texts, "\n\n")
 	}
-	encoded, _ := common.Marshal(content)
+	return parts
+}
+
+func encodedClaudeBlock(block dto.ClaudeMediaMessage) string {
+	encoded, err := common.Marshal(block)
+	if err != nil {
+		return ""
+	}
 	return string(encoded)
 }
 

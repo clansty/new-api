@@ -42,34 +42,37 @@ func ResponsesResponseToChatCompletionsResponse(resp *dto.OpenAIResponsesRespons
 
 	created := resp.CreatedAt
 
+	// 正文与工具调用并存是常态（模型先说一句再调工具）。旧实现在 text 非空时整段跳过工具提取，
+	// 于这类响应里 tool_calls 被静默吞掉，客户端 agent 循环直接卡住。
 	var toolCalls []dto.ToolCallResponse
-	if text == "" && len(resp.Output) > 0 {
-		for _, out := range resp.Output {
-			if out.Type != "function_call" {
-				continue
-			}
-			name := strings.TrimSpace(out.Name)
-			if name == "" {
-				continue
-			}
-			callId := strings.TrimSpace(out.CallId)
-			if callId == "" {
-				callId = strings.TrimSpace(out.ID)
-			}
-			toolCalls = append(toolCalls, dto.ToolCallResponse{
-				ID:   callId,
-				Type: "function",
-				Function: dto.FunctionResponse{
-					Name:      name,
-					Arguments: out.ArgumentsString(),
-				},
-			})
+	for _, out := range resp.Output {
+		if out.Type != "function_call" {
+			continue
 		}
+		name := strings.TrimSpace(out.Name)
+		if name == "" {
+			continue
+		}
+		callId := strings.TrimSpace(out.CallId)
+		if callId == "" {
+			callId = strings.TrimSpace(out.ID)
+		}
+		toolCalls = append(toolCalls, dto.ToolCallResponse{
+			ID:   callId,
+			Type: "function",
+			Function: dto.FunctionResponse{
+				Name:      name,
+				Arguments: out.ArgumentsString(),
+			},
+		})
 	}
 
 	finishReason := "stop"
 	if len(toolCalls) > 0 {
 		finishReason = "tool_calls"
+	} else if ResponsesIncompleteByLength(resp) {
+		// 上游因 max_output_tokens 截断时报 stop，会让客户端以为回答完整、无法触发续写。
+		finishReason = "length"
 	}
 
 	msg := dto.Message{
@@ -79,7 +82,6 @@ func ResponsesResponseToChatCompletionsResponse(resp *dto.OpenAIResponsesRespons
 	msg.ReasoningContent = reasoning
 	if len(toolCalls) > 0 {
 		msg.SetToolCalls(toolCalls)
-		msg.Content = ""
 	}
 
 	out := &dto.OpenAITextResponse{
@@ -98,6 +100,18 @@ func ResponsesResponseToChatCompletionsResponse(resp *dto.OpenAIResponsesRespons
 	}
 
 	return out, usage, nil
+}
+
+// responsesIncompleteByLength 判断 Responses 响应是否因为输出长度上限被截断。
+func ResponsesIncompleteByLength(resp *dto.OpenAIResponsesResponse) bool {
+	if resp == nil || resp.IncompleteDetails == nil {
+		return false
+	}
+	switch resp.IncompleteDetails.Reason {
+	case "max_output_tokens", "max_tokens":
+		return true
+	}
+	return false
 }
 
 func ExtractReasoningTextFromResponses(resp *dto.OpenAIResponsesResponse) string {

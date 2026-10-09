@@ -23,7 +23,7 @@ import (
 )
 
 func responsesViaChatCompletions(c *gin.Context, info *relaycommon.RelayInfo, adaptor channel.Adaptor, request *dto.OpenAIResponsesRequest) (*dto.Usage, *types.NewAPIError) {
-	chatRequest, err := convertResponsesRequestToChatCompletions(request, info)
+	chatRequest, customToolNames, err := convertResponsesRequestToChatCompletions(request, info)
 	if err != nil {
 		return nil, types.NewErrorWithStatusCode(err, types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
 	}
@@ -79,28 +79,28 @@ func responsesViaChatCompletions(c *gin.Context, info *relaycommon.RelayInfo, ad
 
 	info.IsStream = info.IsStream || strings.HasPrefix(httpResponse.Header.Get("Content-Type"), "text/event-stream")
 	if info.IsStream {
-		return chatCompletionsStreamToResponses(c, info, httpResponse)
+		return chatCompletionsStreamToResponses(c, info, httpResponse, customToolNames)
 	}
-	return chatCompletionsResponseToResponses(c, httpResponse)
+	return chatCompletionsResponseToResponses(c, httpResponse, customToolNames)
 }
 
-func convertResponsesRequestToChatCompletions(request *dto.OpenAIResponsesRequest, info *relaycommon.RelayInfo) (*dto.GeneralOpenAIRequest, error) {
+func convertResponsesRequestToChatCompletions(request *dto.OpenAIResponsesRequest, info *relaycommon.RelayInfo) (*dto.GeneralOpenAIRequest, map[string]bool, error) {
 	if request == nil {
-		return nil, fmt.Errorf("responses request is nil")
+		return nil, nil, fmt.Errorf("responses request is nil")
 	}
 	if err := validateResponsesRequestForChatCompletions(request); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	requestForMessages := *request
 	requestForMessages.Text = nil
-	claudeRequest, _, _, err := claude.ConvertResponsesRequestToClaude(&requestForMessages)
+	claudeRequest, customToolNames, _, err := claude.ConvertResponsesRequestToClaude(&requestForMessages)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	chatRequest, err := service.ClaudeToOpenAIRequest(*claudeRequest, info)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	chatRequest.Metadata = request.Metadata
@@ -119,34 +119,51 @@ func convertResponsesRequestToChatCompletions(request *dto.OpenAIResponsesReques
 	if request.StreamOptions != nil {
 		chatRequest.StreamOptions = request.StreamOptions
 	}
+	// Responses 协议的 usage 恒来自终态事件，而 OpenAI 兼容上游在流式下默认不吐 usage chunk，
+	// 必须显式声明 include_usage 才拿得到；缺这一注入会让流式请求的 token/成本/缓存命中全部
+	// 退化成启发式估算。与 relay/channel/openai/adaptor.go 里 Claude→OpenAI 路径的注入条件保持一致。
+	if info != nil && info.SupportStreamOptions && info.IsStream {
+		if chatRequest.StreamOptions == nil {
+			chatRequest.StreamOptions = &dto.StreamOptions{IncludeUsage: true}
+		} else {
+			chatRequest.StreamOptions.IncludeUsage = true
+		}
+	}
 	if request.ParallelToolCalls != nil {
 		var parallelToolCalls bool
 		if err := common.Unmarshal(request.ParallelToolCalls, &parallelToolCalls); err != nil {
-			return nil, fmt.Errorf("invalid parallel_tool_calls: %w", err)
+			return nil, nil, fmt.Errorf("invalid parallel_tool_calls: %w", err)
 		}
 		chatRequest.ParallelTooCalls = common.GetPointer(parallelToolCalls)
 	}
 	if err := applyResponsesToolChoiceToChatCompletions(request.ToolChoice, chatRequest); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if request.ServiceTier != "" {
 		serviceTier, err := common.Marshal(request.ServiceTier)
 		if err != nil {
-			return nil, fmt.Errorf("marshal service_tier: %w", err)
+			return nil, nil, fmt.Errorf("marshal service_tier: %w", err)
 		}
 		chatRequest.ServiceTier = serviceTier
 	}
 	if len(request.PromptCacheKey) > 0 && !isResponsesChatJSONNull(request.PromptCacheKey) {
 		var promptCacheKey string
 		if err := common.Unmarshal(request.PromptCacheKey, &promptCacheKey); err != nil {
-			return nil, fmt.Errorf("invalid prompt_cache_key: %w", err)
+			return nil, nil, fmt.Errorf("invalid prompt_cache_key: %w", err)
 		}
 		chatRequest.PromptCacheKey = promptCacheKey
 	}
 	if err := applyResponsesTextToChatCompletions(request.Text, chatRequest); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return chatRequest, nil
+	// 严格 OpenAI 兼容上游（vLLM、企业网关）会拒绝「带 tool_choice / parallel_tool_calls 但 tools 为空」
+	// 的请求。Responses 里的 web_search 等 hosted 工具在转 Anthropic 时被整体剥离，tools 可能因此变空，
+	// 这时两个字段必须一起摘掉，否则整个请求 400。与 cc-switch 的处理一致。
+	if len(chatRequest.Tools) == 0 {
+		chatRequest.ToolChoice = nil
+		chatRequest.ParallelTooCalls = nil
+	}
+	return chatRequest, customToolNames, nil
 }
 
 func applyResponsesToolChoiceToChatCompletions(raw json.RawMessage, chatRequest *dto.GeneralOpenAIRequest) error {
@@ -251,7 +268,7 @@ func applyResponsesTextToChatCompletions(raw json.RawMessage, chatRequest *dto.G
 	return nil
 }
 
-func chatCompletionsResponseToResponses(c *gin.Context, response *http.Response) (*dto.Usage, *types.NewAPIError) {
+func chatCompletionsResponseToResponses(c *gin.Context, response *http.Response, customToolNames map[string]bool) (*dto.Usage, *types.NewAPIError) {
 	defer service.CloseResponseBodyGracefully(response)
 	responseBody, err := io.ReadAll(response.Body)
 	if err != nil {
@@ -265,7 +282,7 @@ func chatCompletionsResponseToResponses(c *gin.Context, response *http.Response)
 		return nil, types.WithOpenAIError(*openAIError, response.StatusCode)
 	}
 
-	responsesResponse, usage := chatCompletionsResponseAsResponses(&chatResponse)
+	responsesResponse, usage := chatCompletionsResponseAsResponses(&chatResponse, customToolNames)
 	encodedResponse, err := common.Marshal(responsesResponse)
 	if err != nil {
 		return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
@@ -274,8 +291,8 @@ func chatCompletionsResponseToResponses(c *gin.Context, response *http.Response)
 	return usage, nil
 }
 
-func chatCompletionsResponseAsResponses(response *dto.OpenAITextResponse) (*dto.OpenAIResponsesResponse, *dto.Usage) {
-	state := newChatCompletionsResponsesState(response.Model)
+func chatCompletionsResponseAsResponses(response *dto.OpenAITextResponse, customToolNames map[string]bool) (*dto.OpenAIResponsesResponse, *dto.Usage) {
+	state := newChatCompletionsResponsesState(response.Model, customToolNames)
 	state.Handle(chatCompletionsResponseAsStream(response))
 	finalEvents := state.FinalEvents()
 	if len(finalEvents) == 0 || finalEvents[0].Response == nil {
@@ -365,9 +382,14 @@ type chatCompletionsResponsesState struct {
 	toolOrder       []int
 }
 
-func newChatCompletionsResponsesState(model string) *chatCompletionsResponsesState {
+func newChatCompletionsResponsesState(model string, customToolNames map[string]bool) *chatCompletionsResponsesState {
+	responsesState := claude.NewClaudeResponsesStreamState(model)
+	// 请求侧把 Responses 的 custom tool 降级成了 {input: string} 的 function tool 喂给 chat 上游，
+	// 响应侧必须按同一张名字表把 tool_call 还原成 custom_tool_call，否则 Codex 之类依赖 freeform
+	// 输入（apply_patch 等）的客户端只会收到 function_call，自由文本被包在 JSON 里解读不了。
+	responsesState.CustomToolNames = customToolNames
 	return &chatCompletionsResponsesState{
-		responsesState: claude.NewClaudeResponsesStreamState(model),
+		responsesState: responsesState,
 		textBlockIndex: -1,
 		thinkingIndex:  -1,
 		tools:          make(map[int]*chatCompletionsToolState),
@@ -605,8 +627,8 @@ func chatFinishReasonToClaude(reason string) string {
 	}
 }
 
-func chatCompletionsStreamToResponses(c *gin.Context, info *relaycommon.RelayInfo, response *http.Response) (*dto.Usage, *types.NewAPIError) {
-	state := newChatCompletionsResponsesState(info.UpstreamModelName)
+func chatCompletionsStreamToResponses(c *gin.Context, info *relaycommon.RelayInfo, response *http.Response, customToolNames map[string]bool) (*dto.Usage, *types.NewAPIError) {
+	state := newChatCompletionsResponsesState(info.UpstreamModelName, customToolNames)
 	var streamError *types.NewAPIError
 	helper.StreamScannerHandler(c, response, info, func(data string, streamResult *helper.StreamResult) {
 		var chunk dto.ChatCompletionsStreamResponse

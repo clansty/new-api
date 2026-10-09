@@ -1591,3 +1591,119 @@ func TestDeveloperRoleBetweenToolUseAndUserTextRejected(t *testing.T) {
 		t.Errorf("expected rejection for developer between tool_use and normal user text, got %v", err)
 	}
 }
+
+func TestConvertResponsesRequestToClaudeDisablesParallelToolUse(t *testing.T) {
+	req := &dto.OpenAIResponsesRequest{
+		Model:             "claude-opus-4-7",
+		Input:             []byte(`"hi"`),
+		Tools:             []byte(`[{"type":"function","name":"read","parameters":{"type":"object"}}]`),
+		ParallelToolCalls: []byte(`false`),
+	}
+
+	claudeReq, _, _, err := ConvertResponsesRequestToClaude(req)
+	if err != nil {
+		t.Fatalf("convert: %v", err)
+	}
+
+	choice, ok := claudeReq.ToolChoice.(*dto.ClaudeToolChoice)
+	if !ok {
+		t.Fatalf("tool_choice type = %T, want *dto.ClaudeToolChoice", claudeReq.ToolChoice)
+	}
+	if choice.Type != "auto" || !choice.DisableParallelToolUse {
+		t.Fatalf("tool_choice = %+v, want auto with disable_parallel_tool_use", choice)
+	}
+}
+
+func TestConvertResponsesRequestToClaudeKeepsParallelToolUseWhenEnabled(t *testing.T) {
+	req := &dto.OpenAIResponsesRequest{
+		Model:             "claude-opus-4-7",
+		Input:             []byte(`"hi"`),
+		Tools:             []byte(`[{"type":"function","name":"read","parameters":{"type":"object"}}]`),
+		ParallelToolCalls: []byte(`true`),
+	}
+
+	claudeReq, _, _, err := ConvertResponsesRequestToClaude(req)
+	if err != nil {
+		t.Fatalf("convert: %v", err)
+	}
+	if claudeReq.ToolChoice != nil {
+		t.Fatalf("tool_choice = %+v, want nil when parallel tool calls are enabled", claudeReq.ToolChoice)
+	}
+}
+
+func TestConvertResponsesRequestToClaudePrependsUserPlaceholder(t *testing.T) {
+	// 历史以 assistant 开头（压缩/续接会话的常见形态），Anthropic 要求首条是 user。
+	req := &dto.OpenAIResponsesRequest{
+		Model: "claude-opus-4-7",
+		Input: []byte(`[
+			{"type":"message","role":"assistant","content":[{"type":"output_text","text":"上一轮回答"}]},
+			{"type":"message","role":"user","content":[{"type":"input_text","text":"继续"}]}
+		]`),
+	}
+
+	claudeReq, _, _, err := ConvertResponsesRequestToClaude(req)
+	if err != nil {
+		t.Fatalf("convert: %v", err)
+	}
+	if len(claudeReq.Messages) != 3 || claudeReq.Messages[0].Role != "user" {
+		t.Fatalf("messages = %+v, want a leading user placeholder", claudeReq.Messages)
+	}
+}
+
+func TestConvertResponsesRequestToClaudeTrimsTrailingWhitespaceAssistantText(t *testing.T) {
+	// 末尾 assistant 文本只剩空白时，Anthropic 会当成非法 prefill 拒绝。
+	req := &dto.OpenAIResponsesRequest{
+		Model: "claude-opus-4-7",
+		Input: []byte(`[
+			{"type":"message","role":"user","content":[{"type":"input_text","text":"问题"}]},
+			{"type":"message","role":"assistant","content":[{"type":"output_text","text":"   \n"}]}
+		]`),
+	}
+
+	claudeReq, _, _, err := ConvertResponsesRequestToClaude(req)
+	if err != nil {
+		t.Fatalf("convert: %v", err)
+	}
+	if len(claudeReq.Messages) != 1 || claudeReq.Messages[0].Role != "user" {
+		t.Fatalf("messages = %+v, want the empty assistant turn dropped", claudeReq.Messages)
+	}
+}
+
+func TestConvertResponsesRequestToClaudeAcceptsSingleInputItem(t *testing.T) {
+	req := &dto.OpenAIResponsesRequest{
+		Model: "claude-opus-4-7",
+		Input: []byte(`{"type":"message","role":"user","content":[{"type":"input_text","text":"单个对象"}]}`),
+	}
+
+	claudeReq, _, _, err := ConvertResponsesRequestToClaude(req)
+	if err != nil {
+		t.Fatalf("convert: %v", err)
+	}
+	if len(claudeReq.Messages) != 1 || claudeReq.Messages[0].Role != "user" {
+		t.Fatalf("messages = %+v, want the single item to be accepted", claudeReq.Messages)
+	}
+}
+
+func TestConvertResponsesRequestToClaudeKeepsNoneToolChoiceWithoutParallelFlag(t *testing.T) {
+	req := &dto.OpenAIResponsesRequest{
+		Model:             "claude-opus-4-7",
+		Input:             []byte(`"hi"`),
+		Tools:             []byte(`[{"type":"function","name":"read","parameters":{"type":"object"}}]`),
+		ToolChoice:        []byte(`"none"`),
+		ParallelToolCalls: []byte(`false`),
+	}
+
+	claudeReq, _, _, err := ConvertResponsesRequestToClaude(req)
+	if err != nil {
+		t.Fatalf("convert: %v", err)
+	}
+
+	choice, ok := claudeReq.ToolChoice.(*dto.ClaudeToolChoice)
+	if !ok {
+		t.Fatalf("tool_choice type = %T, want *dto.ClaudeToolChoice", claudeReq.ToolChoice)
+	}
+	// Anthropic 对 tool_choice.type=none 不接受任何附加字段。
+	if choice.Type != "none" || choice.DisableParallelToolUse {
+		t.Fatalf("tool_choice = %+v, want plain none", choice)
+	}
+}

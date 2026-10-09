@@ -1,6 +1,7 @@
 package claude
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"regexp"
@@ -81,10 +82,27 @@ func ConvertResponsesRequestToClaude(req *dto.OpenAIResponsesRequest) (*dto.Clau
 	}
 	claude.System = mergedSystem
 
-	if tc, err := convertResponsesToolChoiceToClaude(req.ToolChoice, survivingNames); err != nil {
+	toolChoice, err := convertResponsesToolChoiceToClaude(req.ToolChoice, survivingNames)
+	if err != nil {
 		return nil, nil, nil, err
-	} else if tc != nil {
-		claude.ToolChoice = tc
+	}
+
+	// Anthropic 没有请求级的 parallel_tool_calls 开关，只能挂在 tool_choice 上。
+	// 不下发的话上游仍会并行发起工具调用，那些按顺序串行执行（且有副作用）的客户端 agent 会出错。
+	// 与 cc-switch 一致：本来没有 tool_choice 时补一个 auto 作为载体。
+	if len(tools) > 0 && responsesParallelToolCallsDisabled(req.ParallelToolCalls) {
+		if toolChoice == nil {
+			toolChoice = &dto.ClaudeToolChoice{Type: "auto"}
+		}
+		// tool_choice.type=none 不接受任何附加字段（Anthropic 报
+		// "tool_choice.none.disable_parallel_tool_use: Extra inputs are not permitted"），
+		// 而且工具已被禁用时并行开关本就没有意义。与 mapToolChoice 的既有守卫一致。
+		if toolChoice.Type != "none" {
+			toolChoice.DisableParallelToolUse = true
+		}
+	}
+	if toolChoice != nil {
+		claude.ToolChoice = toolChoice
 	}
 
 	if req.Reasoning != nil {
@@ -98,6 +116,18 @@ func ConvertResponsesRequestToClaude(req *dto.OpenAIResponsesRequest) (*dto.Clau
 	}
 
 	return claude, customNames, namespaceMap, nil
+}
+
+// responsesParallelToolCallsDisabled 判断客户端是否显式关闭了并行工具调用。
+func responsesParallelToolCallsDisabled(raw json.RawMessage) bool {
+	if len(raw) == 0 || isJSONNull(raw) {
+		return false
+	}
+	var enabled bool
+	if err := common.Unmarshal(raw, &enabled); err != nil {
+		return false
+	}
+	return !enabled
 }
 
 // NamespaceMapping 记录扁平化时一个 inner tool 的原始 OpenAI 信息。
@@ -306,7 +336,13 @@ func convertResponsesInputToClaudeMessages(rawInput []byte, namespaceMap map[str
 
 	var items []map[string]any
 	if err := common.Unmarshal(rawInput, &items); err != nil {
-		return nil, nil, fmt.Errorf("input must be a string or an array of items: %w", err)
+		// Responses 协议里 input 也可以直接是一个 item 对象（部分 SDK 会把单条消息序列化成对象），
+		// 只接受字符串/数组会把这类请求整条 400 掉。
+		var single map[string]any
+		if singleErr := common.Unmarshal(rawInput, &single); singleErr != nil {
+			return nil, nil, fmt.Errorf("input must be a string, an item, or an array of items: %w", err)
+		}
+		items = []map[string]any{single}
 	}
 
 	messages := make([]dto.ClaudeMessage, 0, len(items))
@@ -474,7 +510,59 @@ func convertResponsesInputToClaudeMessages(rawInput []byte, namespaceMap map[str
 	if len(messages) == 0 {
 		return nil, nil, errors.New("input contained only system/developer messages without any user/assistant turn")
 	}
+	// 压缩/续接过的会话可能直接以 assistant 项开头，而 Anthropic 要求首条必须是 user。
+	ensureLeadingClaudeUserMessage(&messages)
+	trimTrailingClaudeAssistantText(&messages)
 	return messages, systemPrefixBlocks, nil
+}
+
+// Anthropic 要求 messages 首条为 user（system 走顶层字段），以 assistant 开头的历史
+// 只能补一个占位 user 轮，与 cc-switch 的 ensure_leading_user_message 一致。
+func ensureLeadingClaudeUserMessage(messages *[]dto.ClaudeMessage) {
+	if len(*messages) == 0 || (*messages)[0].Role == "user" {
+		return
+	}
+	placeholder := dto.ClaudeMessage{
+		Role: "user",
+		Content: []dto.ClaudeMediaMessage{{
+			Type: "text",
+			Text: common.GetPointer("(continuing the conversation)"),
+		}},
+	}
+	*messages = append([]dto.ClaudeMessage{placeholder}, *messages...)
+}
+
+// Anthropic 直接拒绝以空白结尾的 assistant 文本（会被当成 prefill 且内容非法）。
+// 上游把一轮空的 output_text 记进历史时就会产生这种尾巴，透传过去会让整个后续请求 400。
+func trimTrailingClaudeAssistantText(messages *[]dto.ClaudeMessage) {
+	if len(*messages) == 0 {
+		return
+	}
+	last := &(*messages)[len(*messages)-1]
+	if last.Role != "assistant" {
+		return
+	}
+	blocks, ok := last.Content.([]dto.ClaudeMediaMessage)
+	if !ok || len(blocks) == 0 {
+		return
+	}
+	tail := &blocks[len(blocks)-1]
+	if tail.Type != "text" || tail.Text == nil {
+		return
+	}
+	trimmed := strings.TrimRight(*tail.Text, " \t\r\n")
+	if trimmed == "" {
+		// 空白块要整块删掉而不是留成空字符串，否则同样触发 prefill 校验。
+		blocks = blocks[:len(blocks)-1]
+	} else {
+		blocks[len(blocks)-1].Text = common.GetPointer(trimmed)
+	}
+	if len(blocks) == 0 {
+		// 整条 assistant 轮只剩这个空白块时，把这一轮也去掉。
+		*messages = (*messages)[:len(*messages)-1]
+		return
+	}
+	last.Content = blocks
 }
 
 // 把穿插在对话中间的 system/developer text 块包成 <openai_developer_instruction> XML，

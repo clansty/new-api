@@ -34,6 +34,8 @@ type ClaudeMediaMessage struct {
 	Input     any    `json:"input,omitempty"`
 	Content   any    `json:"content,omitempty"`
 	ToolUseId string `json:"tool_use_id,omitempty"`
+	// IsError 标记 tool_result 表示工具执行失败，Anthropic 用它对模型强调「这次调用出错了」
+	IsError bool `json:"is_error,omitempty"`
 	// redacted_thinking
 	Data string `json:"data,omitempty"`
 }
