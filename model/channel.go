@@ -1077,6 +1077,84 @@ func BatchSetChannelAutoRecover(ids []int, autoRecover bool) error {
 	return DB.Model(&Channel{}).Where("id in (?)", ids).Update("auto_recover", autoRecoverValue).Error
 }
 
+// BatchUpdateChannelModels 批量增加/删除渠道的可用模型，返回实际发生变化的渠道数
+func BatchUpdateChannelModels(ids []int, addModels []string, removeModels []string) (int, error) {
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	addList := make([]string, 0, len(addModels))
+	for _, modelName := range addModels {
+		if modelName = strings.TrimSpace(modelName); modelName != "" {
+			addList = append(addList, modelName)
+		}
+	}
+	removeSet := make(map[string]struct{}, len(removeModels))
+	for _, modelName := range removeModels {
+		if modelName = strings.TrimSpace(modelName); modelName != "" {
+			removeSet[modelName] = struct{}{}
+		}
+	}
+
+	tx := DB.Begin()
+	if tx.Error != nil {
+		return 0, tx.Error
+	}
+
+	var channels []*Channel
+	if err := tx.Where("id in (?)", ids).Find(&channels).Error; err != nil {
+		tx.Rollback()
+		return 0, err
+	}
+
+	updatedCount := 0
+	for _, channel := range channels {
+		changed := false
+		newModels := make([]string, 0, len(addList)+len(channel.GetModels()))
+		modelSet := make(map[string]struct{})
+		for _, modelName := range channel.GetModels() {
+			modelName = strings.TrimSpace(modelName)
+			if modelName == "" {
+				continue
+			}
+			if _, ok := removeSet[modelName]; ok {
+				changed = true
+				continue
+			}
+			if _, ok := modelSet[modelName]; ok {
+				// 顺带清掉历史脏数据中的重复模型
+				changed = true
+				continue
+			}
+			modelSet[modelName] = struct{}{}
+			newModels = append(newModels, modelName)
+		}
+		for _, modelName := range addList {
+			if _, ok := modelSet[modelName]; ok {
+				continue
+			}
+			modelSet[modelName] = struct{}{}
+			newModels = append(newModels, modelName)
+			changed = true
+		}
+		if !changed {
+			continue
+		}
+
+		channel.Models = strings.Join(newModels, ",")
+		if err := tx.Model(&Channel{}).Where("id = ?", channel.Id).Update("models", channel.Models).Error; err != nil {
+			tx.Rollback()
+			return 0, err
+		}
+		if err := channel.UpdateAbilities(tx); err != nil {
+			tx.Rollback()
+			return 0, err
+		}
+		updatedCount++
+	}
+
+	return updatedCount, tx.Commit().Error
+}
+
 // CountAllChannels returns total channels in DB
 func CountAllChannels() (int64, error) {
 	var total int64

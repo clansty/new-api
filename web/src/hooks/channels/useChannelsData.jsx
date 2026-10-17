@@ -71,6 +71,9 @@ export const useChannelsData = () => {
     useState(false);
   const [batchSetAutoRecoverValue, setBatchSetAutoRecoverValue] =
     useState(true);
+  const [showBatchModelModal, setShowBatchModelModal] = useState(false);
+  const [batchAddModels, setBatchAddModels] = useState([]);
+  const [batchRemoveModels, setBatchRemoveModels] = useState([]);
   const [compactMode, setCompactMode] = useTableCompactMode('channels');
 
   // Column visibility states
@@ -795,6 +798,60 @@ export const useChannelsData = () => {
     setShowBatchSetTag(false);
   };
 
+  const batchUpdateChannelModels = async () => {
+    const ids = getSelectedChannelIds();
+    if (ids.length === 0) {
+      showError(t('请先选择要批量编辑的渠道！'));
+      return;
+    }
+    const normalizeModels = (models) =>
+      Array.from(
+        new Set(
+          (models || [])
+            .map((model) => String(model ?? '').trim())
+            .filter(Boolean),
+        ),
+      );
+    const addModels = normalizeModels(batchAddModels);
+    const removeModels = normalizeModels(batchRemoveModels);
+    if (addModels.length === 0 && removeModels.length === 0) {
+      showError(t('请至少选择要增加或删除的模型！'));
+      return;
+    }
+    const removeSet = new Set(removeModels);
+    const conflictModels = addModels.filter((model) => removeSet.has(model));
+    if (conflictModels.length > 0) {
+      showError(
+        t('模型 ${models} 不能同时增加和删除').replace(
+          '${models}',
+          conflictModels.join(', '),
+        ),
+      );
+      return;
+    }
+
+    const res = await API.post('/api/channel/batch/models', {
+      ids: ids,
+      add_models: addModels,
+      remove_models: removeModels,
+    });
+    if (!res.data.success) {
+      showError(res.data.message);
+      return;
+    }
+
+    showSuccess(
+      t('已批量更新 ${count} 个渠道的模型！').replace(
+        '${count}',
+        res.data.data,
+      ),
+    );
+    setBatchAddModels([]);
+    setBatchRemoveModels([]);
+    await refresh();
+    setShowBatchModelModal(false);
+  };
+
   const batchDeleteChannels = async () => {
     const ids = getSelectedChannelIds();
     if (ids.length === 0) {
@@ -1305,6 +1362,13 @@ export const useChannelsData = () => {
     setBatchSetAutoRecoverEnabled,
     batchSetAutoRecoverValue,
     setBatchSetAutoRecoverValue,
+    showBatchModelModal,
+    setShowBatchModelModal,
+    batchAddModels,
+    setBatchAddModels,
+    batchRemoveModels,
+    setBatchRemoveModels,
+    batchUpdateChannelModels,
 
     // Column states
     visibleColumns,

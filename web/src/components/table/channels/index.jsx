@@ -28,6 +28,7 @@ import ChannelsTabs from './ChannelsTabs';
 import { useChannelsData } from '../../../hooks/channels/useChannelsData';
 import { useIsMobile } from '../../../hooks/common/useIsMobile';
 import BatchTagModal from './modals/BatchTagModal';
+import BatchModelModal from './modals/BatchModelModal';
 import ModelTestModal from './modals/ModelTestModal';
 import ColumnSelectorModal from './modals/ColumnSelectorModal';
 import EditChannelModal from './modals/EditChannelModal';
@@ -58,6 +59,7 @@ const ChannelsPage = () => {
         editingChannel={channelsData.editingChannel}
       />
       <BatchTagModal {...channelsData} />
+      <BatchModelModal {...channelsData} />
       <ModelTestModal {...channelsData} />
       <MultiKeyManageModal
         visible={channelsData.showMultiKeyManageModal}

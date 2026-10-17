@@ -33,6 +33,7 @@ const ChannelsActions = ({
   batchDeleteChannels,
   batchSetChannelCollapse,
   setShowBatchSetTag,
+  setShowBatchModelModal,
   testAllChannels,
   fixChannelsAbilities,
   updateAllChannelsBalance,
@@ -89,6 +90,16 @@ const ChannelsActions = ({
             className='w-full md:w-auto'
           >
             {t('批量编辑')}
+          </Button>
+
+          <Button
+            size='small'
+            disabled={!enableBatchDelete}
+            type='tertiary'
+            onClick={() => setShowBatchModelModal(true)}
+            className='w-full md:w-auto'
+          >
+            {t('批量模型')}
           </Button>
 
           <Dropdown

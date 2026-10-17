@@ -951,10 +951,12 @@ func EditTagChannels(c *gin.Context) {
 }
 
 type ChannelBatch struct {
-	Ids         []int   `json:"ids"`
-	Tag         *string `json:"tag"`
-	Collapsed   *bool   `json:"collapsed"`
-	AutoRecover *bool   `json:"auto_recover"`
+	Ids          []int    `json:"ids"`
+	Tag          *string  `json:"tag"`
+	Collapsed    *bool    `json:"collapsed"`
+	AutoRecover  *bool    `json:"auto_recover"`
+	AddModels    []string `json:"add_models"`
+	RemoveModels []string `json:"remove_models"`
 }
 
 func DeleteChannelBatch(c *gin.Context) {
@@ -1371,6 +1373,49 @@ func BatchSetChannelTag(c *gin.Context) {
 		"data":    len(channelBatch.Ids),
 	})
 	return
+}
+
+func BatchUpdateChannelModels(c *gin.Context) {
+	channelBatch := ChannelBatch{}
+	err := c.ShouldBindJSON(&channelBatch)
+	if err != nil || len(channelBatch.Ids) == 0 ||
+		(len(channelBatch.AddModels) == 0 && len(channelBatch.RemoveModels) == 0) {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": "参数错误",
+		})
+		return
+	}
+
+	addSet := make(map[string]struct{}, len(channelBatch.AddModels))
+	for _, modelName := range channelBatch.AddModels {
+		if modelName = strings.TrimSpace(modelName); modelName != "" {
+			addSet[modelName] = struct{}{}
+		}
+	}
+	for _, modelName := range channelBatch.RemoveModels {
+		if modelName = strings.TrimSpace(modelName); modelName != "" {
+			if _, ok := addSet[modelName]; ok {
+				c.JSON(http.StatusOK, gin.H{
+					"success": false,
+					"message": fmt.Sprintf("模型 %s 不能同时增加和删除", modelName),
+				})
+				return
+			}
+		}
+	}
+
+	updatedCount, err := model.BatchUpdateChannelModels(channelBatch.Ids, channelBatch.AddModels, channelBatch.RemoveModels)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	model.InitChannelCache()
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "",
+		"data":    updatedCount,
+	})
 }
 
 func GetTagModels(c *gin.Context) {
